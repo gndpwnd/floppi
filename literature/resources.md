@@ -7,6 +7,33 @@
 **web server using ESP32 to flash variables on the fly**
 [dgm3333/dRehmFlight](https://github.com/dgm3333/dRehmFlight)
 
+**LongFly dRehmFlight**
+[Qlongl LongFly](https://github.com/Qlongl/Drehmflight---Longfly-Version)
+
+LongFly PCB Specs
+```
+Mounting Patter: 30.5x30.5mm
+
+Dimensions: 52x50x10mm
+Voltage input: 2-8S
+
+PDB max Amperage: 240amps continuous 300amps burst current
+
+BEC: 5V4A
+
+Weight: ~9 grams
+Number of motor pads: 6
+Natively Compatable Receiver Protocals: SBUS, PPM, PWM
+
+Natively Compatible ESC Protocals: Oneshot125, PWM
+
+Gyro: MPU6050
+
+USB:Micro-usbA
+```
+
+[setup video with LongFly, basic drone frame, and fsia6](https://www.youtube.com/watch?v=u9dQuegqPhQ)
+
 ## 3D Printing Resources
 
 [Micro FPV Quadcopter 125 | 8.5mm motors and Micro Scisky](https://www.thingiverse.com/thing:1661352)
