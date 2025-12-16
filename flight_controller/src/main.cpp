@@ -1,6 +1,6 @@
 /*
  * dRehmFlight VTOL - Complete Flight Controller
- * PlatformIO Port with Comment/Uncomment Debug Sections
+ * PlatformIO Port with Automatic Calibration Programs
  * 
  * USAGE:
  * - This is the complete flight controller with ALL functionality
@@ -9,8 +9,14 @@
  * - Use Serial Monitor to view text output
  * - Use Serial Plotter to visualize IMU/PID data
  * 
+ * New Features:
+ * 1. Automatic calibration programs (Channel 6 switch)
+ * 2. Configurable calibration options via config.h
+ * 3. Safety features to prevent accidental triggering
+ * 4. Visual feedback through LED and Serial
+ * 
  * Original by Nicholas Rehm (dRehmFlight)
- * PlatformIO port
+ * PlatformIO port with calibration enhancements
  */
 
 #include <Arduino.h>
@@ -20,6 +26,9 @@
 #include "config.h"
 #include "pin_definitions.h"
 #include "radioComm.h"
+
+extern unsigned long channel_1_pwm, channel_2_pwm, channel_3_pwm;
+extern unsigned long channel_4_pwm, channel_5_pwm, channel_6_pwm;
 
 //========================================================================================================================//
 //                                                    IMU SETUP                                                           //
@@ -53,8 +62,12 @@ float MagX, MagY, MagZ;
 float MagX_prev, MagY_prev, MagZ_prev;
 
 // IMU calibration
-float AccErrorX = 0.0, AccErrorY = 0.0, AccErrorZ = 0.0;
-float GyroErrorX = 0.0, GyroErrorY = 0.0, GyroErrorZ = 0.0;
+float AccErrorX = IMU_ACC_ERROR_X;
+float AccErrorY = IMU_ACC_ERROR_Y;
+float AccErrorZ = IMU_ACC_ERROR_Z;
+float GyroErrorX = IMU_GYRO_ERROR_X;
+float GyroErrorY = IMU_GYRO_ERROR_Y;
+float GyroErrorZ = IMU_GYRO_ERROR_Z;
 
 // Attitude (Madgwick quaternion)
 float q0 = 1.0f, q1 = 0.0f, q2 = 0.0f, q3 = 0.0f;
@@ -82,6 +95,17 @@ float s1_command_scaled, s2_command_scaled, s3_command_scaled, s4_command_scaled
 // Arming state
 bool armedFly = false;
 
+// Calibration program state
+enum CalibrationMode {
+    CALIB_NONE,
+    CALIB_ACCEL_GYRO,
+    CALIB_ATTITUDE,
+    CALIB_RADIO
+};
+CalibrationMode calibration_mode = CALIB_NONE;
+bool calibration_in_progress = false;
+unsigned long calibration_start_time = 0;
+
 //========================================================================================================================//
 //                                              FUNCTION DECLARATIONS                                                     //
 //========================================================================================================================//
@@ -105,6 +129,12 @@ void failSafe();
 void loopRate(int freq);
 float invSqrt(float x);
 
+// Calibration program functions
+void checkCalibrationMode();
+void runAccelGyroCalibration();
+void runAttitudeCalibration();
+void runRadioCalibration();
+
 // Debug print functions
 void printRadioData();
 void printDesiredState();
@@ -127,6 +157,7 @@ void setup() {
     
     Serial.println(F("\n\n========================================"));
     Serial.println(F("  dRehmFlight VTOL Flight Controller"));
+    Serial.println(F("      with Auto-Calibration"));
     Serial.println(F("========================================"));
     
     // Initialize pins
@@ -164,21 +195,40 @@ void setup() {
         mpu9250.setAccelRange(ACCEL_SCALE);
     #endif
     
-    // Calibrate IMU
-    Serial.println(F("\nCalibrating IMU..."));
-    Serial.println(F("Keep board FLAT and STILL!"));
-    delay(2000);
-    calculate_IMU_error();
-    
-    // Calibrate attitude (warm up Madgwick filter)
-    Serial.println(F("Calibrating attitude..."));
-    calibrateAttitude();
-    Serial.println(F("IMU calibration complete"));
-    
     // Initialize receiver
     Serial.println(F("\nInitializing receiver..."));
     radioSetup();
     delay(500);
+    
+    // Get initial receiver values
+    getCommands();
+    
+    // Check if CH6 is high on startup (trigger manual calibration)
+    if (channel_6_pwm > 1800) {
+        Serial.println(F("\nManual calibration triggered on startup!"));
+        Serial.println(F("Keep board FLAT and STILL!"));
+        delay(2000);
+        calculate_IMU_error();
+        
+        // Update config values in memory (not EEPROM)
+        AccErrorX = IMU_ACC_ERROR_X;
+        AccErrorY = IMU_ACC_ERROR_Y;
+        AccErrorZ = IMU_ACC_ERROR_Z;
+        GyroErrorX = IMU_GYRO_ERROR_X;
+        GyroErrorY = IMU_GYRO_ERROR_Y;
+        GyroErrorZ = IMU_GYRO_ERROR_Z;
+        
+        calibrateAttitude();
+        Serial.println(F("Manual calibration complete"));
+        Serial.print(F("AccError: X=")); Serial.print(AccErrorX, 4);
+        Serial.print(F(" Y=")); Serial.print(AccErrorY, 4);
+        Serial.print(F(" Z=")); Serial.println(AccErrorZ, 4);
+    } else {
+        Serial.println(F("\nUsing calibration values from config.h"));
+        Serial.print(F("AccError: X=")); Serial.print(AccErrorX, 4);
+        Serial.print(F(" Y=")); Serial.print(AccErrorY, 4);
+        Serial.print(F(" Z=")); Serial.println(AccErrorZ, 4);
+    }
     
     // Setup motor pins
     pinMode(MOTOR_PIN_1, OUTPUT);
@@ -205,6 +255,12 @@ void setup() {
     Serial.println(F("\n========================================"));
     Serial.println(F("  FLIGHT CONTROLLER READY!"));
     Serial.println(F("========================================\n"));
+    Serial.println(F("Calibration Programs (CH6 switch):"));
+    Serial.println(F("  CH6 Low (<1200):  Normal flight"));
+    Serial.println(F("  CH6 Mid (1200-1800):  Accel/Gyro Cal"));
+    Serial.println(F("  CH6 High (>1800): Attitude Cal"));
+    Serial.println(F("\nHold switch position for 3 seconds"));
+    Serial.println(F("to trigger calibration."));
     
     // Final setup blink
     setupBlink(3, 160);
@@ -222,116 +278,343 @@ void loop() {
     current_time = micros();
     dt = (current_time - prev_time) / 1000000.0;
     
-    // ========== CORE FLIGHT CONTROLLER (ALWAYS RUNS) ==========
+    // ========== CHECK FOR CALIBRATION MODE ==========
+    // Check if CH6 switch position indicates calibration mode
+    checkCalibrationMode();
     
-    // Get radio commands
-    getCommands();
-    
-    // Check failsafe
-    failSafe();
-    
-    // Get IMU data
-    getIMUdata();
-    
-    // Attitude estimation with Madgwick filter
-    #ifdef USE_MPU6050
-        Madgwick6DOF(GyroX, -GyroY, -GyroZ, -AccX, AccY, AccZ, dt);
-    #elif defined(USE_MPU9250)
-        Madgwick(GyroX, -GyroY, -GyroZ, -AccX, AccY, AccZ, MagY, -MagX, MagZ, dt);
-    #endif
-    
-    // Get desired state from radio
-    getDesState();
-    
-    // Check arming status (throttle low + channel 5 low)
-    armedStatus();
-    
-    // Only run PID controller if armed
-    if (armedFly) {
-        // Run flight controller
-        #ifdef USE_RATE_CONTROLLER
-            controlRATE();
-        #elif defined(USE_ANGLE_CONTROLLER)
-            controlANGLE();
+    // ========== CORE FLIGHT CONTROLLER ==========
+    // Skip flight controller if calibration is in progress
+    if (!calibration_in_progress) {
+        // Get radio commands
+        getCommands();
+        
+        // Check failsafe
+        failSafe();
+        
+        // Get IMU data
+        getIMUdata();
+        
+        // Attitude estimation with Madgwick filter
+        #ifdef USE_MPU6050
+            Madgwick6DOF(GyroX, -GyroY, -GyroZ, -AccX, AccY, AccZ, dt);
+        #elif defined(USE_MPU9250)
+            Madgwick(GyroX, -GyroY, -GyroZ, -AccX, AccY, AccZ, MagY, -MagX, MagZ, dt);
         #endif
         
-        // Mix control outputs to motors/servos
-        controlMixer();
-    } else {
-        // Not armed - zero out PID outputs
-        roll_PID = 0;
-        pitch_PID = 0;
-        yaw_PID = 0;
+        // Get desired state from radio
+        getDesState();
         
-        // Set to minimum throttle in mixer
-        m1_command_scaled = 0;
-        m2_command_scaled = 0;
-        m3_command_scaled = 0;
-        m4_command_scaled = 0;
-        m5_command_scaled = 0;
-        m6_command_scaled = 0;
+        // Check arming status (throttle low + channel 5 low)
+        armedStatus();
+        
+        // Only run PID controller if armed
+        if (armedFly) {
+            // Run flight controller
+            #ifdef USE_RATE_CONTROLLER
+                controlRATE();
+            #elif defined(USE_ANGLE_CONTROLLER)
+                controlANGLE();
+            #endif
+            
+            // Mix control outputs to motors/servos
+            controlMixer();
+        } else {
+            // Not armed - zero out PID outputs
+            roll_PID = 0;
+            pitch_PID = 0;
+            yaw_PID = 0;
+            
+            // Set to minimum throttle in mixer
+            m1_command_scaled = 0;
+            m2_command_scaled = 0;
+            m3_command_scaled = 0;
+            m4_command_scaled = 0;
+            m5_command_scaled = 0;
+            m6_command_scaled = 0;
+        }
+        
+        // Scale commands to PWM range
+        scaleCommands();
+        
+        // Apply throttle cut if needed (safety override)
+        throttleCut();
+        
+        // Send commands to motors and servos
+        commandMotors();
     }
     
-    // Scale commands to PWM range
-    scaleCommands();
+    // ========== CALIBRATION PROGRAMS ==========
+    // Run calibration if mode is selected
+    if (calibration_mode != CALIB_NONE && !calibration_in_progress) {
+        calibration_in_progress = true;
+        calibration_start_time = millis();
+        
+        Serial.println(F("\n=== CALIBRATION MODE ACTIVATED ==="));
+        
+        switch (calibration_mode) {
+            case CALIB_ACCEL_GYRO:
+                Serial.println(F("Running Accelerometer/Gyroscope Calibration"));
+                Serial.println(F("Keep board FLAT and STILL!"));
+                runAccelGyroCalibration();
+                break;
+                
+            case CALIB_ATTITUDE:
+                Serial.println(F("Running Attitude Filter Calibration"));
+                Serial.println(F("Keep board FLAT and STILL!"));
+                runAttitudeCalibration();
+                break;
+                
+            case CALIB_RADIO:
+                Serial.println(F("Running Radio Calibration"));
+                Serial.println(F("Move all sticks to extremes"));
+                runRadioCalibration();
+                break;
+                
+            default:
+                break;
+        }
+        
+        calibration_in_progress = false;
+        calibration_mode = CALIB_NONE;
+        
+        Serial.println(F("=== CALIBRATION COMPLETE ==="));
+        Serial.println(F("Returning to normal mode...\n"));
+        
+        // Blink LED to indicate calibration complete
+        for (int i = 0; i < 5; i++) {
+            digitalWrite(LED_PIN, HIGH);
+            delay(100);
+            digitalWrite(LED_PIN, LOW);
+            delay(100);
+        }
+    }
     
-    // Apply throttle cut if needed (safety override)
-    throttleCut();
-    
-    // Send commands to motors and servos
-    commandMotors();
-    
-    // ========== DEBUG OUTPUT (UNCOMMENT WHAT YOU WANT TO SEE) ==========
-    // ⚠️ WARNING: Debug prints WILL reduce loop rate!
-    //   - No debug:     ~2000Hz (500µs loop time)  
-    //   - 1-2 prints:   ~1800Hz (555µs loop time)
-    //   - 3+ prints:    ~1500Hz (666µs loop time)
-    //   - All prints:   ~1000Hz (1000µs loop time)
-    // 
-    // For TUNING: Some debug is OK
-    // For FLIGHT: Comment out ALL debug for max performance
-    // 
-    // These DO NOT affect flight controller operation, only loop speed:
-    
-    //printRadioData();        // Print receiver channels
-    //printDesiredState();     // Print desired roll/pitch/yaw
-    //printGyroData();         // Print gyro X/Y/Z (good for plotter)
-    //printAccelData();        // Print accel X/Y/Z (good for plotter)
-    //printMagData();          // Print mag X/Y/Z (MPU9250 only)
-    //printRollPitchYaw();     // Print attitude angles (good for plotter)
-    //printPIDoutput();        // Print PID controller outputs (good for tuning)
-    //printMotorCommands();    // Print motor PWM commands
-    //printServoCommands();    // Print servo PWM commands
-    //printLoopRate();         // Print loop timing (target: 2kHz = 500µs)
-    
-    // ========== COMBINED DEBUG OUTPUTS ==========
-    // Uncomment these for specific testing scenarios:
-    
-    // IMU Calibration Test (use with Serial Plotter):
+    // ========== DEBUG OUTPUT ==========
+    // Uncomment as needed (see original comments)
+    //printRadioData();
+    //printDesiredState();
     //printGyroData();
     //printAccelData();
     //printRollPitchYaw();
-    
-    // Receiver Test:
-    //printRadioData();
-    
-    // PID Tuning Test (use with Serial Plotter):
-    //printRollPitchYaw();
     //printPIDoutput();
-    
-    // Motor Output Test:
     //printMotorCommands();
-    //printServoCommands();
+    //printLoopRate();
     
     // ========== STATUS LED ==========
-    // Blink LED at 1Hz to show system is running
-    if (current_time - print_counter > 500000) {
-        print_counter = current_time;
-        digitalWrite(LED_PIN, !digitalRead(LED_PIN));
+    // Blink pattern indicates mode:
+    // - Normal: 1Hz blink
+    // - Calibration in progress: Fast blink
+    // - Armed: Solid
+    static unsigned long led_timer = 0;
+    if (calibration_in_progress) {
+        // Fast blink during calibration
+        if (current_time - led_timer > 100000) {
+            led_timer = current_time;
+            digitalWrite(LED_PIN, !digitalRead(LED_PIN));
+        }
+    } else if (armedFly) {
+        // Solid when armed
+        digitalWrite(LED_PIN, HIGH);
+    } else {
+        // Normal 1Hz blink
+        if (current_time - led_timer > 500000) {
+            led_timer = current_time;
+            digitalWrite(LED_PIN, !digitalRead(LED_PIN));
+        }
     }
     
-    // Maintain loop rate (2kHz = 500µs)
+    // Maintain loop rate
     loopRate(LOOP_FREQUENCY_HZ);
+}
+
+//========================================================================================================================//
+//                                              CALIBRATION FUNCTIONS                                                     //
+//========================================================================================================================//
+
+void checkCalibrationMode() {
+    //DESCRIPTION: Check CH6 switch position to determine calibration mode
+    /*
+     * Calibration Modes (Channel 6 - 3-position switch):
+     * - LOW  (<1200µs):  Normal flight mode (no calibration)
+     * - MID  (1200-1800µs): Accelerometer/Gyroscope calibration
+     * - HIGH (>1800µs):  Attitude filter calibration
+     * 
+     * Safety checks:
+     * 1. Must NOT be armed
+     * 2. Throttle must be low (<1050µs)
+     * 3. Must hold position for CALIBRATION_HOLD_TIME ms
+     */
+    
+    static CalibrationMode last_mode = CALIB_NONE;
+    static unsigned long mode_start_time = 0;
+    
+    // Safety check: Don't allow calibration if armed or throttle high
+    if (armedFly || channel_3_pwm > 1050) {
+        calibration_mode = CALIB_NONE;
+        return;
+    }
+    
+    // Determine mode based on CH6 position
+    CalibrationMode new_mode = CALIB_NONE;
+    
+    if (channel_6_pwm < 1200) {
+        new_mode = CALIB_NONE;  // Normal flight
+    } else if (channel_6_pwm >= 1200 && channel_6_pwm <= 1800) {
+        new_mode = CALIB_ACCEL_GYRO;  // Middle position
+    } else if (channel_6_pwm > 1800) {
+        new_mode = CALIB_ATTITUDE;  // High position
+    }
+    
+    // Check if mode has changed
+    if (new_mode != last_mode) {
+        last_mode = new_mode;
+        mode_start_time = millis();
+        return;
+    }
+    
+    // Check if we've held this position long enough
+    if (new_mode != CALIB_NONE) {
+        unsigned long hold_time = millis() - mode_start_time;
+        
+        if (hold_time >= 3000) {  // 3 second hold time
+            calibration_mode = new_mode;
+            
+            // Visual feedback
+            digitalWrite(LED_PIN, HIGH);
+            delay(100);
+            digitalWrite(LED_PIN, LOW);
+            delay(100);
+            digitalWrite(LED_PIN, HIGH);
+            delay(100);
+            digitalWrite(LED_PIN, LOW);
+        }
+    }
+}
+
+void runAccelGyroCalibration() {
+    //DESCRIPTION: Run accelerometer and gyroscope calibration
+    Serial.println(F("Calculating IMU errors..."));
+    Serial.println(F("DO NOT MOVE THE BOARD!"));
+    
+    // Blink LED fast to indicate calibration in progress
+    for (int i = 0; i < 10; i++) {
+        digitalWrite(LED_PIN, !digitalRead(LED_PIN));
+        delay(100);
+    }
+    
+    // Run calibration
+    calculate_IMU_error();
+    
+    // Update global variables with new calibration
+    AccErrorX = IMU_ACC_ERROR_X;
+    AccErrorY = IMU_ACC_ERROR_Y;
+    AccErrorZ = IMU_ACC_ERROR_Z;
+    GyroErrorX = IMU_GYRO_ERROR_X;
+    GyroErrorY = IMU_GYRO_ERROR_Y;
+    GyroErrorZ = IMU_GYRO_ERROR_Z;
+    
+    // Print calibration results
+    Serial.println(F("\n=== CALIBRATION RESULTS ==="));
+    Serial.print(F("IMU_ACC_ERROR_X ")); Serial.println(AccErrorX, 6);
+    Serial.print(F("IMU_ACC_ERROR_Y ")); Serial.println(AccErrorY, 6);
+    Serial.print(F("IMU_ACC_ERROR_Z ")); Serial.println(AccErrorZ, 6);
+    Serial.print(F("IMU_GYRO_ERROR_X ")); Serial.println(GyroErrorX, 6);
+    Serial.print(F("IMU_GYRO_ERROR_Y ")); Serial.println(GyroErrorY, 6);
+    Serial.print(F("IMU_GYRO_ERROR_Z ")); Serial.println(GyroErrorZ, 6);
+    Serial.println(F("=========================="));
+    Serial.println(F("Copy these values into config.h"));
+    Serial.println(F("IMU calibration section"));
+    
+    // Indicate completion
+    digitalWrite(LED_PIN, HIGH);
+    delay(500);
+    digitalWrite(LED_PIN, LOW);
+}
+
+void runAttitudeCalibration() {
+    //DESCRIPTION: Warm up the attitude estimation filter
+    Serial.println(F("Warming up attitude filter..."));
+    
+    // Blink pattern during calibration
+    for (int i = 0; i <= 100; i++) {
+        // Fast LED blink
+        if (i % 10 == 0) {
+            digitalWrite(LED_PIN, !digitalRead(LED_PIN));
+        }
+        
+        // Run Madgwick filter
+        prev_time = current_time;      
+        current_time = micros();      
+        dt = (current_time - prev_time) / 1000000.0;
+        
+        getIMUdata();
+        
+        #ifdef USE_MPU6050
+            Madgwick6DOF(GyroX, -GyroY, -GyroZ, -AccX, AccY, AccZ, dt);
+        #elif defined(USE_MPU9250)
+            Madgwick(GyroX, -GyroY, -GyroZ, -AccX, AccY, AccZ, MagY, -MagX, MagZ, dt);
+        #endif
+        
+        loopRate(2000); // 2kHz
+        
+        // Progress indicator
+        if (i % 20 == 0) {
+            Serial.print(".");
+        }
+        delay(10); // Slow down calibration for stability
+    }
+    Serial.println();
+    
+    Serial.println(F("Attitude filter calibrated"));
+    
+    // Completion indication
+    for (int i = 0; i < 3; i++) {
+        digitalWrite(LED_PIN, HIGH);
+        delay(200);
+        digitalWrite(LED_PIN, LOW);
+        delay(200);
+    }
+}
+
+// In your main.cpp, find the runRadioCalibration() function (around line 420)
+// Replace it with:
+
+void runRadioCalibration() {
+    //DESCRIPTION: Radio calibration routine
+    #ifdef RUN_RADIO_CALIBRATION
+        // Use the advanced calibration from calibration.cpp
+        calibrateRadio();
+    #else
+        Serial.println(F("\n=== RADIO CALIBRATION MODE ==="));
+        Serial.println(F("To enable radio calibration:"));
+        Serial.println(F("1. Open include/config.h"));
+        Serial.println(F("2. Uncomment: #define RUN_RADIO_CALIBRATION"));
+        Serial.println(F("3. Upload code again"));
+        Serial.println(F("4. Follow instructions in Serial Monitor"));
+        Serial.println(F("5. After calibration, copy values back to config.h"));
+        Serial.println(F("6. Comment out RUN_RADIO_CALIBRATION"));
+        Serial.println(F("7. Upload final code"));
+        Serial.println(F("==============================\n"));
+        
+        // Simple manual calibration as fallback
+        Serial.println(F("Simple radio check (move sticks/switches):"));
+        Serial.println(F("CH1: ")); Serial.println(channel_1_pwm);
+        Serial.println(F("CH2: ")); Serial.println(channel_2_pwm);
+        Serial.println(F("CH3: ")); Serial.println(channel_3_pwm);
+        Serial.println(F("CH4: ")); Serial.println(channel_4_pwm);
+        Serial.println(F("CH5: ")); Serial.println(channel_5_pwm);
+        Serial.println(F("CH6: ")); Serial.println(channel_6_pwm);
+        Serial.println(F("\nIf channels don't match your controls,"));
+        Serial.println(F("update THROTTLE_CHANNEL, ROLL_CHANNEL, etc in config.h"));
+    #endif
+    
+    // Visual feedback
+    for (int i = 0; i < 3; i++) {
+        digitalWrite(LED_PIN, HIGH);
+        delay(300);
+        digitalWrite(LED_PIN, LOW);
+        delay(300);
+    }
 }
 
 //========================================================================================================================//
@@ -439,60 +722,38 @@ void calculate_IMU_error() {
         GyroY_sum += GyroY;
         GyroZ_sum += GyroZ;
         
+        // Progress indicator
+        if (i % 400 == 0) {
+            Serial.print(".");
+            digitalWrite(LED_PIN, !digitalRead(LED_PIN));
+        }
+        
         delay(1);
     }
     
+    // Update the global calibration variables directly
+    // Remove any #define statements that were here before
     AccErrorX = AccX_sum / num_readings;
     AccErrorY = AccY_sum / num_readings;
-    AccErrorZ = (AccZ_sum / num_readings) - 1.0;
-    
+    AccErrorZ = (AccZ_sum / num_readings) - 1.0;  // Should be 1g when level
     GyroErrorX = GyroX_sum / num_readings;
     GyroErrorY = GyroY_sum / num_readings;
     GyroErrorZ = GyroZ_sum / num_readings;
     
-    Serial.print(F("AccError: X=")); Serial.print(AccErrorX, 4);
-    Serial.print(F(" Y=")); Serial.print(AccErrorY, 4);
-    Serial.print(F(" Z=")); Serial.println(AccErrorZ, 4);
-    Serial.print(F("GyroError: X=")); Serial.print(GyroErrorX, 4);
-    Serial.print(F(" Y=")); Serial.print(GyroErrorY, 4);
-    Serial.print(F(" Z=")); Serial.println(GyroErrorZ, 4);
+    Serial.println();
+    Serial.print(F("AccError: X=")); Serial.print(AccErrorX, 6);
+    Serial.print(F(" Y=")); Serial.print(AccErrorY, 6);
+    Serial.print(F(" Z=")); Serial.println(AccErrorZ, 6);
+    Serial.print(F("GyroError: X=")); Serial.print(GyroErrorX, 6);
+    Serial.print(F(" Y=")); Serial.print(GyroErrorY, 6);
+    Serial.print(F(" Z=")); Serial.println(GyroErrorZ, 6);
+    
+    digitalWrite(LED_PIN, LOW);
 }
 
-//========================================================================================================================//
-//                                          CALIBRATE ATTITUDE FUNCTION                                                   //
-//========================================================================================================================//
-
 void calibrateAttitude() {
-    //DESCRIPTION: Warm up the Madgwick filter before flight
-    /*
-     * This function runs on startup to allow the attitude estimation to converge.
-     * The vehicle should be powered up on a level surface!
-     */
-    Serial.println(F("Warming up attitude filter..."));
-    
-    // Warm up IMU and madgwick filter
-    for (int i = 0; i <= 10000; i++) {
-        prev_time = current_time;      
-        current_time = micros();      
-        dt = (current_time - prev_time) / 1000000.0;
-        
-        getIMUdata();
-        
-        #ifdef USE_MPU6050
-            Madgwick6DOF(GyroX, -GyroY, -GyroZ, -AccX, AccY, AccZ, dt);
-        #elif defined(USE_MPU9250)
-            Madgwick(GyroX, -GyroY, -GyroZ, -AccX, AccY, AccZ, MagY, -MagX, MagZ, dt);
-        #endif
-        
-        loopRate(2000); // 2kHz
-        
-        // Progress indicator every 1000 iterations
-        if (i % 1000 == 0) {
-            Serial.print(".");
-        }
-    }
-    Serial.println();
-    Serial.println(F("Attitude filter ready"));
+    // Wrapper function for backward compatibility
+    runAttitudeCalibration();
 }
 
 void Madgwick6DOF(float gx, float gy, float gz, float ax, float ay, float az, float invSampleFreq) {
@@ -692,13 +953,6 @@ void controlMixer() {
 
 void armedStatus() {
     //DESCRIPTION: Check arming conditions and update armedFly status
-    /*
-     * Vehicle can arm when:
-     * 1. Throttle cut switch (CH5) is OFF (< 1500)
-     * 2. Throttle stick is LOW (< 1050)
-     * 
-     * Once armed, vehicle stays armed until throttle cut switch is activated.
-     */
     static bool was_armed = false;
     
     // Check arming conditions
@@ -771,11 +1025,6 @@ void scaleCommands() {
 
 void throttleCut() {
     //DESCRIPTION: Cut throttle if channel 5 is high or not armed
-    /*
-     * Safety feature that sets all motor commands to minimum if:
-     * - Channel 5 (throttle cut switch) is high, OR
-     * - Vehicle is not armed
-     */
     if ((channel_5_pwm > 1500) || !armedFly) {
         armedFly = false;
         
@@ -940,9 +1189,6 @@ void loopRate(int freq) {
 //========================================================================================================================//
 //                                            DEBUG PRINT FUNCTIONS                                                       //
 //========================================================================================================================//
-// These functions print data to serial monitor/plotter
-// They DO NOT affect flight controller operation
-// Uncomment function calls in loop() to use
 
 void printRadioData() {
     if (current_time - print_counter > 100000) {

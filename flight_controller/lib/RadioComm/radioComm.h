@@ -10,6 +10,17 @@
 #include <Arduino.h>
 #include "config.h"
 
+// Serial port definitions for receivers
+#ifdef USE_SBUS_RECEIVER
+    // SBUS uses Serial5 on Teensy 4.0 (pins 20 TX, 21 RX)
+    #define SBUS_SERIAL_PORT Serial5
+#endif
+
+#ifdef USE_DSM_RECEIVER
+    // DSM uses Serial3 on Teensy 4.0 (pins 14 TX, 15 RX)
+    #define DSM_SERIAL_PORT Serial3
+#endif
+
 // Initialize receiver hardware
 void radioSetup();
 

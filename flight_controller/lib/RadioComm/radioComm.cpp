@@ -5,6 +5,8 @@
  */
 
 #include "radioComm.h"
+#include "pin_definitions.h"
+#include <algorithm>
 
 //========================================================================================================================//
 //                                            PROTOCOL-SPECIFIC INCLUDES                                                  //
@@ -280,12 +282,12 @@ void getCommands() {
     #endif
     
     // Constrain all channels to valid range
-    channel_1_pwm = constrain(channel_1_pwm, 1000, 2000);
-    channel_2_pwm = constrain(channel_2_pwm, 1000, 2000);
-    channel_3_pwm = constrain(channel_3_pwm, 1000, 2000);
-    channel_4_pwm = constrain(channel_4_pwm, 1000, 2000);
-    channel_5_pwm = constrain(channel_5_pwm, 1000, 2000);
-    channel_6_pwm = constrain(channel_6_pwm, 1000, 2000);
+    channel_1_pwm = constrain(channel_1_pwm, 1000UL, 2000UL);
+    channel_2_pwm = constrain(channel_2_pwm, 1000UL, 2000UL);
+    channel_3_pwm = constrain(channel_3_pwm, 1000UL, 2000UL);
+    channel_4_pwm = constrain(channel_4_pwm, 1000UL, 2000UL);
+    channel_5_pwm = constrain(channel_5_pwm, 1000UL, 2000UL);
+    channel_6_pwm = constrain(channel_6_pwm, 1000UL, 2000UL);
 }
 
 //========================================================================================================================//

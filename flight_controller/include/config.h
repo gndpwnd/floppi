@@ -1,187 +1,241 @@
 /*
- * dRehmFlight VTOL Configuration
- * ALL flight parameters in one place
+ * Flight Controller Configuration File
+ * All user-configurable settings in one place
  */
 
 #ifndef CONFIG_H
 #define CONFIG_H
 
-//========================================================================================================================//
-//                                              IMU SELECTION                                                             //
-//========================================================================================================================//
+//=============================================================================
+// CALIBRATION PROGRAMS (Uncomment ONE at a time, upload, follow instructions)
+//=============================================================================
+// ⚠️ IMPORTANT: Only uncomment ONE calibration at a time!
+// After calibration completes:
+//   1. Copy the generated code
+//   2. Paste it into the appropriate section below
+//   3. Comment out the calibration flag
+//   4. Upload again
 
-// Choose ONE IMU (comment out the one you're NOT using)
-#define USE_MPU6050      // ← Uncomment for MPU6050 (I2C)
-//#define USE_MPU9250    // ← Uncomment for MPU9250 (SPI)
+//#define RUN_RADIO_CALIBRATION       // Step-by-step radio calibration with auto-detection
+//#define RUN_IMU_CALIBRATION         // Basic IMU offset calibration
+//#define RUN_IMU_ORIENTATION         // IMU calibration + orientation auto-detection
 
-//========================================================================================================================//
-//                                          IMU SCALE SETTINGS (CRITICAL!)                                                //
-//========================================================================================================================//
+//=============================================================================
+// IMU SENSOR SELECTION
+//=============================================================================
+// Uncomment ONLY ONE IMU type
+#define USE_MPU6050       // MPU6050 via I2C (Default - most common)
+//#define USE_MPU9250     // MPU9250 via SPI (has magnetometer)
 
+//=============================================================================
+// RECEIVER PROTOCOL SELECTION
+//=============================================================================
+// Uncomment ONLY ONE receiver protocol
+//#define USE_PWM_RECEIVER   // Individual PWM channels
+//#define USE_PPM_RECEIVER   // PPM (single wire, 8 channels)
+#define USE_SBUS_RECEIVER    // SBUS (Futaba/FrSky standard)
+//#define USE_DSM_RECEIVER   // DSM/DSM2/DSMX (Spektrum)
+
+#ifdef USE_DSM_RECEIVER
+    #define DSM_NUM_CHANNELS 6  // Number of channels from DSM receiver
+#endif
+
+//=============================================================================
+// IMU CONFIGURATION FOR ELECTRONICCATS MPU6050 LIBRARY
+//=============================================================================
 #ifdef USE_MPU6050
-    // MPU6050 Gyroscope full scale range
-    // Options: MPU6050_GYRO_FS_250, MPU6050_GYRO_FS_500, MPU6050_GYRO_FS_1000, MPU6050_GYRO_FS_2000
-    #define GYRO_SCALE MPU6050_GYRO_FS_500
+    // Gyro full scale range (degrees/second)
+    //#define GYRO_250DPS
+    //#define GYRO_500DPS
+    #define GYRO_1000DPS  // Default - good balance
+    //#define GYRO_2000DPS
+
+    // Accelerometer full scale range (G's)
+    #define ACCEL_2G      // Default - best resolution
+    //#define ACCEL_4G
+    //#define ACCEL_8G
+    //#define ACCEL_16G
     
-    // MPU6050 Accelerometer full scale range  
-    // Options: MPU6050_ACCEL_FS_2, MPU6050_ACCEL_FS_4, MPU6050_ACCEL_FS_8, MPU6050_ACCEL_FS_16
-    #define ACCEL_SCALE MPU6050_ACCEL_FS_2
-    
-    // Scale factors for converting raw values
-    #define GYRO_SCALE_FACTOR  65.5    // For ±500°/s: 65536 / (2 * 500) = 65.5
-    #define ACCEL_SCALE_FACTOR 16384.0 // For ±2g: 65536 / (2 * 2) = 16384
-    
-#elif defined(USE_MPU9250)
-    // MPU9250 ranges
-    #define GYRO_SCALE MPU9250::GYRO_RANGE_500DPS
-    #define ACCEL_SCALE MPU9250::ACCEL_RANGE_2G
-    
-    #define GYRO_SCALE_FACTOR  65.5
+    // MPU6050 constants from ElectronicCats library
+    // These match MPU6050.h in your lib/MPU6050/src/ folder
+    #ifdef GYRO_250DPS
+        #define GYRO_SCALE 0  // MPU6050_GYRO_FS_250
+        #define GYRO_SCALE_FACTOR 131.0
+    #elif defined(GYRO_500DPS)
+        #define GYRO_SCALE 1  // MPU6050_GYRO_FS_500
+        #define GYRO_SCALE_FACTOR 65.5
+    #elif defined(GYRO_1000DPS)
+        #define GYRO_SCALE 2  // MPU6050_GYRO_FS_1000
+        #define GYRO_SCALE_FACTOR 32.8
+    #elif defined(GYRO_2000DPS)
+        #define GYRO_SCALE 3  // MPU6050_GYRO_FS_2000
+        #define GYRO_SCALE_FACTOR 16.4
+    #else
+        #define GYRO_SCALE 2  // Default: 1000DPS
+        #define GYRO_SCALE_FACTOR 32.8
+    #endif
+
+    #ifdef ACCEL_2G
+        #define ACCEL_SCALE 0  // MPU6050_ACCEL_FS_2
+        #define ACCEL_SCALE_FACTOR 16384.0
+    #elif defined(ACCEL_4G)
+        #define ACCEL_SCALE 1  // MPU6050_ACCEL_FS_4
+        #define ACCEL_SCALE_FACTOR 8192.0
+    #elif defined(ACCEL_8G)
+        #define ACCEL_SCALE 2  // MPU6050_ACCEL_FS_8
+        #define ACCEL_SCALE_FACTOR 4096.0
+    #elif defined(ACCEL_16G)
+        #define ACCEL_SCALE 3  // MPU6050_ACCEL_FS_16
+        #define ACCEL_SCALE_FACTOR 2048.0
+    #else
+        #define ACCEL_SCALE 0  // Default: 2G
+        #define ACCEL_SCALE_FACTOR 16384.0
+    #endif
+#endif
+
+#ifdef USE_MPU9250
+    // MPU9250 configuration would go here
+    #define GYRO_SCALE 2
+    #define GYRO_SCALE_FACTOR 32.8
+    #define ACCEL_SCALE 0
     #define ACCEL_SCALE_FACTOR 16384.0
 #endif
 
-//========================================================================================================================//
-//                                          RECEIVER SELECTION                                                            //
-//========================================================================================================================//
+//=============================================================================
+// IMU Calibration Values (Generated by calibration program)
+//=============================================================================
+// Run calibration program to get these values
+// Default values (replace with your calibrated values):
+#define IMU_ACC_ERROR_X 0.0f
+#define IMU_ACC_ERROR_Y 0.0f
+#define IMU_ACC_ERROR_Z 0.0f
+#define IMU_GYRO_ERROR_X 0.0f
+#define IMU_GYRO_ERROR_Y 0.0f
+#define IMU_GYRO_ERROR_Z 0.0f
 
-// Choose ONE receiver protocol (comment out all others)
-#define USE_SBUS_RECEIVER    // ← Most common (FlySky FS-iA6B, FrSky, etc.)
-//#define USE_DSM_RECEIVER   // ← Spektrum DSM2/DSMX
-//#define USE_PPM_RECEIVER   // ← Single wire PPM
-//#define USE_PWM_RECEIVER   // ← Individual PWM channels
+//=============================================================================
+// Radio Channel Mapping (Auto-detected by calibration)
+//=============================================================================
+// Default channel mapping (Mode 2 - most common)
+// Replace with values from radio calibration program
+#define THROTTLE_CHANNEL 3  // Left stick up/down
+#define ROLL_CHANNEL 1      // Right stick left/right
+#define PITCH_CHANNEL 2     // Right stick up/down
+#define YAW_CHANNEL 4       // Left stick left/right
+#define AUX1_CHANNEL 5      // Switch (throttle cut/arm)
+#define AUX2_CHANNEL 6      // Switch (aux function)
 
-//========================================================================================================================//
-//                                          RECEIVER SETTINGS                                                             //
-//========================================================================================================================//
+//=============================================================================
+// Failsafe Values (Radio signal loss)
+//=============================================================================
+#define FAILSAFE_THROTTLE 1000  // Minimum throttle
+#define FAILSAFE_ROLL 1500      // Center
+#define FAILSAFE_PITCH 1500     // Center
+#define FAILSAFE_YAW 1500       // Center
+#define FAILSAFE_AUX1 2000      // Throttle cut ON (high = disarm)
+#define FAILSAFE_AUX2 2000      // Default high
 
-// SBUS Settings
-#ifdef USE_SBUS_RECEIVER
-    #define SBUS_SERIAL_PORT Serial5  // Teensy 4.0: RX5 = Pin 21
+//=============================================================================
+// Filter Coefficients (0.0 to 1.0)
+//=============================================================================
+// Lower = more filtering (smoother, slower)
+// Higher = less filtering (faster, noisier)
+#define MADGWICK_BETA 0.04  // Attitude filter (0.02-0.08 typical)
+#define B_ACCEL 0.14        // Accelerometer LP filter
+#define B_GYRO 0.10         // Gyroscope LP filter
+#define B_MAG 1.0           // Magnetometer LP filter (MPU9250 only)
+
+//=============================================================================
+// Magnetometer Calibration (MPU9250 only)
+//=============================================================================
+#ifdef USE_MPU9250
+    #define MAG_ERROR_X 0.0f
+    #define MAG_ERROR_Y 0.0f
+    #define MAG_ERROR_Z 0.0f
+    #define MAG_SCALE_X 1.0f
+    #define MAG_SCALE_Y 1.0f
+    #define MAG_SCALE_Z 1.0f
 #endif
 
-// DSM Settings  
-#ifdef USE_DSM_RECEIVER
-    #define DSM_SERIAL_PORT Serial3   // Teensy 4.0: RX3 = Pin 15
+//=============================================================================
+// Control Mode Selection
+//=============================================================================
+// Uncomment ONLY ONE control mode
+//#define USE_RATE_CONTROLLER   // Rate mode (acro) - stick controls rotation speed
+#define USE_ANGLE_CONTROLLER    // Angle mode (stabilize) - stick controls tilt angle
+
+//=============================================================================
+// Maximum Control Limits
+//=============================================================================
+#ifdef USE_RATE_CONTROLLER
+    // Rate mode: degrees per second
+    #define MAX_ROLL_RATE 200.0f   // Maximum roll rate (deg/s)
+    #define MAX_PITCH_RATE 200.0f  // Maximum pitch rate (deg/s)
+    #define MAX_YAW_RATE 160.0f    // Maximum yaw rate (deg/s)
+#else
+    // Angle mode: degrees
+    #define MAX_ROLL_ANGLE 30.0f   // Maximum roll angle (degrees)
+    #define MAX_PITCH_ANGLE 30.0f  // Maximum pitch angle (degrees)
+    #define MAX_YAW_RATE 160.0f    // Yaw still uses rate control
 #endif
 
-// PPM Settings
-#ifdef USE_PPM_RECEIVER
-    #define PPM_PIN 14  // Any interrupt-capable pin
-#endif
-
-// PWM Settings (individual channels)
-#ifdef USE_PWM_RECEIVER
-    #define PWM_CH1_PIN 14
-    #define PWM_CH2_PIN 15
-    #define PWM_CH3_PIN 16
-    #define PWM_CH4_PIN 17
-    #define PWM_CH5_PIN 18
-    #define PWM_CH6_PIN 19
-#endif
-
-// Failsafe values (microseconds)
-#define FAILSAFE_ROLL     1500  // Center
-#define FAILSAFE_PITCH    1500  // Center
-#define FAILSAFE_THROTTLE 1000  // Minimum
-#define FAILSAFE_YAW      1500  // Center
-#define FAILSAFE_AUX1     2000  // High = throttle cut
-#define FAILSAFE_AUX2     1500  // Center
-
-//========================================================================================================================//
-//                                          CONTROLLER SELECTION                                                          //
-//========================================================================================================================//
-
-// Choose ONE controller mode
-#define USE_RATE_CONTROLLER    // ← Acro mode (rate control)
-//#define USE_ANGLE_CONTROLLER // ← Stabilize mode (self-leveling)
-
-//========================================================================================================================//
-//                                          LOOP FREQUENCY                                                                //
-//========================================================================================================================//
-
-#define LOOP_FREQUENCY_HZ 2000  // 2kHz = 500μs loop time
-
-//========================================================================================================================//
-//                                          FILTER COEFFICIENTS                                                           //
-//========================================================================================================================//
-
-// Low-pass filter coefficients (0.0 to 1.0)
-// Lower = more filtering = smoother but slower response
-// Higher = less filtering = faster but noisier
-#define B_ACCEL 0.14  // Accelerometer filter
-#define B_GYRO  0.10  // Gyroscope filter
-#define B_MAG   0.10  // Magnetometer filter (MPU9250 only)
-
-//========================================================================================================================//
-//                                          MADGWICK FILTER                                                               //
-//========================================================================================================================//
-
-// Madgwick filter beta (0.0 to 1.0)
-// Higher = trusts accelerometer more (fights gyro drift, but more noise)
-// Lower = trusts gyroscope more (smooth, but drifts over time)
-#define MADGWICK_BETA 0.04
-
-//========================================================================================================================//
-//                                          PID GAINS - RATE CONTROLLER                                                   //
-//========================================================================================================================//
+//=============================================================================
+// PID Controller Gains - RATE MODE
+//=============================================================================
+// Start with these conservative values, tune incrementally
+// See PID_TUNING_GUIDE.md for tuning instructions
 
 // Roll Rate PID
-#define KP_ROLL_RATE  0.15
-#define KI_ROLL_RATE  0.15
-#define KD_ROLL_RATE  0.0004
-#define I_LIMIT_ROLL  25.0
+#define KP_ROLL_RATE 0.15f
+#define KI_ROLL_RATE 0.15f
+#define KD_ROLL_RATE 0.0004f
+#define I_LIMIT_ROLL 25.0f
 
 // Pitch Rate PID
-#define KP_PITCH_RATE  0.15
-#define KI_PITCH_RATE  0.15
-#define KD_PITCH_RATE  0.0004
-#define I_LIMIT_PITCH  25.0
+#define KP_PITCH_RATE 0.15f
+#define KI_PITCH_RATE 0.15f
+#define KD_PITCH_RATE 0.0004f
+#define I_LIMIT_PITCH 25.0f
 
 // Yaw Rate PID
-#define KP_YAW_RATE  0.30
-#define KI_YAW_RATE  0.05
-#define KD_YAW_RATE  0.00015
-#define I_LIMIT_YAW   25.0
+#define KP_YAW_RATE 0.30f
+#define KI_YAW_RATE 0.05f
+#define KD_YAW_RATE 0.00015f
+#define I_LIMIT_YAW 25.0f
 
-//========================================================================================================================//
-//                                          PID GAINS - ANGLE CONTROLLER                                                  //
-//========================================================================================================================//
-
+//=============================================================================
+// PID Controller Gains - ANGLE MODE
+//=============================================================================
 // Roll Angle PID
-#define KP_ROLL_ANGLE  0.20
-#define KI_ROLL_ANGLE  0.00
-#define KD_ROLL_ANGLE  0.05
+#define KP_ROLL_ANGLE 0.20f
+#define KI_ROLL_ANGLE 0.00f
+#define KD_ROLL_ANGLE 0.05f
 
-// Pitch Angle PID  
-#define KP_PITCH_ANGLE  0.20
-#define KI_PITCH_ANGLE  0.00
-#define KD_PITCH_ANGLE  0.05
+// Pitch Angle PID
+#define KP_PITCH_ANGLE 0.20f
+#define KI_PITCH_ANGLE 0.00f
+#define KD_PITCH_ANGLE 0.05f
 
-//========================================================================================================================//
-//                                          MAXIMUM RATES AND ANGLES                                                      //
-//========================================================================================================================//
+// Note: Yaw uses rate control even in angle mode
 
-// Rate mode limits (degrees/second)
-#define MAX_ROLL_RATE   360.0
-#define MAX_PITCH_RATE  360.0
-#define MAX_YAW_RATE    200.0
+//=============================================================================
+// Motor Protocol Selection
+//=============================================================================
+//#define USE_ONESHOT125    // OneShot125 ESC protocol (125-250μs)
+#define USE_STANDARD_PWM    // Standard PWM (1000-2000μs)
 
-// Angle mode limits (degrees)
-#define MAX_ROLL_ANGLE  45.0
-#define MAX_PITCH_ANGLE 45.0
+//=============================================================================
+// Loop Rate
+//=============================================================================
+#define LOOP_FREQUENCY_HZ 2000  // Main loop frequency (DO NOT EXCEED 2000Hz)
 
-//========================================================================================================================//
-//                                          MOTOR/ESC SETTINGS                                                            //
-//========================================================================================================================//
+//=============================================================================
+// Debug Options
+//=============================================================================
+// Serial baud rate
+#define SERIAL_BAUD 115200
 
-// Choose motor protocol
-//#define USE_ONESHOT125   // High-speed ESCs
-#define USE_STANDARD_PWM   // Standard 1000-2000μs PWM (most common)
-
-//========================================================================================================================//
-//                                          LED PIN                                                                       //
-//========================================================================================================================//
-
-#define LED_PIN 13  // Teensy onboard LED
+// Debug print rate limiting (microseconds between prints)
+#define DEBUG_PRINT_INTERVAL 10000  // 10ms = 100Hz print rate
 
 #endif // CONFIG_H
