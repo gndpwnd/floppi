@@ -6,41 +6,47 @@ YELLOW='\033[0;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
+pio_env1="teensy40"
+pio_env2="teensy41"
 
-
-pio_env1="t4"
-pio_env2="t41"
-
-clean () {
-
-    printf "${YELLOW}[-] Cleaning UP...${NC}\n"
-    files_2_remove=( 
-        "./.pio"
-        "./.vscode"
-        "./.gitignore"
-    )
-
-    for file in "${files_2_remove[@]}"
-    do
-        rm -rf $file
-    done
+clean() {
+    printf "${YELLOW}[-] Cleaning...${NC}\n"
+    pio run -t clean
 }
 
-build () {
+build() {
     clear
-    printf "${GREEN}[+] Building...${NC}\n"
+    printf "${GREEN}[+] Building for all environments...${NC}\n"
     pio run
 }
 
-upload () {
+build_env() {
+    clear
+    printf "${BLUE}Select the board to build for: ${NC}\n"
+    read -p "Teensy 4.0 or 4.1? [1/2]: " pio_env
+    if [ "$pio_env" -eq 1 ]; then
+        clear
+        printf "${GREEN}[+] Building for Teensy 4.0...${NC}\n"
+        pio run -e $pio_env1
+    elif [ "$pio_env" -eq 2 ]; then
+        clear
+        printf "${GREEN}[+] Building for Teensy 4.1...${NC}\n"
+        pio run -e $pio_env2
+    else
+        printf "${RED}[-] Invalid option!${NC}\n"
+        exit 1
+    fi
+}
+
+upload() {
     clear
     printf "${BLUE}Select the board to upload to: ${NC}\n"
     read -p "Teensy 4.0 or 4.1? [1/2]: " pio_env
-    if [ $pio_env -eq 1 ]; then
+    if [ "$pio_env" -eq 1 ]; then
         clear
         printf "${GREEN}[+] Uploading to Teensy 4.0...${NC}\n"
         pio run -t upload -e $pio_env1
-    elif [ $pio_env -eq 2 ]; then
+    elif [ "$pio_env" -eq 2 ]; then
         clear
         printf "${GREEN}[+] Uploading to Teensy 4.1...${NC}\n"
         pio run -t upload -e $pio_env2
@@ -50,33 +56,32 @@ upload () {
     fi
 }
 
-commit () {
+monitor() {
     clear
-    clean
-    git add -A
-    printf "${BLUE}Enter commit message: ${NC}\n"
-    read -p "> " commit_message
-    printf "${GREEN}[+] ${NC}Committing...${NC}\n"
-    git commit -m "$commit_message"
-    printf "${GREEN}[+] ${NC}Pushing Commit...${NC}\n"
-    git push
+    printf "${GREEN}[+] Starting serial monitor...${NC}\n"
+    pio device monitor
 }
 
-init () {
+init() {
     clear
-    printf "${GREEN}[+] Initializing...\n${BLUE}"
-    read -p "Build (b), Upload (u), or Commit (c): " choice
-    if [ "$choice" = "b" ]; then
-        build
-    elif [ "$choice" = "u" ]; then
-        upload
-    elif [ "$choice" = "c" ]; then
-        commit
-    else
-        printf "${RED}[-] Invalid option!${NC}\n"
-        exit 1
-    fi
+    printf "${GREEN}[+] dRehmFlight Build System\n${BLUE}"
+    echo "1) Build all environments"
+    echo "2) Build specific environment"
+    echo "3) Upload"
+    echo "4) Clean"
+    echo "5) Monitor"
+    echo "6) Clean, Build, and Upload"
+    read -p "Select option: " choice
+    
+    case "$choice" in
+        1) build ;;
+        2) build_env ;;
+        3) upload ;;
+        4) clean ;;
+        5) monitor ;;
+        6) clean && build && upload ;;
+        *) printf "${RED}[-] Invalid option!${NC}\n"; exit 1 ;;
+    esac
 }
 
-clean
 init
