@@ -391,25 +391,33 @@ Comprehensive firmware setup guides, wiring diagrams, calibration procedures, an
 
 ## floppi-tools: Desktop Companion Application
 
-**Status:** Planned
-**Language:** Rust or Go (cross-platform compiled executables)
+**Status:** In Progress (project initialized)
+**Language:** Rust + Tauri (web frontend + Rust backend)
+**Location:** `/fc_tool/`
 **Goal:** Standalone desktop app for firmware management and real-time diagnostics
 
-A cross-platform desktop application that eliminates the need for users to run scripts or install runtimes. Distributed as native executables for Windows, macOS, and Linux.
+A cross-platform desktop application that eliminates the need for users to run scripts or install runtimes. Ships as a single native executable per platform — no zip files, no package managers, no runtime dependencies. Users only need PlatformIO installed separately if they want to compile/flash firmware.
+
+### v0.1 MVP — Serial Monitor + IMU Plots
+
+- [ ] Serial port auto-detection and connection
+- [ ] Serial monitor terminal (send/receive)
+- [ ] Real-time IMU data parsing and plotting (accelerometer + gyroscope)
+- [ ] Cross-platform builds (Linux + Windows)
 
 ### Core Features
 
-#### Firmware Upload & Board Management
-- Auto-detect connected boards (Teensy, ESP32, etc.)
-- One-click firmware flashing (similar to serial monitor workflow)
-- Board identification and status display
-- Firmware version management and selection
+#### Firmware Management (via PlatformIO)
+- Integrate with PlatformIO CLI for compile and flash
+- Auto-detect connected boards (Teensy 4.0/4.1 first, ESP32 when firmware supports it)
+- Help users rebuild firmware after calibration parameter changes
+- Board identification by USB VID/PID
 
 #### Real-Time MPU/IMU Monitoring
 - Live visualization of accelerometer, gyroscope, magnetometer data
-- 3D orientation display (attitude visualization)
+- 3D orientation display (attitude visualization) — future
 - Raw sensor data plots and graphs
-- Data logging and export
+- Data logging and export to CSV
 
 #### Calibration Interface
 - Real-time calibration value display
@@ -423,22 +431,17 @@ A cross-platform desktop application that eliminates the need for users to run s
 - Command interface for runtime configuration
 - Connection management (port selection, baud rate)
 
-### Technical Approach
+### Technical Stack
 
-**Rust option:**
-- GUI: egui, iced, or Tauri (web frontend + Rust backend)
-- Serial: serialport-rs crate
-- Cross-compilation with cargo for all platforms
-
-**Go option:**
-- GUI: Fyne, Wails, or Gio
-- Serial: go-serial or tarm/serial
-- Cross-compilation with GOOS/GOARCH
+- **Backend:** Rust with Tauri 2
+- **Frontend:** Vanilla HTML/CSS/JS (web-based UI rendered in OS webview)
+- **Serial:** serialport-rs crate
+- **Build:** cargo tauri build (produces single executable per platform)
 
 ### Distribution
-- Single executable per platform (no runtime dependencies)
+- Single executable per platform (no runtime dependencies for end users)
 - GitHub releases with pre-built binaries
-- Optional: installer packages for ease of use
+- PlatformIO CLI required separately for firmware compile/flash features only
 
 ---
 
@@ -615,12 +618,18 @@ Project licensing TBD. Likely MIT or GPL to maintain open-source compatibility w
 
 ## Changelog
 
+**2026-01-27:** fc_tool project initialized (Rust + Tauri)
+
+- Decided on Rust + Tauri over Go (better serial library, mature framework)
+- Initialized project at `/fc_tool/` with Tauri scaffolding
+- MVP defined: serial monitor + live IMU plots
+- Single executable distribution, offline-first, PlatformIO integration for firmware compile/flash
+
 **2026-01-26:** Added floppi-tools desktop application roadmap
 
-- Cross-platform firmware upload tool (Rust or Go)
-- Real-time MPU/IMU monitoring and visualization
-- Calibration interface with live feedback
-- Goal: standalone executables, no scripts or runtime dependencies
+- Cross-platform firmware upload tool concept added
+- Real-time MPU/IMU monitoring and visualization planned
+- Calibration interface with live feedback planned
 
 **2026-01-11:** Roadmap refactored to focus on firmware and flight computer integration
 
@@ -637,6 +646,6 @@ Project licensing TBD. Likely MIT or GPL to maintain open-source compatibility w
 
 ---
 
-**Last Updated:** 2026-01-26
-**Roadmap Version:** 2.1
+**Last Updated:** 2026-01-27
+**Roadmap Version:** 2.2
 **Project Status:** Phase 1 in progress

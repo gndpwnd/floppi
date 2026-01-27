@@ -1,0 +1,86 @@
+:root {
+  font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+  font-size: 14px;
+  line-height: 1.5;
+  font-weight: 400;
+  color: #e0e0e0;
+  background-color: #1a1a2e;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+.container {
+  margin: 0 auto;
+  padding: 20px;
+  max-width: 1100px;
+}
+
+h1 {
+  margin: 0 0 4px 0;
+  font-size: 1.4em;
+  color: #4fc3f7;
+}
+
+.subtitle {
+  margin: 0 0 24px 0;
+  color: #888;
+  font-size: 0.9em;
+}
+
+h2 {
+  font-size: 1.1em;
+  color: #81c784;
+  margin: 20px 0 10px 0;
+  border-bottom: 1px solid #333;
+  padding-bottom: 4px;
+}
+
+section {
+  margin-bottom: 20px;
+}
+
+button {
+  border-radius: 4px;
+  border: 1px solid #4fc3f7;
+  padding: 6px 16px;
+  font-size: 0.9em;
+  font-family: inherit;
+  color: #4fc3f7;
+  background-color: transparent;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+button:hover {
+  background-color: #4fc3f720;
+}
+
+button:active {
+  background-color: #4fc3f740;
+}
+
+.port-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  margin: 4px 0;
+  background-color: #16213e;
+  border-radius: 4px;
+  border-left: 3px solid #4fc3f7;
+}
+
+.port-type {
+  color: #888;
+  font-size: 0.85em;
+}
+
+.placeholder {
+  color: #555;
+  font-style: italic;
+}
+
+.error {
+  color: #ef5350;
+}

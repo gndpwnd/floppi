@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="styles.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>fc_tool</title>
+    <script type="module" src="/main.js" defer></script>
+  </head>
+
+  <body>
+    <main class="container">
+      <h1>fc_tool</h1>
+      <p class="subtitle">floppi Flight Controller Tool</p>
+
+      <section id="serial-section">
+        <h2>Serial Ports</h2>
+        <button id="scan-btn" type="button">Scan Ports</button>
+        <div id="ports-list"></div>
+      </section>
+
+      <section id="monitor-section">
+        <h2>Serial Monitor</h2>
+        <p class="placeholder">Connect to a serial port to begin monitoring.</p>
+      </section>
+
+      <section id="imu-section">
+        <h2>IMU Data</h2>
+        <p class="placeholder">IMU visualization will appear here when telemetry data is received.</p>
+      </section>
+    </main>
+  </body>
+</html>
