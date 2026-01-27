@@ -95,10 +95,37 @@ This roadmap tracks project-level features and milestones. For immediate tasks, 
 
 ## Infrastructure / Setup
 
-- [ ] Initialize Rust + Tauri project structure
-- [ ] Set up frontend scaffolding (HTML/CSS/JS)
-- [ ] Configure cross-platform build pipeline (GitHub Actions or similar)
-- [ ] Set up serial port abstraction layer in Rust backend
+- [x] Initialize Rust + Tauri project structure
+- [x] Set up frontend scaffolding (HTML/CSS/JS)
+- [x] Verify Linux release build compiles (.deb, .rpm produced)
+- [x] Set up serial port abstraction layer in Rust backend (list_serial_ports command)
+
+### Dev Environment Scripts (dev_setup/)
+
+All scripts install to default home directory locations (`~/.cargo/`, `~/.nvm/`, `~/.platformio/`).
+Each setup-dev script installs: Rust, Node.js, PlatformIO (optional), and npm dependencies.
+Each build script sources the required env vars before compiling.
+
+- [x] Linux: install-system-deps.sh, setup-dev.sh, build.sh — **VALIDATED**
+- [x] Windows: install-system-deps.ps1, setup-dev.ps1, build.ps1 — UNTESTED (scripts written, marked with TODO)
+- [x] macOS: install-system-deps.sh, setup-dev.sh, build.sh — UNTESTED (scripts written, marked with TODO)
+- [x] dev_setup/README.md with per-platform quick start
+- [x] PlatformIO install via official get-platformio.py in all setup-dev scripts
+- [x] PlatformIO PATH setup (`~/.platformio/penv/bin/` or `Scripts\`) in all build scripts
+
+### Platform Validation (future)
+
+- [ ] Clone repo on a real Windows machine, run all three scripts, verify build produces .msi/.exe
+- [ ] Clone repo on a real macOS machine, run all three scripts, verify build produces .dmg/.app
+- [ ] Remove `# TODO: UNTESTED` markers from Windows scripts after validation
+- [ ] Remove `# TODO: UNTESTED` markers from macOS scripts after validation
+
+### CI/CD & Releases
+
+- [x] GitHub Actions workflow: manually triggered, builds on Linux + Windows + macOS runners
+- [ ] Test GitHub Actions workflow on first real push (validate all three platform builds)
+- [ ] Verify CI produces .msi/.exe (Windows), .dmg/.app (macOS), .deb/.AppImage (Linux)
+- [ ] First tagged pre-release published to GitHub Releases
 
 ---
 
@@ -116,7 +143,14 @@ This roadmap tracks project-level features and milestones. For immediate tasks, 
 
 > Features moved here when done, for historical reference.
 
-_None yet._
+- [x] Project initialized (Rust + Tauri 2, vanilla JS frontend) — 2026-01-27
+- [x] Serial port listing backend command (list_serial_ports via serialport-rs) — 2026-01-27
+- [x] Linux build scripts (install-system-deps.sh, setup-dev.sh, build.sh) — 2026-01-27
+- [x] Linux release build verified: 13 MB binary, .deb and .rpm bundles — 2026-01-27
+- [x] Windows build scripts (install-system-deps.ps1, setup-dev.ps1, build.ps1) — 2026-01-27
+- [x] macOS build scripts (install-system-deps.sh, setup-dev.sh, build.sh) — 2026-01-27
+- [x] Reorganized scripts into dev_setup/linux/, dev_setup/windows/, dev_setup/macos/ — 2026-01-27
+- [x] GitHub Actions workflow (manual trigger, multi-platform release) — 2026-01-27
 
 ---
 

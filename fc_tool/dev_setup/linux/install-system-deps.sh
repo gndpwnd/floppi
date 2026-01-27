@@ -27,6 +27,8 @@ apt-get install -y \
     libayatana-appindicator3-dev \
     libudev-dev \
     xdg-utils \
+    python3 \
+    python3-venv \
     curl \
     wget \
     file

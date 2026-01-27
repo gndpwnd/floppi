@@ -6,31 +6,39 @@ Cross-platform desktop tool for floppi flight controller firmware management and
 
 fc_tool provides a native GUI for serial communication, real-time IMU sensor visualization, and PlatformIO-based firmware compilation and flashing. Built in Rust with Tauri, it ships as a single executable per platform with no runtime dependencies.
 
-## Quick Start (Ubuntu/Debian)
+## Quick Start
 
-Three scripts, run in order:
+All setup scripts are in `dev_setup/<platform>/`. See [dev_setup/README.md](../dev_setup/README.md) for full details.
+
+### Linux (Ubuntu/Debian)
 
 ```bash
-# 1. Install system libraries (requires sudo, run once)
-sudo ./install-system-deps.sh
+cd fc_tool
+sudo ./dev_setup/linux/install-system-deps.sh   # system libs (once)
+./dev_setup/linux/setup-dev.sh                   # Rust, Node.js (once)
+./dev_setup/linux/build.sh                       # release build
+./dev_setup/linux/build.sh dev                   # dev mode
+```
 
-# 2. Install Rust, Node.js, npm deps (no sudo, run once)
-./setup-dev.sh
+### Windows
 
-# 3. Build the release binary (no sudo, run as needed)
-./build.sh              # release binary
-./build.sh dev          # development mode with live reload
+```powershell
+cd fc_tool
+.\dev_setup\windows\install-system-deps.ps1      # MSVC, WebView2 (Admin, once)
+.\dev_setup\windows\setup-dev.ps1                # Rust, Node.js (once)
+.\dev_setup\windows\build.ps1                    # release build
+```
+
+### macOS
+
+```bash
+cd fc_tool
+./dev_setup/macos/install-system-deps.sh         # Xcode CLT (once)
+./dev_setup/macos/setup-dev.sh                   # Rust, Node.js (once)
+./dev_setup/macos/build.sh                       # release build
 ```
 
 The release binary will be in `src-tauri/target/release/bundle/`.
-
-### Scripts Summary
-
-| Script | Sudo? | Run when | What it does |
-|--------|-------|----------|--------------|
-| `install-system-deps.sh` | Yes | Once per machine | Installs apt packages (gcc, webkit2gtk, GTK, libudev, etc.) |
-| `setup-dev.sh` | No | Once per user | Installs Rust (rustup), Node.js (nvm), npm dependencies |
-| `build.sh` | No | Each build | Compiles Rust + frontend into a release binary or runs dev mode |
 
 ## Build Dependencies
 
@@ -108,11 +116,34 @@ fc_tool/
 │   ├── index.html
 │   ├── main.js
 │   └── styles.css
+├── dev_setup/
+│   ├── README.md           # Per-platform setup instructions
+│   ├── linux/              # install-system-deps.sh, setup-dev.sh, build.sh
+│   ├── windows/            # install-system-deps.ps1, setup-dev.ps1, build.ps1
+│   └── macos/              # install-system-deps.sh, setup-dev.sh, build.sh
 ├── tests/              # Test files
-├── setup-dev.sh        # Dev environment setup script (Ubuntu/Debian)
-├── package.json        # npm config (Tauri CLI)
+├── package.json            # npm config (Tauri CLI)
 └── .gitignore
 ```
+
+## Cross-Platform Builds
+
+Tauri uses the OS-native webview, so you cannot cross-compile from Linux to Windows/macOS. Builds for each platform run natively via GitHub Actions CI.
+
+| Platform | Output | Built on |
+|----------|--------|----------|
+| Linux | `.deb`, `.rpm`, `.AppImage` | Linux runner (or local) |
+| Windows | `.msi`, `.exe` | Windows CI runner |
+| macOS | `.dmg`, `.app` | macOS CI runner |
+
+For local development on Linux, use `./build.sh` or `./build.sh dev`.
+
+## Architecture
+
+fc_tool has two layers — see [scope.md](scope.md) for full details:
+
+- **Standalone (no dependencies):** Serial monitor, IMU plots, calibration display. Uses `serialport-rs` directly. No Python, no PlatformIO needed.
+- **Optional PlatformIO integration:** Compile and flash firmware. Enabled when `pio` is on `$PATH`, grayed out otherwise.
 
 ## Documentation
 
