@@ -389,6 +389,59 @@ Comprehensive firmware setup guides, wiring diagrams, calibration procedures, an
 
 ---
 
+## floppi-tools: Desktop Companion Application
+
+**Status:** Planned
+**Language:** Rust or Go (cross-platform compiled executables)
+**Goal:** Standalone desktop app for firmware management and real-time diagnostics
+
+A cross-platform desktop application that eliminates the need for users to run scripts or install runtimes. Distributed as native executables for Windows, macOS, and Linux.
+
+### Core Features
+
+#### Firmware Upload & Board Management
+- Auto-detect connected boards (Teensy, ESP32, etc.)
+- One-click firmware flashing (similar to serial monitor workflow)
+- Board identification and status display
+- Firmware version management and selection
+
+#### Real-Time MPU/IMU Monitoring
+- Live visualization of accelerometer, gyroscope, magnetometer data
+- 3D orientation display (attitude visualization)
+- Raw sensor data plots and graphs
+- Data logging and export
+
+#### Calibration Interface
+- Real-time calibration value display
+- Interactive calibration procedures (accelerometer, gyro, magnetometer)
+- Visual feedback during calibration process
+- Save/load calibration profiles
+
+#### Serial Communication
+- Built-in serial monitor/terminal
+- Telemetry data parsing and display
+- Command interface for runtime configuration
+- Connection management (port selection, baud rate)
+
+### Technical Approach
+
+**Rust option:**
+- GUI: egui, iced, or Tauri (web frontend + Rust backend)
+- Serial: serialport-rs crate
+- Cross-compilation with cargo for all platforms
+
+**Go option:**
+- GUI: Fyne, Wails, or Gio
+- Serial: go-serial or tarm/serial
+- Cross-compilation with GOOS/GOARCH
+
+### Distribution
+- Single executable per platform (no runtime dependencies)
+- GitHub releases with pre-built binaries
+- Optional: installer packages for ease of use
+
+---
+
 ## Technology Stack
 
 ### Flight Controller (Teensy)
@@ -562,6 +615,13 @@ Project licensing TBD. Likely MIT or GPL to maintain open-source compatibility w
 
 ## Changelog
 
+**2026-01-26:** Added floppi-tools desktop application roadmap
+
+- Cross-platform firmware upload tool (Rust or Go)
+- Real-time MPU/IMU monitoring and visualization
+- Calibration interface with live feedback
+- Goal: standalone executables, no scripts or runtime dependencies
+
 **2026-01-11:** Roadmap refactored to focus on firmware and flight computer integration
 
 - Removed physical design, VTOL calculator, and literature/RAG phases (moved to engineering360)
@@ -577,6 +637,6 @@ Project licensing TBD. Likely MIT or GPL to maintain open-source compatibility w
 
 ---
 
-**Last Updated:** 2026-01-11
-**Roadmap Version:** 2.0
+**Last Updated:** 2026-01-26
+**Roadmap Version:** 2.1
 **Project Status:** Phase 1 in progress
