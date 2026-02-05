@@ -57,41 +57,47 @@ This roadmap tracks project-level features and milestones for the flight control
 - [x] Attitude filter warm-up calibration
   - Completed: Pre-2026
 
-- [ ] Radio channel auto-mapping and calibration
-  - Description: Auto-detect which stick/switch maps to which channel, calibrate endpoints
-  - Dependencies: None
-  - Related findings: [auto-calibration-research.md](findings/auto-calibration-research.md) 
-- [ ] IMU orientation auto-detection
-  - Description: Detect how the IMU is mounted (which axis points up/forward) and auto-correct
-  - Dependencies: None
-  - Related findings: [auto-calibration-research.md](findings/auto-calibration-research.md) 
+- [x] Radio channel auto-mapping and calibration
+  - Completed: Pre-2026
+  - Notes: Step-by-step guided routine in lib/Calibration/calibration.cpp. Auto-detects channel mapping, outputs copy-paste config.h values.
+  - Related findings: [auto-calibration-research.md](findings/auto-calibration-research.md)
+
+- [x] IMU orientation auto-detection
+  - Completed: Pre-2026
+  - Notes: 3-position test (level, nose-up, right-up) in lib/Calibration/calibration.cpp. Generates axis transformation code.
+  - Related findings: [auto-calibration-research.md](findings/auto-calibration-research.md)
 - [ ] Multi-position accelerometer calibration
   - Description: 6-position calibration for more accurate accel offset and scale factors
   - Dependencies: Basic IMU calibration working
 
 - [ ] Calibration value export workflow
-  - Description: Calibration mode outputs values in config.h format, ready to copy-paste
-  - Dependencies: All calibration routines
-  - Notes: Key usability feature — make it dead simple to go from calibration to hard-coded live firmware
+  - Description: Calibration mode outputs values in config.h `#define` format, ready to copy-paste
+  - Dependencies: All calibration routines, output format fix
+  - Notes: Key usability feature. Currently partially working but output format mismatches config.h syntax. Fix is tracked in Firmware State Machine section.
 
 ### Firmware State Machine
 
-- [ ] Define firmware operational states (calibration vs live)
-  - Description: Clear state machine separating setup/calibration mode from live flight mode
+- [ ] Build target separation (calibration vs live)
+  - Description: PlatformIO `_calibration` environments using `extends` to inherit board config and add `-D CALIBRATION_MODE` build flag. Default environments are live builds.
   - Dependencies: None
-  - Notes: In calibration mode, offsets are mutable and debug output is active. In live mode, everything is hard-coded and lean.
+  - Notes: See [features/build-targets.md](features/build-targets.md) for full design. Usage: `pio run -e teensy40` (live) vs `pio run -e teensy40_calibration` (calibration).
+  - Includes: `#ifdef CALIBRATION_MODE` guards in main.cpp, guarding `RUN_*` flags in config.h
 
-- [ ] Build targets for firmware states
-  - Description: PlatformIO build flags or environments for calibration builds vs live builds
-  - Dependencies: State machine design
+- [ ] Fix calibration output format
+  - Description: calibration.cpp currently prints `float AccErrorX = ...;` but config.h uses `#define IMU_ACC_ERROR_X ...f`. Fix all print functions to output correct format.
+  - Dependencies: None
+
+- [ ] Unify calibration code paths
+  - Description: CH6-triggered calibration in main.cpp should call the better calibration.cpp routines (with quality checks, stability validation). Remove duplicate simple versions from main.cpp.
+  - Dependencies: Build target separation
 
 - [ ] Setup/calibration mode for PID tuning
   - Description: A mode where PID values can be adjusted via serial or fc_tool without re-flashing
-  - Dependencies: State machine, serial command interface
+  - Dependencies: Build target separation, serial command interface
 
 - [ ] Live mode with hard-coded values
-  - Description: Production flight firmware with all values baked in, no debug overhead
-  - Dependencies: Calibration workflow complete
+  - Description: Production flight firmware with all values baked in, no debug overhead. Calibration code compiled out via `#ifndef CALIBRATION_MODE`.
+  - Dependencies: Build target separation
 
 ### Hardware Testing & Validation
 
@@ -197,7 +203,11 @@ This roadmap tracks project-level features and milestones for the flight control
 - [x] Failsafe system — Pre-2026
 - [x] Basic IMU auto-calibration — Pre-2026
 - [x] Attitude filter calibration — Pre-2026
+- [x] Radio auto-mapping calibration routine — Pre-2026
+- [x] IMU orientation auto-detection routine — Pre-2026
 - [x] Project documentation bootstrapped — 2026-02-05
+- [x] Auto-calibration research documented — 2026-02-05
+- [x] Code review and build target separation plan — 2026-02-05
 
 ---
 

@@ -110,6 +110,7 @@ Open-source VTOL flight controller firmware for Teensy microcontrollers, based o
 | Calibration storage | Hard-coded in config.h | No SD cards, no EEPROM in live builds, simple and reliable | 2026-02-05 |
 | Firmware states | Calibration mode vs Live mode | Separate debug/test from production flight | 2026-02-05 |
 | Testing approach | Built into firmware as build targets | Embedded firmware testing is hardware-based, not unit test files | 2026-02-05 |
+| Build separation | PlatformIO `extends` + `-D CALIBRATION_MODE` | Each board gets a `_calibration` variant. Clean, DRY, no code duplication. | 2026-02-05 |
 
 ## Integration Points
 
@@ -119,10 +120,10 @@ Open-source VTOL flight controller firmware for Teensy microcontrollers, based o
 
 ## Open Questions
 
+- [x] How to cleanly separate calibration builds from live builds in platformio.ini? → **Resolved**: Use PlatformIO `extends` directive. Each board gets a `_calibration` variant that inherits board config and adds `-D CALIBRATION_MODE`. See [features/build-targets.md](features/build-targets.md).
 - [ ] Best approach for Teensy 4.x EEPROM emulation during calibration mode — see [findings/](findings/) when research completes
-- [ ] How to cleanly separate calibration builds from live builds in platformio.ini (build flags vs separate environments?)
 - [ ] Should IMU orientation auto-detection happen in calibration mode only, or also at startup in live mode?
-- [ ] What PID auto-tuning approach is most practical for this project? (Betaflight-style relay test, ArduPilot AUTOTUNE, or simpler?)
+- [ ] What PID auto-tuning approach is most practical for this project? (Betaflight-style relay test, ArduPilot AUTOTUNE, or simpler?) — see [findings/auto-calibration-research.md](findings/auto-calibration-research.md) for initial research
 - [ ] How tightly should fc_tool integration be coupled to the calibration workflow?
 
 ## Critical Notes
@@ -139,6 +140,7 @@ Open-source VTOL flight controller firmware for Teensy microcontrollers, based o
 | Date | Changes | By |
 |------|---------|-----|
 | 2026-02-05 | Initial scope for flight_controller as standalone mini-project | LLM + User |
+| 2026-02-05 | Resolved build separation approach (PlatformIO extends), added technical decision | LLM + User |
 
 ---
 
