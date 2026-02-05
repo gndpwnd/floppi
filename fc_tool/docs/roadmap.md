@@ -111,7 +111,7 @@ Each setup-dev script installs: Rust, Node.js, PlatformIO (optional), and npm de
 Each build script sources the required env vars before compiling.
 
 - [x] Linux: install-system-deps.sh, setup-dev.sh, build.sh — **VALIDATED**
-- [x] Windows: install-system-deps.ps1, setup-dev.ps1, build.ps1 — UNTESTED (scripts written, marked with TODO)
+- [x] Windows: install-system-deps.bat, setup-dev.bat, build.bat — UNTESTED (converted from PowerShell to .bat)
 - [x] macOS: install-system-deps.sh, setup-dev.sh, build.sh — UNTESTED (scripts written, marked with TODO)
 - [x] dev_setup/README.md with per-platform quick start
 - [x] PlatformIO install via official get-platformio.py in all setup-dev scripts
@@ -151,7 +151,7 @@ Each build script sources the required env vars before compiling.
 - [x] Serial port listing backend command (list_serial_ports via serialport-rs) — 2026-01-27
 - [x] Linux build scripts (install-system-deps.sh, setup-dev.sh, build.sh) — 2026-01-27
 - [x] Linux release build verified: 13 MB binary, .deb and .rpm bundles — 2026-01-27
-- [x] Windows build scripts (install-system-deps.ps1, setup-dev.ps1, build.ps1) — 2026-01-27
+- [x] Windows build scripts (install-system-deps.bat, setup-dev.bat, build.bat) — 2026-01-27 (converted from .ps1 to .bat 2026-02-05)
 - [x] macOS build scripts (install-system-deps.sh, setup-dev.sh, build.sh) — 2026-01-27
 - [x] Reorganized scripts into dev_setup/linux/, dev_setup/windows/, dev_setup/macos/ — 2026-01-27
 - [x] GitHub Actions workflow (manual trigger, multi-platform release) — 2026-01-27

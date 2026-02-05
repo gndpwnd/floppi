@@ -18,14 +18,14 @@ sudo ./dev_setup/linux/install-system-deps.sh   # system libs (once)
 
 ### Windows
 
-```powershell
+```cmd
 cd fc_tool
-# Run as Administrator:
-.\dev_setup\windows\install-system-deps.ps1      # MSVC, WebView2 (once)
-# Run as normal user:
-.\dev_setup\windows\setup-dev.ps1                # Rust, Node.js (once)
-.\dev_setup\windows\build.ps1                    # release build
-.\dev_setup\windows\build.ps1 dev                # dev mode
+REM Run as Administrator:
+dev_setup\windows\install-system-deps.bat        REM MSVC, WebView2 (once)
+REM Run as normal user:
+dev_setup\windows\setup-dev.bat                  REM Rust, Node.js (once)
+dev_setup\windows\build.bat                      REM release build
+dev_setup\windows\build.bat dev                  REM dev mode
 ```
 
 ### macOS

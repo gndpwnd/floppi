@@ -1,7 +1,8 @@
 # Feature: Build Target Separation (Calibration vs Live)
 
-> Status: Planned
+> Status: Implemented
 > Created: 2026-02-05
+> Implemented: 2026-02-05
 
 ## Summary
 

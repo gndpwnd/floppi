@@ -129,9 +129,9 @@ dev_setup/
 │   ├── setup-dev.sh             # Rust, Node.js (once)
 │   └── build.sh                 # compile or dev mode
 ├── windows/
-│   ├── install-system-deps.ps1  # MSVC, WebView2 (Admin, once)
-│   ├── setup-dev.ps1            # Rust, Node.js (once)
-│   └── build.ps1                # compile or dev mode
+│   ├── install-system-deps.bat  # MSVC, WebView2 (Admin, once)
+│   ├── setup-dev.bat            # Rust, Node.js (once)
+│   └── build.bat                # compile or dev mode
 └── macos/
     ├── install-system-deps.sh   # Xcode CLT (once)
     ├── setup-dev.sh             # Rust, Node.js (once)

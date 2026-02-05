@@ -22,11 +22,11 @@ sudo ./dev_setup/linux/install-system-deps.sh   # system libs (once)
 
 ### Windows
 
-```powershell
+```cmd
 cd fc_tool
-.\dev_setup\windows\install-system-deps.ps1      # MSVC, WebView2 (Admin, once)
-.\dev_setup\windows\setup-dev.ps1                # Rust, Node.js (once)
-.\dev_setup\windows\build.ps1                    # release build
+dev_setup\windows\install-system-deps.bat        REM MSVC, WebView2 (Admin, once)
+dev_setup\windows\setup-dev.bat                  REM Rust, Node.js (once)
+dev_setup\windows\build.bat                      REM release build
 ```
 
 ### macOS
@@ -121,7 +121,7 @@ fc_tool/
 ├── dev_setup/
 │   ├── README.md           # Per-platform setup instructions
 │   ├── linux/              # install-system-deps.sh, setup-dev.sh, build.sh
-│   ├── windows/            # install-system-deps.ps1, setup-dev.ps1, build.ps1
+│   ├── windows/            # install-system-deps.bat, setup-dev.bat, build.bat
 │   └── macos/              # install-system-deps.sh, setup-dev.sh, build.sh
 ├── tests/              # Test files
 ├── package.json            # npm config (Tauri CLI)

@@ -95,7 +95,9 @@ float s1_command_scaled, s2_command_scaled, s3_command_scaled, s4_command_scaled
 // Arming state
 bool armedFly = false;
 
-// Calibration program state
+// Calibration program state (only in calibration builds)
+#ifdef CALIBRATION_MODE
+#include "calibration.h"
 enum CalibrationMode {
     CALIB_NONE,
     CALIB_ACCEL_GYRO,
@@ -105,6 +107,7 @@ enum CalibrationMode {
 CalibrationMode calibration_mode = CALIB_NONE;
 bool calibration_in_progress = false;
 unsigned long calibration_start_time = 0;
+#endif
 
 //========================================================================================================================//
 //                                              FUNCTION DECLARATIONS                                                     //
@@ -112,8 +115,10 @@ unsigned long calibration_start_time = 0;
 
 void setupBlink(int num_blinks, int blink_delay);
 void getIMUdata();
+#ifdef CALIBRATION_MODE
 void calculate_IMU_error();
 void calibrateAttitude();
+#endif
 void Madgwick(float gx, float gy, float gz, float ax, float ay, float az, float mx, float my, float mz, float invSampleFreq);
 void Madgwick6DOF(float gx, float gy, float gz, float ax, float ay, float az, float invSampleFreq);
 void getDesState();
@@ -129,11 +134,9 @@ void failSafe();
 void loopRate(int freq);
 float invSqrt(float x);
 
+#ifdef CALIBRATION_MODE
 // Calibration program functions
 void checkCalibrationMode();
-void runAccelGyroCalibration();
-void runAttitudeCalibration();
-void runRadioCalibration();
 
 // Debug print functions
 void printRadioData();
@@ -146,6 +149,7 @@ void printPIDoutput();
 void printMotorCommands();
 void printServoCommands();
 void printLoopRate();
+#endif
 
 //========================================================================================================================//
 //                                                      SETUP                                                             //
@@ -157,7 +161,11 @@ void setup() {
     
     Serial.println(F("\n\n========================================"));
     Serial.println(F("  dRehmFlight VTOL Flight Controller"));
-    Serial.println(F("      with Auto-Calibration"));
+    #ifdef CALIBRATION_MODE
+    Serial.println(F("      CALIBRATION BUILD"));
+    #else
+    Serial.println(F("      LIVE BUILD"));
+    #endif
     Serial.println(F("========================================"));
     
     // Initialize pins
@@ -203,32 +211,22 @@ void setup() {
     // Get initial receiver values
     getCommands();
     
+    #ifdef CALIBRATION_MODE
     // Check if CH6 is high on startup (trigger manual calibration)
     if (channel_6_pwm > 1800) {
         Serial.println(F("\nManual calibration triggered on startup!"));
         Serial.println(F("Keep board FLAT and STILL!"));
         delay(2000);
-        calculate_IMU_error();
-        
-        // Update config values in memory (not EEPROM)
-        AccErrorX = IMU_ACC_ERROR_X;
-        AccErrorY = IMU_ACC_ERROR_Y;
-        AccErrorZ = IMU_ACC_ERROR_Z;
-        GyroErrorX = IMU_GYRO_ERROR_X;
-        GyroErrorY = IMU_GYRO_ERROR_Y;
-        GyroErrorZ = IMU_GYRO_ERROR_Z;
-        
-        calibrateAttitude();
-        Serial.println(F("Manual calibration complete"));
-        Serial.print(F("AccError: X=")); Serial.print(AccErrorX, 4);
-        Serial.print(F(" Y=")); Serial.print(AccErrorY, 4);
-        Serial.print(F(" Z=")); Serial.println(AccErrorZ, 4);
+        calibrateIMU();  // Use the better calibration.cpp version
     } else {
         Serial.println(F("\nUsing calibration values from config.h"));
-        Serial.print(F("AccError: X=")); Serial.print(AccErrorX, 4);
-        Serial.print(F(" Y=")); Serial.print(AccErrorY, 4);
-        Serial.print(F(" Z=")); Serial.println(AccErrorZ, 4);
     }
+    #else
+    Serial.println(F("\nLive mode: using calibration values from config.h"));
+    #endif
+    Serial.print(F("AccError: X=")); Serial.print(AccErrorX, 4);
+    Serial.print(F(" Y=")); Serial.print(AccErrorY, 4);
+    Serial.print(F(" Z=")); Serial.println(AccErrorZ, 4);
     
     // Setup motor pins
     pinMode(MOTOR_PIN_1, OUTPUT);
@@ -255,12 +253,14 @@ void setup() {
     Serial.println(F("\n========================================"));
     Serial.println(F("  FLIGHT CONTROLLER READY!"));
     Serial.println(F("========================================\n"));
+    #ifdef CALIBRATION_MODE
     Serial.println(F("Calibration Programs (CH6 switch):"));
     Serial.println(F("  CH6 Low (<1200):  Normal flight"));
-    Serial.println(F("  CH6 Mid (1200-1800):  Accel/Gyro Cal"));
-    Serial.println(F("  CH6 High (>1800): Attitude Cal"));
+    Serial.println(F("  CH6 Mid (1200-1800):  IMU Calibration"));
+    Serial.println(F("  CH6 High (>1800): IMU + Orientation Cal"));
     Serial.println(F("\nHold switch position for 3 seconds"));
     Serial.println(F("to trigger calibration."));
+    #endif
     
     // Final setup blink
     setupBlink(3, 160);
@@ -278,13 +278,15 @@ void loop() {
     current_time = micros();
     dt = (current_time - prev_time) / 1000000.0;
     
+    #ifdef CALIBRATION_MODE
     // ========== CHECK FOR CALIBRATION MODE ==========
-    // Check if CH6 switch position indicates calibration mode
     checkCalibrationMode();
-    
+    #endif
+
     // ========== CORE FLIGHT CONTROLLER ==========
-    // Skip flight controller if calibration is in progress
+    #ifdef CALIBRATION_MODE
     if (!calibration_in_progress) {
+    #endif
         // Get radio commands
         getCommands();
         
@@ -341,45 +343,43 @@ void loop() {
         
         // Send commands to motors and servos
         commandMotors();
+    #ifdef CALIBRATION_MODE
     }
-    
+
     // ========== CALIBRATION PROGRAMS ==========
-    // Run calibration if mode is selected
+    // Run calibration if mode is selected (uses calibration.cpp routines)
     if (calibration_mode != CALIB_NONE && !calibration_in_progress) {
         calibration_in_progress = true;
         calibration_start_time = millis();
-        
+
         Serial.println(F("\n=== CALIBRATION MODE ACTIVATED ==="));
-        
+
         switch (calibration_mode) {
             case CALIB_ACCEL_GYRO:
-                Serial.println(F("Running Accelerometer/Gyroscope Calibration"));
-                Serial.println(F("Keep board FLAT and STILL!"));
-                runAccelGyroCalibration();
+                Serial.println(F("Running IMU Calibration (with quality checks)"));
+                calibrateIMU();  // Uses calibration.cpp (advanced, with stability validation)
                 break;
-                
+
             case CALIB_ATTITUDE:
-                Serial.println(F("Running Attitude Filter Calibration"));
-                Serial.println(F("Keep board FLAT and STILL!"));
-                runAttitudeCalibration();
+                Serial.println(F("Running IMU Calibration + Orientation Detection"));
+                calibrateIMUWithOrientation();  // Uses calibration.cpp (3-position test)
                 break;
-                
+
             case CALIB_RADIO:
                 Serial.println(F("Running Radio Calibration"));
-                Serial.println(F("Move all sticks to extremes"));
-                runRadioCalibration();
+                calibrateRadio();  // Uses calibration.cpp (step-by-step auto-mapping)
                 break;
-                
+
             default:
                 break;
         }
-        
+
         calibration_in_progress = false;
         calibration_mode = CALIB_NONE;
-        
+
         Serial.println(F("=== CALIBRATION COMPLETE ==="));
         Serial.println(F("Returning to normal mode...\n"));
-        
+
         // Blink LED to indicate calibration complete
         for (int i = 0; i < 5; i++) {
             digitalWrite(LED_PIN, HIGH);
@@ -388,9 +388,9 @@ void loop() {
             delay(100);
         }
     }
-    
+
     // ========== DEBUG OUTPUT ==========
-    // Uncomment as needed (see original comments)
+    // Uncomment as needed for calibration diagnostics
     //printRadioData();
     //printDesiredState();
     //printGyroData();
@@ -399,20 +399,20 @@ void loop() {
     //printPIDoutput();
     //printMotorCommands();
     //printLoopRate();
-    
+    #endif // CALIBRATION_MODE
+
     // ========== STATUS LED ==========
-    // Blink pattern indicates mode:
-    // - Normal: 1Hz blink
-    // - Calibration in progress: Fast blink
-    // - Armed: Solid
     static unsigned long led_timer = 0;
+    #ifdef CALIBRATION_MODE
     if (calibration_in_progress) {
         // Fast blink during calibration
         if (current_time - led_timer > 100000) {
             led_timer = current_time;
             digitalWrite(LED_PIN, !digitalRead(LED_PIN));
         }
-    } else if (armedFly) {
+    } else
+    #endif
+    if (armedFly) {
         // Solid when armed
         digitalWrite(LED_PIN, HIGH);
     } else {
@@ -427,6 +427,7 @@ void loop() {
     loopRate(LOOP_FREQUENCY_HZ);
 }
 
+#ifdef CALIBRATION_MODE
 //========================================================================================================================//
 //                                              CALIBRATION FUNCTIONS                                                     //
 //========================================================================================================================//
@@ -616,6 +617,7 @@ void runRadioCalibration() {
         delay(300);
     }
 }
+#endif // CALIBRATION_MODE
 
 //========================================================================================================================//
 //                                                  IMU FUNCTIONS                                                         //
@@ -690,6 +692,7 @@ void getIMUdata() {
     #endif
 }
 
+#ifdef CALIBRATION_MODE
 void calculate_IMU_error() {
     int num_readings = 2000;
     float AccX_sum = 0, AccY_sum = 0, AccZ_sum = 0;
@@ -755,6 +758,7 @@ void calibrateAttitude() {
     // Wrapper function for backward compatibility
     runAttitudeCalibration();
 }
+#endif // CALIBRATION_MODE (calculate_IMU_error, calibrateAttitude)
 
 void Madgwick6DOF(float gx, float gy, float gz, float ax, float ay, float az, float invSampleFreq) {
     // 6DOF Madgwick filter (no magnetometer)
@@ -1186,6 +1190,7 @@ void loopRate(int freq) {
     }
 }
 
+#ifdef CALIBRATION_MODE
 //========================================================================================================================//
 //                                            DEBUG PRINT FUNCTIONS                                                       //
 //========================================================================================================================//
@@ -1288,6 +1293,7 @@ void printLoopRate() {
         Serial.print(F("dt(μs):")); Serial.println(dt * 1000000.0);
     }
 }
+#endif // CALIBRATION_MODE (debug print functions)
 
 //========================================================================================================================//
 //                                              HELPER FUNCTIONS                                                          //

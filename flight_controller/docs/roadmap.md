@@ -70,34 +70,32 @@ This roadmap tracks project-level features and milestones for the flight control
   - Description: 6-position calibration for more accurate accel offset and scale factors
   - Dependencies: Basic IMU calibration working
 
-- [ ] Calibration value export workflow
-  - Description: Calibration mode outputs values in config.h `#define` format, ready to copy-paste
-  - Dependencies: All calibration routines, output format fix
-  - Notes: Key usability feature. Currently partially working but output format mismatches config.h syntax. Fix is tracked in Firmware State Machine section.
+- [x] Calibration value export workflow
+  - Completed: 2026-02-05
+  - Notes: Calibration mode outputs values in config.h `#define` format, ready to copy-paste. Output format fixed to match config.h syntax.
 
 ### Firmware State Machine
 
-- [ ] Build target separation (calibration vs live)
-  - Description: PlatformIO `_calibration` environments using `extends` to inherit board config and add `-D CALIBRATION_MODE` build flag. Default environments are live builds.
-  - Dependencies: None
-  - Notes: See [features/build-targets.md](features/build-targets.md) for full design. Usage: `pio run -e teensy40` (live) vs `pio run -e teensy40_calibration` (calibration).
-  - Includes: `#ifdef CALIBRATION_MODE` guards in main.cpp, guarding `RUN_*` flags in config.h
+- [x] Build target separation (calibration vs live)
+  - Completed: 2026-02-05
+  - Notes: PlatformIO `_calibration` environments using `extends` + `-D CALIBRATION_MODE`. Guards in main.cpp, config.h. See [features/build-targets.md](features/build-targets.md).
+  - Usage: `pio run -e teensy40` (live) vs `pio run -e teensy40_calibration` (calibration)
 
-- [ ] Fix calibration output format
-  - Description: calibration.cpp currently prints `float AccErrorX = ...;` but config.h uses `#define IMU_ACC_ERROR_X ...f`. Fix all print functions to output correct format.
-  - Dependencies: None
+- [x] Fix calibration output format
+  - Completed: 2026-02-05
+  - Notes: calibration.cpp now outputs `#define IMU_ACC_ERROR_X 0.123456f` format matching config.h
 
-- [ ] Unify calibration code paths
-  - Description: CH6-triggered calibration in main.cpp should call the better calibration.cpp routines (with quality checks, stability validation). Remove duplicate simple versions from main.cpp.
-  - Dependencies: Build target separation
+- [x] Unify calibration code paths
+  - Completed: 2026-02-05
+  - Notes: CH6 state machine now calls calibration.cpp routines directly (calibrateIMU, calibrateIMUWithOrientation, calibrateRadio). Old simple functions retained as guarded dead code pending removal.
+
+- [x] Live mode with hard-coded values
+  - Completed: 2026-02-05
+  - Notes: Default `pio run -e teensy40` compiles without CALIBRATION_MODE — all calibration code, debug prints, and state machine compiled out
 
 - [ ] Setup/calibration mode for PID tuning
   - Description: A mode where PID values can be adjusted via serial or fc_tool without re-flashing
-  - Dependencies: Build target separation, serial command interface
-
-- [ ] Live mode with hard-coded values
-  - Description: Production flight firmware with all values baked in, no debug overhead. Calibration code compiled out via `#ifndef CALIBRATION_MODE`.
-  - Dependencies: Build target separation
+  - Dependencies: Serial command interface
 
 ### Hardware Testing & Validation
 
@@ -208,6 +206,10 @@ This roadmap tracks project-level features and milestones for the flight control
 - [x] Project documentation bootstrapped — 2026-02-05
 - [x] Auto-calibration research documented — 2026-02-05
 - [x] Code review and build target separation plan — 2026-02-05
+- [x] Build target separation (calibration vs live builds) — 2026-02-05
+- [x] Calibration output format fix (config.h `#define` format) — 2026-02-05
+- [x] Calibration paths unified (CH6 → calibration.cpp) — 2026-02-05
+- [x] Live mode (no calibration overhead in default build) — 2026-02-05
 
 ---
 

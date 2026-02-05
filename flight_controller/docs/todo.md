@@ -4,7 +4,7 @@
 
 ## In Progress
 
-_None_
+- [ ] Verify PlatformIO compilation — need to run `pio run -e teensy40` and `pio run -e teensy40_calibration` on a machine with PlatformIO installed (not available in current WSL env)
 
 ## Blocked
 
@@ -18,16 +18,7 @@ _Tasks waiting on something (include reason)_
 
 _Priority queue for immediate work_
 
-- [ ] Implement build target separation (calibration vs live) — see [features/build-targets.md](features/build-targets.md)
-  - Add `_calibration` PlatformIO environments using `extends`
-  - Wrap calibration code in `#ifdef CALIBRATION_MODE` guards in main.cpp
-  - Guard `RUN_*` config flags so they only apply in calibration builds
-- [ ] Fix calibration output format mismatch
-  - calibration.cpp prints `float AccErrorX = ...;` but config.h uses `#define IMU_ACC_ERROR_X ...f`
-  - Fix `printIMUCalibrationResults()` output to match config.h `#define` format
-- [ ] Unify calibration paths
-  - Make CH6-triggered calibration call the better calibration.cpp routines (with quality checks)
-  - Remove duplicate simple calibration functions from main.cpp
+- [ ] Remove dead calibration functions from main.cpp (runAccelGyroCalibration, runAttitudeCalibration, runRadioCalibration, calculate_IMU_error, calibrateAttitude) — these are superseded by calibration.cpp but still exist behind CALIBRATION_MODE guards
 - [ ] Review and improve radio calibration workflow
 
 ## Backlog
@@ -52,6 +43,16 @@ _For context; clear periodically_
 - [x] Project structure bootstrap (scope.md, roadmap.md, todo.md, README.md) — 2026-02-05
 - [x] Auto-calibration research documented — 2026-02-05 (see [findings/auto-calibration-research.md](findings/auto-calibration-research.md))
 - [x] Code review and plan for build target separation — 2026-02-05 (see [features/build-targets.md](features/build-targets.md))
+- [x] Build target separation implemented — 2026-02-05
+  - platformio.ini: `_calibration` environments using `extends` + `-D CALIBRATION_MODE`
+  - config.h: `RUN_*` flags guarded behind `#ifdef CALIBRATION_MODE`
+  - main.cpp: all calibration code, debug prints, state machine wrapped in `#ifdef CALIBRATION_MODE`
+- [x] Calibration output format fixed — 2026-02-05
+  - calibration.cpp now outputs `#define IMU_ACC_ERROR_X 0.123456f` (matches config.h)
+  - Radio and orientation results updated with correct build instructions
+- [x] Calibration paths unified — 2026-02-05
+  - CH6 switch and calibration state machine now call calibration.cpp routines directly (calibrateIMU, calibrateIMUWithOrientation, calibrateRadio)
+  - Old simple functions guarded as dead code (removal pending)
 
 ---
 
@@ -61,7 +62,7 @@ _For context; clear periodically_
 - **Calibration workflow is the key differentiator** — focus on making calibrate → hard-code → flash → fly as seamless as possible
 - **Don't over-engineer** — iterate carefully, get basic features working well before adding complexity
 - **fc_tool will help** — visual diagnostics during calibration development (separate project at /fc_tool/)
-- **Known bugs**: calibration.cpp output format doesn't match config.h `#define` syntax; two overlapping calibration code paths (main.cpp simple vs calibration.cpp advanced)
+- **Needs PlatformIO build verification** — static analysis of `#ifdef` guards looks correct, but actual compilation not yet tested (PlatformIO not installed in WSL)
 
 ---
 

@@ -7,18 +7,19 @@
 #define CONFIG_H
 
 //=============================================================================
-// CALIBRATION PROGRAMS (Uncomment ONE at a time, upload, follow instructions)
+// CALIBRATION PROGRAMS
 //=============================================================================
-// ⚠️ IMPORTANT: Only uncomment ONE calibration at a time!
-// After calibration completes:
-//   1. Copy the generated code
-//   2. Paste it into the appropriate section below
-//   3. Comment out the calibration flag
-//   4. Upload again
-
+// These only take effect in calibration builds:
+//   pio run -e teensy40_calibration
+//
+// Uncomment ONE at a time, flash calibration build, follow serial instructions.
+// After calibration: copy values to config.h, then flash live build.
+//
+#ifdef CALIBRATION_MODE
 //#define RUN_RADIO_CALIBRATION       // Step-by-step radio calibration with auto-detection
 //#define RUN_IMU_CALIBRATION         // Basic IMU offset calibration
 //#define RUN_IMU_ORIENTATION         // IMU calibration + orientation auto-detection
+#endif
 
 //=============================================================================
 // IMU SENSOR SELECTION
