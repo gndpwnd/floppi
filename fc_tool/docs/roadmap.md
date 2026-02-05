@@ -1,6 +1,6 @@
 # fc_tool - Roadmap
 
-> Last updated: 2026-01-27
+> Last updated: 2026-02-05
 
 ## Overview
 
@@ -77,8 +77,12 @@ This roadmap tracks project-level features and milestones. For immediate tasks, 
 
 - [ ] Display current calibration values
   - Description: Read and show IMU calibration parameters from serial stream
+  - Related: [flight_controller/docs/findings/auto-calibration-research.md](/flight_controller/docs/findings/auto-calibration-research.md)
 - [ ] Calibration visualization
   - Description: Visual feedback showing calibration quality/progress
+- [ ] Generate config.h snippet from calibration data
+  - Description: Export calibration values in copy-pasteable config.h format for the hard-coded live firmware
+  - Notes: Key usability feature — supports the calibrate → hard-code → flash → fly workflow
 - [ ] Save/load calibration profiles
   - Description: Store calibration snapshots for different boards or configurations
 
@@ -156,9 +160,11 @@ Each build script sources the required env vars before compiling.
 
 ## Notes
 
-- The serial telemetry protocol is undefined — fc_tool should be flexible enough to handle format changes as firmware matures
+- The serial telemetry protocol is undefined — fc_tool should be flexible enough to handle format changes as firmware matures. The firmware currently uses `Serial.print()` debug output; structured parsing will be added later.
 - MVP focuses on serial + IMU plots; PlatformIO integration and calibration UI come after
 - Stability mode applies: if serial monitoring works, ship it before adding more features
+- The flight_controller has a calibration mode vs live mode workflow — fc_tool's calibration interface should help users go from raw calibration output to hard-coded config.h values seamlessly
+- See [flight_controller/docs/scope.md](/flight_controller/docs/scope.md) and [flight_controller/docs/roadmap.md](/flight_controller/docs/roadmap.md) for firmware context
 
 ---
 

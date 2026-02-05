@@ -1,7 +1,7 @@
 # fc_tool - Scope
 
-> Last updated: 2026-01-27
-> Status: Draft
+> Last updated: 2026-02-05
+> Status: Active
 
 ---
 
@@ -295,8 +295,12 @@ Scripts for unvalidated platforms include `# TODO: UNTESTED` comments at the top
 ## Integration Points
 
 - **flight_controller/** — PlatformIO project that fc_tool compiles and flashes
+  - Firmware has two modes: **calibration mode** (mutable offsets, debug output) and **live mode** (hard-coded values, lean)
+  - fc_tool is particularly valuable during calibration mode: visualizing IMU data, displaying calibration values, and helping users export values for hard-coding into config.h
+  - See [flight_controller/docs/scope.md](/flight_controller/docs/scope.md) for firmware architecture
+  - See [flight_controller/docs/findings/auto-calibration-research.md](/flight_controller/docs/findings/auto-calibration-research.md) for calibration approach research
 - **PlatformIO CLI** — called by fc_tool for build/upload operations (optional)
-- **Serial telemetry protocol** — TBD, will be co-designed between firmware and fc_tool
+- **Serial telemetry protocol** — TBD, will be co-designed between firmware and fc_tool. The firmware currently uses debug `Serial.print()` output; a structured protocol is needed for reliable parsing
 - **GitHub Actions** — CI/CD for multi-platform binary releases
 
 ## Open Questions
@@ -319,6 +323,7 @@ Scripts for unvalidated platforms include `# TODO: UNTESTED` comments at the top
 
 | Date | Changes | By |
 |------|---------|-----|
+| 2026-02-05 | Updated integration points with flight_controller calibration workflow context, promoted to Active status | LLM + User |
 | 2026-01-27 | Added architecture boundary (standalone vs PlatformIO), cross-platform build strategy, CI/CD plan | LLM + User |
 | 2026-01-27 | Initial draft | LLM + User |
 

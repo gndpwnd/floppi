@@ -106,7 +106,9 @@ fc_tool/
 │   ├── scope.md        # Project scope and boundaries
 │   ├── roadmap.md      # Feature roadmap
 │   ├── todo.md         # Current tasks
-│   └── findings/       # Research and investigation docs
+│   ├── features/       # Feature specifications
+│   ├── findings/       # Research and investigation docs
+│   └── archive/        # Session summaries and historical records
 ├── src-tauri/          # Rust backend (Tauri)
 │   ├── Cargo.toml      # Rust dependencies
 │   └── src/
