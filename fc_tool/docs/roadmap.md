@@ -1,6 +1,6 @@
 # fc_tool - Roadmap
 
-> Last updated: 2026-02-05
+> Last updated: 2026-02-06
 
 ## Overview
 
@@ -17,12 +17,14 @@ This roadmap tracks project-level features and milestones. For immediate tasks, 
 **"Deployable/testable" means:** A user can download a single executable, connect a Teensy board via USB, open a serial monitor, and see live IMU data plots. No internet required.
 
 **Must-have for v0.1:**
-- [ ] Serial port detection and connection
-- [ ] Serial monitor (send/receive terminal)
-- [ ] Real-time IMU data parsing and plotting (accel + gyro)
-- [ ] Cross-platform builds (at least Linux + Windows)
+
+- [x] Serial port detection and connection
+- [x] Serial monitor (send/receive terminal)
+- [x] Real-time IMU data parsing and plotting (accel + gyro)
+- [ ] Cross-platform builds (manual local builds on each platform)
 
 **Nice-to-have (defer if needed):**
+
 - [ ] PlatformIO compile/flash integration
 - [ ] Calibration parameter display
 - [ ] macOS build
@@ -37,24 +39,29 @@ This roadmap tracks project-level features and milestones. For immediate tasks, 
 
 ### Serial Communication
 
-- [ ] Auto-detect available serial ports
+- [x] Auto-detect available serial ports
   - Description: Scan and list USB serial devices, identify board type when possible
-- [ ] Serial monitor terminal
+  - Implementation: `list_serial_ports` command in lib.rs, shows VID/PID and product name
+- [x] Serial monitor terminal
   - Description: Bidirectional text terminal (send commands, receive output)
-- [ ] Connection management
+  - Implementation: Terminal UI with RX (green) / TX (blue) / system (gray) color coding
+- [x] Connection management
   - Description: Port selection, baud rate, connect/disconnect, reconnect on drop
+  - Implementation: `open_serial_port`, `close_serial_port`, `send_serial_data` commands; background reader thread with Tauri events
 - [ ] Raw data logging
   - Description: Save serial output to file for offline analysis
 
 ### IMU Data Visualization
 
-- [ ] Telemetry data parser
+- [x] Telemetry data parser
   - Description: Parse structured serial output into sensor values
-  - Dependencies: Serial communication, telemetry protocol definition
-- [ ] Real-time accelerometer plot
+  - Implementation: Supports JSON, key-value (ax=...), and CSV formats
+- [x] Real-time accelerometer plot
   - Description: Live X/Y/Z acceleration graph
-- [ ] Real-time gyroscope plot
+  - Implementation: Chart.js with 100-sample scrolling window
+- [x] Real-time gyroscope plot
   - Description: Live X/Y/Z angular rate graph
+  - Implementation: Chart.js with 100-sample scrolling window
 - [ ] Magnetometer plot
   - Description: Live X/Y/Z magnetic field graph (when available)
 - [ ] Data export
@@ -124,13 +131,6 @@ Each build script sources the required env vars before compiling.
 - [ ] Remove `# TODO: UNTESTED` markers from Windows scripts after validation
 - [ ] Remove `# TODO: UNTESTED` markers from macOS scripts after validation
 
-### CI/CD & Releases
-
-- [x] GitHub Actions workflow: manually triggered, builds on Linux + Windows + macOS runners
-- [ ] Test GitHub Actions workflow on first real push (validate all three platform builds)
-- [ ] Verify CI produces .msi/.exe (Windows), .dmg/.app (macOS), .deb/.AppImage (Linux)
-- [ ] First tagged pre-release published to GitHub Releases
-
 ---
 
 ## Nice to Have (Lower Priority)
@@ -147,6 +147,8 @@ Each build script sources the required env vars before compiling.
 
 > Features moved here when done, for historical reference.
 
+- [x] Serial monitor UI with terminal (port selector, baud rate, connect/disconnect, send/receive) — 2026-02-06
+- [x] Serial connection backend (open_serial_port, close_serial_port, send_serial_data, events) — 2026-02-06
 - [x] Project initialized (Rust + Tauri 2, vanilla JS frontend) — 2026-01-27
 - [x] Serial port listing backend command (list_serial_ports via serialport-rs) — 2026-01-27
 - [x] Linux build scripts (install-system-deps.sh, setup-dev.sh, build.sh) — 2026-01-27
@@ -154,7 +156,6 @@ Each build script sources the required env vars before compiling.
 - [x] Windows build scripts (install-system-deps.bat, setup-dev.bat, build.bat) — 2026-01-27 (converted from .ps1 to .bat 2026-02-05)
 - [x] macOS build scripts (install-system-deps.sh, setup-dev.sh, build.sh) — 2026-01-27
 - [x] Reorganized scripts into dev_setup/linux/, dev_setup/windows/, dev_setup/macos/ — 2026-01-27
-- [x] GitHub Actions workflow (manual trigger, multi-platform release) — 2026-01-27
 
 ---
 

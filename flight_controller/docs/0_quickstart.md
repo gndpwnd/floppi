@@ -1,54 +1,46 @@
-# 🚀 QUICKSTART GUIDE - 60 Minutes to First Flight
+# Quickstart Guide
 
-**Target:** Get your flight controller working and flying in under 60 minutes.
-
----
-
-## ⚡ Prerequisites Checklist
-
-Before starting, make sure you have:
-
-- [ ] **Hardware:**
-  - Teensy 4.0 or 4.1
-  - MPU6050 (GY-521 breakout board)
-  - FlySky FS-iA6B receiver
-  - FlySky transmitter (FS-i6, FS-i6X, or compatible)
-  - USB cable for Teensy
-  - 4 jumper wires (dupont style)
-
-- [ ] **Software:**
-  - PlatformIO installed (VS Code extension)
-  - USB drivers for Teensy (Teensy Loader)
-
-- [ ] **Knowledge:**
-  - Basic soldering (if pins not pre-installed)
-  - How to use Serial Monitor
+Get your flight controller working in under 60 minutes.
 
 ---
 
-## 🔧 Part 1: Hardware Setup (20 minutes)
+## Prerequisites
 
-### Step 1: Wire the MPU6050
+### Hardware
+
+- Teensy 4.0 or 4.1
+- MPU6050 (GY-521 breakout board)
+- FlySky FS-iA6B receiver (or compatible SBUS receiver)
+- FlySky transmitter
+- USB cable for Teensy
+
+### Software
+
+- PlatformIO installed (VS Code extension)
+- USB drivers for Teensy (Teensy Loader)
+
+---
+
+## Part 1: Hardware Setup (20 minutes)
+
+### Wire the MPU6050
 
 ```
 MPU6050 GY-521    →    Teensy 4.0
 ─────────────────────────────────
-VCC (3.3V or 5V)  →    3.3V
-GND               →    GND  
+VCC               →    3.3V
+GND               →    GND
 SDA               →    Pin 18
 SCL               →    Pin 19
 ```
 
-**✅ Verification:** Power on Teensy via USB. MPU6050 power LED should light up.
-
----
-
-### Step 2: Wire the FS-iA6B Receiver
+### Wire the FS-iA6B Receiver
 
 **First, set transmitter to SBUS mode:**
+
 1. Power ON transmitter
 2. Menu → System → RX Setup → Serial Mode → **SBUS**
-3. Save and power cycle transmitter
+3. Save and power cycle
 
 **Then wire receiver:**
 
@@ -60,175 +52,125 @@ GND (Black wire)     →    GND
 SBUS (White wire)    →    Pin 21 (RX5)
 ```
 
-**✅ Verification:** Power on Teensy via USB. Receiver LED should blink (waiting for bind).
+### Bind Receiver
+
+1. Transmitter OFF
+2. Press and HOLD bind button on receiver
+3. While holding, plug in USB to Teensy
+4. Receiver LED flashes rapidly
+5. Turn transmitter ON
+6. Wait 3-5 seconds - LED becomes solid
+7. Release bind button
 
 ---
 
-### Step 3: Bind Receiver to Transmitter
+## Part 2: Software Upload (10 minutes)
 
-1. **Transmitter OFF**
-2. **Press and HOLD bind button** on receiver (small button on top)
-3. **While holding, plug in USB** to Teensy (powers receiver)
-4. **Receiver LED flashes rapidly** (2-3x per second)
-5. **Turn transmitter ON**
-6. **Wait 3-5 seconds** - LED becomes solid
-7. **Release bind button**
-
-**✅ Verification:** Move transmitter sticks. Receiver LED should dim/brighten slightly.
-
-📖 **Detailed wiring:** See [HARDWARE_SETUP.md](./HARDWARE_SETUP.md)
-
----
-
-## 💻 Part 2: Software Upload (10 minutes)
-
-### Step 4: Clone and Open Project
+### Clone and Open Project
 
 ```bash
 cd ~/floppi/flight_controller
-code .  # Opens VS Code
+code .
 ```
 
-### Step 5: Configure for Your Hardware
+### Configure Hardware
 
-Open `include/config.h` and verify these are uncommented:
+Open `include/config.h` and verify:
 
 ```cpp
-#define USE_MPU6050          // ✓ Your IMU
-#define USE_SBUS_RECEIVER    // ✓ Your receiver
-#define USE_ANGLE_CONTROLLER // ✓ Beginner-friendly mode
+#define USE_MPU6050          // Your IMU
+#define USE_SBUS_RECEIVER    // Your receiver
+#define USE_ANGLE_CONTROLLER // Beginner-friendly mode
 ```
 
-### Step 6: Upload Code
+### Upload Live Build
 
 ```bash
-# In VS Code terminal or external terminal:
 pio run -e teensy40 -t upload
-
-# Should see:
-# SUCCESS: Uploaded to Teensy 4.0
 ```
 
-**✅ Verification:** Teensy LED blinks 3 times rapidly, then 1Hz blinking.
+Teensy LED should blink 3 times, then 1Hz blinking.
 
 ---
 
-## 🎛️ Part 3: Quick Calibration (15 minutes)
+## Part 3: Calibration (15 minutes)
 
-### Step 7: Test Receiver Communication
+### Flash Calibration Build
 
 ```bash
+pio run -e teensy40_calibration -t upload
 pio device monitor
 ```
 
-**In `src/main.cpp`, uncomment:**
-```cpp
-printRadioData();  // Around line 180
+You'll see:
+
+```
+=== CALIBRATION MODE ===
+Serial commands (type in monitor):
+  r - Radio calibration
+  i - IMU calibration
+  o - IMU + Orientation
+  s - Status
+  h - Help
 ```
 
-**Re-upload and check Serial Monitor:**
-```
-CH1:1500 CH2:1500 CH3:1000 CH4:1500 CH5:1000 CH6:1000
-```
-
-**✅ Move sticks:** Numbers should change (1000-2000 range).
-
----
-
-### Step 8: Auto-Calibrate MPU6050
-
-**Method A: On Startup (Recommended)**
+### Run IMU Calibration
 
 1. Place aircraft **flat and level** on desk
-2. **Hold CH6 switch HIGH** (top position on 3-pos switch)
-3. Power on Teensy via USB
-4. **Wait 5 seconds** - calibration runs automatically
-5. **Copy printed values** from Serial Monitor
+2. Type `i` in serial monitor and press Enter
+3. Wait for calibration (~10 seconds)
+4. **Copy the printed `#define` lines**
 
-**Method B: In-Flight Trigger**
+Example output:
 
-1. Aircraft flat and level
-2. **Disarm** (CH5 low)
-3. **Throttle minimum**
-4. **Hold CH6 MID** (middle position) for 3 seconds
-5. Calibration runs
-6. Copy values
-
-**Output example:**
 ```
-=== CALIBRATION RESULTS ===
-IMU_ACC_ERROR_X 0.012345
-IMU_ACC_ERROR_Y -0.008765
-IMU_ACC_ERROR_Z 0.023456
-IMU_GYRO_ERROR_X 0.456789
-IMU_GYRO_ERROR_Y -0.234567
-IMU_GYRO_ERROR_Z 0.123456
+#define IMU_ACC_ERROR_X 0.012345f
+#define IMU_ACC_ERROR_Y -0.008765f
+#define IMU_ACC_ERROR_Z 0.023456f
+#define IMU_GYRO_ERROR_X 0.456789f
+#define IMU_GYRO_ERROR_Y -0.234567f
+#define IMU_GYRO_ERROR_Z 0.123456f
 ```
 
-**Paste these into `include/config.h`:**
-```cpp
-#define IMU_ACC_ERROR_X 0.012345
-#define IMU_ACC_ERROR_Y -0.008765
-// ... etc
+### Run Radio Calibration (Optional)
+
+If your channel mapping is non-standard:
+
+1. Type `r` in serial monitor
+2. Follow the prompts to move sticks
+3. Copy the output to config.h
+
+### Apply Calibration
+
+1. **Paste** values into `include/config.h`
+2. **Save** config.h
+3. **Flash live build:**
+
+```bash
+pio run -e teensy40 -t upload
 ```
-
-**Re-upload code.**
-
-📖 **Manual calibration:** See [CALIBRATION_GUIDE.md](./CALIBRATION_GUIDE.md)
 
 ---
 
-### Step 9: Verify IMU Data
+## Part 4: Ground Testing (10 minutes)
 
-**In `src/main.cpp`, uncomment:**
-```cpp
-printGyroData();
-printAccelData();
-printRollPitchYaw();
-```
+### PROPS OFF!
 
-**Re-upload and check Serial Monitor:**
-
-```
-GyroX:0.05 GyroY:-0.12 GyroZ:0.03     ← Should be near 0 when still
-AccX:0.01 AccY:0.00 AccZ:1.01         ← AccZ ≈ 1.0 when level
-roll:0.0 pitch:0.0 yaw:0.0            ← Angles near 0 when level
-```
-
-**✅ Tilt aircraft 45°:** Roll/pitch should show ~45°.
-
----
-
-## 🛠️ Part 4: Ground Testing (10 minutes)
-
-### Step 10: Test Arming System
-
-**⚠️ PROPS OFF! ⚠️**
+### Test Arming System
 
 **Arming conditions:**
-1. Throttle stick LOW (<1050μs)
-2. CH5 switch LOW (throttle cut OFF)
 
-**Test sequence:**
-1. Comment out all `print` functions in `main.cpp`
-2. Re-upload
-3. Open Serial Monitor
-4. Lower throttle stick
-5. CH5 switch to LOW position
-6. Watch Serial Monitor: **"*** ARMED ***"**
-7. LED blinks 3x rapidly
-8. Raise throttle slightly → motors should try to spin (no props!)
-9. CH5 switch to HIGH → **"*** DISARMED ***"** → motors stop
+- Throttle stick LOW (<1050us)
+- CH5 switch LOW
 
-**✅ Verify:** Instant motor stop when disarmed.
+**Test:**
 
----
+1. Lower throttle stick
+2. CH5 switch to LOW position → "ARMED"
+3. CH5 switch to HIGH → "DISARMED"
 
-### Step 11: Motor Direction Test
+### Test Motor Direction (No Props!)
 
-**⚠️ STILL NO PROPS! ⚠️**
-
-**Standard quadcopter X configuration:**
 ```
     Front
      ↑
@@ -238,142 +180,70 @@ roll:0.0 pitch:0.0 yaw:0.0            ← Angles near 0 when level
   4     3    ← CW   CCW
 ```
 
-**Test:**
 1. Arm system
 2. Slowly raise throttle to 30%
-3. **Watch motor rotation** (no props, just feel with finger on shaft)
-4. **Match diagram above** - swap wires if wrong
-
-**✅ All 4 motors spinning correct direction.**
+3. Verify motor rotation matches diagram
+4. Swap wires if wrong
 
 ---
 
-## 🎯 Part 5: First Flight (5 minutes)
+## Part 5: First Flight (5 minutes)
 
-### Step 12: Pre-Flight Checklist
+### Pre-Flight Checklist
 
-- [ ] All calibrations complete
+- [ ] Calibrations complete
 - [ ] Arming/disarming tested
 - [ ] Motor directions correct
-- [ ] **Props installed** (correct direction!)
+- [ ] Props installed (correct direction!)
 - [ ] Battery charged
-- [ ] Clear, open area (10m x 10m minimum)
+- [ ] Clear, open area
 - [ ] No wind (<5 mph)
-- [ ] Spotter/safety observer
 
----
+### Hover Test
 
-### Step 13: Hover Test
+1. Place aircraft on ground
+2. Arm (throttle low + CH5 low)
+3. Slowly raise throttle to 40-50%
+4. Lift 15cm, hold 5 seconds
+5. Land gently
+6. Disarm (CH5 high)
 
-1. **Place aircraft on ground** in open area
-2. **Arm system** (throttle low + CH5 low)
-3. **Slowly raise throttle** to 40-50%
-4. **Aircraft lifts 15cm off ground**
-5. **Hold for 5 seconds** - watch for oscillations
-6. **Gently lower throttle** - land softly
-7. **Disarm** (CH5 high)
+**Success criteria:**
 
-**✅ Success criteria:**
-- Stable hover (no wild oscillations)
+- Stable hover
 - Responds to stick inputs
 - Lands gently
 
 ---
 
-### Step 14: First Flight
-
-**If hover test passed:**
-
-1. Repeat hover at 30cm altitude
-2. Try gentle **roll left/right** (small inputs!)
-3. Try gentle **pitch forward/back**
-4. Try gentle **yaw left/right**
-5. Fly around small area (3m x 3m)
-6. Land when battery low (~30% remaining)
-
-**🎉 Congratulations! You're flying!**
-
----
-
-## 📊 Expected Performance
-
-**With default PID gains:**
-- Hover: Stable, minor drift acceptable
-- Response: Moderate speed
-- Oscillations: None or very minor
-
-**If oscillations occur:** See PID tuning section below.
-
----
-
-## 🔧 Quick PID Tuning (if needed)
-
-**Symptoms → Solutions:**
+## Quick Troubleshooting
 
 | Problem | Solution |
 |---------|----------|
-| Sluggish response | Increase `KP_ROLL_RATE` and `KP_PITCH_RATE` by 0.02 |
-| Fast oscillation (5-10Hz) | Decrease `KP` by 20% |
-| Slow wobble (<1Hz) | Decrease `KI` by 50% |
-| Overshoots and bounces | Increase `KD` by 0.0001 |
-
-**Edit in `include/config.h`, re-upload, test again.**
-
-📖 **Full PID tuning:** See [PID_TUNING_GUIDE.md](./PID_TUNING_GUIDE.md)
+| Receiver not responding | Check SBUS wiring, verify TX in SBUS mode, re-bind |
+| IMU data noisy | Re-run calibration, keep perfectly still |
+| Motors won't arm | Throttle below 1050, CH5 low |
+| Aircraft flips on takeoff | Check motor/prop directions |
+| Serial commands not working | Flash calibration build, not live |
 
 ---
 
-## ❓ Quick Troubleshooting
+## Build Commands Reference
 
-### Receiver not responding
-- Check SBUS wiring (Pin 21)
-- Verify transmitter is in SBUS mode
-- Re-bind receiver
-
-### IMU data noisy/drifting
-- Re-run auto-calibration (board must be perfectly still)
-- Check MPU6050 is secure (no vibration)
-- Verify 3.3V power supply is stable
-
-### Motors won't arm
-- Check throttle is below 1050μs
-- Check CH5 is low (<1500μs)
-- Check Serial Monitor for error messages
-
-### Aircraft flips on takeoff
-- Check motor directions match diagram
-- Check propeller directions match motors
-- Re-check PID gains (may be too high)
-
-📖 **Full troubleshooting:** See [TROUBLESHOOTING.md](./TROUBLESHOOTING.md)
+| Command | Purpose |
+|---------|---------|
+| `pio run -e teensy40` | Build live firmware |
+| `pio run -e teensy40 -t upload` | Upload live firmware |
+| `pio run -e teensy40_calibration` | Build calibration firmware |
+| `pio run -e teensy40_calibration -t upload` | Upload calibration firmware |
+| `pio device monitor` | Open serial monitor |
 
 ---
 
-## 🎓 Next Steps
+## Next Steps
 
-After successful first flight:
+1. [Calibration Guide](2_calibration_guide.md) — Detailed calibration procedures
+2. [Hardware Setup](1_hardware_setup.md) — Detailed wiring diagrams
+3. [Troubleshooting](3_troubleshooting.md) — Problem solving
 
-1. **Tune PID gains** for better performance
-2. **Test different flight modes** (rate vs angle)
-3. **Add failsafe testing**
-4. **Optimize filter coefficients**
-5. **Advanced maneuvers**
-
-**📚 Recommended reading order:**
-1. [HARDWARE_SETUP.md](./HARDWARE_SETUP.md) - Detailed wiring
-2. [CALIBRATION_GUIDE.md](./CALIBRATION_GUIDE.md) - Advanced calibration
-3. [PID_TUNING_GUIDE.md](./PID_TUNING_GUIDE.md) - Performance tuning
-4. [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) - Problem solving
-
----
-
-## ⚠️ Safety Reminders
-
-- ✅ **ALWAYS remove props** for ground testing
-- ✅ **NEVER fly indoors** (first flight)
-- ✅ **ALWAYS have spotter** watching aircraft
-- ✅ **ALWAYS test arming/disarming** before flight
-- ✅ **ALWAYS check battery voltage** before flight
-- ✅ **NEVER fly near people/animals**
-
-**Happy flying! 🚁**
+**Happy flying!**

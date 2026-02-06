@@ -5,6 +5,7 @@
     <link rel="stylesheet" href="styles.css" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>fc_tool</title>
+    <script src="/lib/chart.min.js"></script>
     <script type="module" src="/main.js" defer></script>
   </head>
 
@@ -14,19 +15,74 @@
       <p class="subtitle">floppi Flight Controller Tool</p>
 
       <section id="serial-section">
-        <h2>Serial Ports</h2>
-        <button id="scan-btn" type="button">Scan Ports</button>
-        <div id="ports-list"></div>
+        <h2>Connection</h2>
+        <div class="connection-controls">
+          <div class="control-row">
+            <label for="port-select">Port:</label>
+            <select id="port-select" disabled>
+              <option value="">-- Scan for ports --</option>
+            </select>
+            <button id="scan-btn" type="button">Scan</button>
+          </div>
+          <div class="control-row">
+            <label for="baud-select">Baud:</label>
+            <select id="baud-select">
+              <option value="9600">9600</option>
+              <option value="19200">19200</option>
+              <option value="38400">38400</option>
+              <option value="57600">57600</option>
+              <option value="115200" selected>115200</option>
+              <option value="230400">230400</option>
+              <option value="460800">460800</option>
+              <option value="921600">921600</option>
+            </select>
+            <button id="connect-btn" type="button" disabled>Connect</button>
+          </div>
+        </div>
+        <div id="connection-status" class="status-disconnected">Disconnected</div>
       </section>
 
       <section id="monitor-section">
         <h2>Serial Monitor</h2>
-        <p class="placeholder">Connect to a serial port to begin monitoring.</p>
+        <div id="terminal-container">
+          <div id="terminal-output"></div>
+          <div class="terminal-input-row">
+            <input type="text" id="terminal-input" placeholder="Enter command..." disabled />
+            <button id="send-btn" type="button" disabled>Send</button>
+            <label class="checkbox-label">
+              <input type="checkbox" id="newline-checkbox" checked />
+              +LF
+            </label>
+          </div>
+        </div>
+        <div class="terminal-controls">
+          <button id="clear-btn" type="button">Clear</button>
+          <label class="checkbox-label">
+            <input type="checkbox" id="autoscroll-checkbox" checked />
+            Auto-scroll
+          </label>
+        </div>
       </section>
 
       <section id="imu-section">
         <h2>IMU Data</h2>
-        <p class="placeholder">IMU visualization will appear here when telemetry data is received.</p>
+        <div class="imu-controls">
+          <label class="checkbox-label">
+            <input type="checkbox" id="imu-enabled-checkbox" checked />
+            Parse IMU data
+          </label>
+          <span class="imu-status" id="imu-status">Waiting for data...</span>
+        </div>
+        <div class="chart-grid">
+          <div class="chart-container">
+            <h3>Accelerometer (g)</h3>
+            <canvas id="accel-chart"></canvas>
+          </div>
+          <div class="chart-container">
+            <h3>Gyroscope (°/s)</h3>
+            <canvas id="gyro-chart"></canvas>
+          </div>
+        </div>
       </section>
     </main>
   </body>

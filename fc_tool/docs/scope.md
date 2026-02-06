@@ -78,49 +78,25 @@ fc_tool does **not** bundle Python or PlatformIO in its compiled binary. The bin
 
 Tauri apps use the OS-native webview (WebKit on Linux, WebView2 on Windows, WKWebView on macOS). You cannot cross-compile from Linux to Windows/macOS because the native webview SDK and system libraries are platform-specific.
 
-### The solution: CI/CD builds on each platform
+### The solution: Local builds on each platform
 
-```
-┌─────────────────────────────────────────────────────────┐
-│  GitHub Actions CI                                      │
-│                                                         │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐              │
-│  │ Linux    │  │ Windows  │  │ macOS    │              │
-│  │ runner   │  │ runner   │  │ runner   │              │
-│  │          │  │          │  │          │              │
-│  │ .deb     │  │ .msi     │  │ .dmg     │              │
-│  │ .AppImage│  │ .exe     │  │ .app     │              │
-│  │ .rpm     │  │          │  │          │              │
-│  └──────────┘  └──────────┘  └──────────┘              │
-│                      │                                  │
-│               GitHub Releases                           │
-│            (pre-built binaries)                          │
-└─────────────────────────────────────────────────────────┘
-```
+Each platform has its own build scripts in `dev_setup/<platform>/`. To build for a platform, clone the repo on that platform and run the scripts.
 
 | Platform | Output format | How |
 |----------|---------------|-----|
-| Linux | `.deb`, `.rpm`, `.AppImage` | Build natively or on Linux CI runner |
-| Windows | `.msi`, `.exe` installer | Build on Windows CI runner (GitHub Actions has these) |
-| macOS | `.dmg`, `.app` bundle | Build on macOS CI runner (GitHub Actions has these) |
+| Linux | `.deb`, `.rpm`, `.AppImage` | Run `dev_setup/linux/build.sh` |
+| Windows | `.msi`, `.exe` installer | Run `dev_setup/windows/build.bat` |
+| macOS | `.dmg`, `.app` bundle | Run `dev_setup/macos/build.sh` |
 
 ### Target platforms (priority order)
 
-1. **Windows** — primary end-user platform
-2. **macOS** — primary end-user platform
-3. **Linux** — development platform, also supported for end users
+1. **Linux** — primary development platform
+2. **Windows** — end-user platform
+3. **macOS** — end-user platform (lowest priority)
 
-### Development workflow vs release workflow
+### Development workflow
 
-There are two separate workflows, each with a clear purpose:
-
-**Local development (fast iteration, bug fixing):**
-
-Clone the repo on the target platform, run the setup scripts, and build locally. Each platform has its own scripts in `dev_setup/<platform>/`. This is for:
-- Day-to-day development on Linux
-- Fixing platform-specific bugs on Windows or macOS
-- Testing GUI behavior on each OS
-- Quick compile-run-test cycles
+Clone the repo on the target platform, run the setup scripts, and build locally:
 
 ```
 dev_setup/
@@ -137,31 +113,6 @@ dev_setup/
     ├── setup-dev.sh             # Rust, Node.js (once)
     └── build.sh                 # compile or dev mode
 ```
-
-**Automated releases (publishing binaries for users):**
-
-Manually triggered GitHub Actions workflow (`.github/workflows/fc_tool-release.yml`). This is for:
-- Publishing tagged releases with pre-built binaries for all platforms
-- Letting users download from GitHub Releases without building anything
-- Triggered manually from the GitHub Actions UI (never on push)
-
-```
-You click "Run workflow" > enter version tag (e.g. v0.1.0) >
-CI builds on Linux + Windows + macOS runners >
-Binaries uploaded to GitHub Releases page >
-Users download the installer for their platform
-```
-
-### Release process
-
-1. Develop and test on Linux (primary dev machine)
-2. When ready to release: optionally test on Windows/macOS locally by cloning and running `dev_setup/<platform>/` scripts
-3. Go to GitHub > Actions > "fc_tool Release Build" > Run workflow
-4. Enter version tag (e.g. `v0.1.0`), choose whether to mark as pre-release
-5. CI builds all three platforms, creates a GitHub Release with binaries
-6. Users download `.msi` (Windows), `.dmg` (macOS), `.deb`/`.AppImage` (Linux)
-
-**The workflow is manual-only.** It never triggers on push or merge. You decide when a release happens.
 
 ## Installation Conventions
 
@@ -228,7 +179,6 @@ Scripts for unvalidated platforms include `# TODO: UNTESTED` comments at the top
 - [ ] Cross-platform: Windows, macOS, Linux
 - [ ] Single executable distribution (no runtime dependencies for core features)
 - [ ] Offline-first operation (no internet required)
-- [ ] GitHub Actions CI for multi-platform builds
 
 ### Resource Requirements
 
@@ -245,7 +195,6 @@ Scripts for unvalidated platforms include `# TODO: UNTESTED` comments at the top
 | No paid services | Open-source project | No |
 | Serial monitoring is standalone | Must not depend on PlatformIO for serial | No |
 | PlatformIO for compile/flash | Existing build system for flight_controller firmware | No |
-| CI for cross-platform builds | Cannot cross-compile Tauri from Linux | No |
 | [ASSUMED] Teensy-first, ESP32 later | ESP32 firmware not yet compiled in flight_controller | Yes |
 
 ## Assumptions
@@ -269,7 +218,6 @@ Scripts for unvalidated platforms include `# TODO: UNTESTED` comments at the top
 - Calibration parameter viewing
 - Connection management (port selection, baud rate)
 - Data logging and export
-- GitHub Actions CI for Windows/macOS/Linux builds
 
 ### Out of Scope (Exclusions)
 
@@ -277,7 +225,7 @@ Scripts for unvalidated platforms include `# TODO: UNTESTED` comments at the top
 - This project will NOT provide OTA/WiFi firmware updates (that belongs to flight computer phase)
 - This project will NOT be a full ground control station (GCS) — no mission planning, no maps
 - This project will NOT bundle PlatformIO or Python — users install separately
-- This project will NOT cross-compile from Linux to other platforms — CI handles this
+- This project will NOT cross-compile from Linux to other platforms — build on each platform locally
 - 3D attitude visualization is a future enhancement, not MVP
 - ESP32 support is deferred until firmware is compiled for it
 
@@ -289,7 +237,7 @@ Scripts for unvalidated platforms include `# TODO: UNTESTED` comments at the top
 | GUI Framework | Tauri | Web frontend + Rust backend, small binaries, OS webview | 2026-01-27 |
 | Serial Library | serialport-rs | Most mature cross-platform serial in Rust. Standalone, no Python. | 2026-01-27 |
 | Build Integration | PlatformIO CLI (optional) | Existing build system for flight_controller. Not bundled. | 2026-01-27 |
-| Cross-platform builds | GitHub Actions CI | Cannot cross-compile Tauri; CI builds natively on each OS | 2026-01-27 |
+| Cross-platform builds | Local builds per platform | Cannot cross-compile Tauri; build natively on each OS | 2026-01-27 |
 | Serial monitoring | Standalone (not PlatformIO) | Avoids Python dependency for core features | 2026-01-27 |
 
 ## Integration Points
@@ -301,7 +249,6 @@ Scripts for unvalidated platforms include `# TODO: UNTESTED` comments at the top
   - See [flight_controller/docs/findings/auto-calibration-research.md](/flight_controller/docs/findings/auto-calibration-research.md) for calibration approach research
 - **PlatformIO CLI** — called by fc_tool for build/upload operations (optional)
 - **Serial telemetry protocol** — TBD, will be co-designed between firmware and fc_tool. The firmware currently uses debug `Serial.print()` output; a structured protocol is needed for reliable parsing
-- **GitHub Actions** — CI/CD for multi-platform binary releases
 
 ## Open Questions
 
@@ -309,13 +256,12 @@ Scripts for unvalidated platforms include `# TODO: UNTESTED` comments at the top
 - [ ] Should fc_tool edit platformio.ini or calibration header files directly for parameter changes?
 - [ ] What baud rate will be standard for telemetry? (115200 default assumed)
 - [ ] Should fc_tool support multiple simultaneous serial connections?
-- [ ] GitHub Actions workflow: trigger on tags only, or on every push to main?
 
 ## Critical Notes
 
 - The serial telemetry protocol is a shared contract between firmware and fc_tool — changes to one affect the other
 - PlatformIO is optional. fc_tool must be fully usable for monitoring without it.
-- Cross-platform builds depend on GitHub Actions CI. Local development builds are Linux-only.
+- Cross-platform builds require building locally on each platform.
 
 ---
 

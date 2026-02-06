@@ -8,12 +8,7 @@
 
 #include <Arduino.h>
 
-// Forward declarations of functions defined elsewhere
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-// Functions from main.cpp
+// Forward declarations of functions defined elsewhere (C++ linkage)
 void getIMUdata();
 void getCommands();
 
@@ -21,9 +16,9 @@ void getCommands();
 extern unsigned long channel_1_pwm, channel_2_pwm, channel_3_pwm;
 extern unsigned long channel_4_pwm, channel_5_pwm, channel_6_pwm;
 
-#ifdef __cplusplus
-}
-#endif
+// External IMU data variables from main.cpp
+extern float AccX, AccY, AccZ;
+extern float GyroX, GyroY, GyroZ;
 
 // ======================================================================
 // HELPER FUNCTIONS
@@ -103,6 +98,24 @@ void calibrateIMU();
  */
 void printIMUCalibrationResults(float AccErrorX, float AccErrorY, float AccErrorZ,
                                 float GyroErrorX, float GyroErrorY, float GyroErrorZ);
+
+// ======================================================================
+// 6-POSITION ACCELEROMETER CALIBRATION
+// ======================================================================
+
+/**
+ * 6-position accelerometer calibration
+ * Measures gravity in 6 orientations to calculate both offset
+ * and scale factor for each axis. More accurate than single-position.
+ */
+void calibrateIMU6Position();
+
+/**
+ * Print 6-position calibration results with copy-paste ready code
+ */
+void print6PositionCalibrationResults(float AccOffsetX, float AccOffsetY, float AccOffsetZ,
+                                       float AccScaleX, float AccScaleY, float AccScaleZ,
+                                       float GyroErrorX, float GyroErrorY, float GyroErrorZ);
 
 // ======================================================================
 // IMU ORIENTATION DETECTION

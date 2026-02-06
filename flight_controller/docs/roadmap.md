@@ -1,6 +1,6 @@
 # Flight Controller Firmware - Roadmap
 
-> Last updated: 2026-02-05
+> Last updated: 2026-02-06
 
 ## Overview
 
@@ -66,9 +66,9 @@ This roadmap tracks project-level features and milestones for the flight control
   - Completed: Pre-2026
   - Notes: 3-position test (level, nose-up, right-up) in lib/Calibration/calibration.cpp. Generates axis transformation code.
   - Related findings: [auto-calibration-research.md](findings/auto-calibration-research.md)
-- [ ] Multi-position accelerometer calibration
-  - Description: 6-position calibration for more accurate accel offset and scale factors
-  - Dependencies: Basic IMU calibration working
+- [x] Multi-position accelerometer calibration
+  - Completed: 2026-02-06
+  - Notes: 6-position calibration for offset + scale factor. Serial command 'm'. Outputs 9 defines to config.h.
 
 - [x] Calibration value export workflow
   - Completed: 2026-02-05
@@ -150,8 +150,12 @@ This roadmap tracks project-level features and milestones for the flight control
 - [x] config.h for all user-configurable settings
 - [x] pin_definitions.h for hardware abstraction
 - [x] Library organization (SBUS, MPU6050, RadioComm, Calibration, etc.)
-- [ ] Serial command interface for calibration mode
-  - Description: Accept commands over serial to trigger calibration routines, adjust values
+- [x] Modular source code architecture
+  - Completed: 2026-02-06
+  - Notes: Split main.cpp into imu.cpp, control.cpp, motors.cpp, debug.cpp + globals.h
+- [x] Serial command interface for calibration mode
+  - Completed: 2026-02-06
+  - Notes: Commands r/i/o/s/h for radio, IMU, orientation, status, help
 - [ ] fc_tool integration protocol
   - Description: Define serial protocol for fc_tool to read telemetry and send commands
   - Related: See fc_tool docs at /fc_tool/docs/
@@ -210,6 +214,9 @@ This roadmap tracks project-level features and milestones for the flight control
 - [x] Calibration output format fix (config.h `#define` format) — 2026-02-05
 - [x] Calibration paths unified (CH6 → calibration.cpp) — 2026-02-05
 - [x] Live mode (no calibration overhead in default build) — 2026-02-05
+- [x] Serial command interface for calibration — 2026-02-06
+- [x] Modular source code architecture — 2026-02-06
+- [x] 6-position accelerometer calibration — 2026-02-06
 
 ---
 
