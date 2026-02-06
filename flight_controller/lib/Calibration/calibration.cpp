@@ -59,11 +59,12 @@ int detectMovedChannel(uint16_t neutral1, uint16_t current1,
                       uint16_t neutral4, uint16_t current4,
                       uint16_t neutral5, uint16_t current5,
                       uint16_t neutral6, uint16_t current6,
-                      int exclude1, int exclude2, int exclude3) {
+                      int exclude1, int exclude2, int exclude3,
+                      int exclude4, int exclude5) {
     // Find channel with largest change from neutral
     int maxDelta = 0;
     int maxChannel = -1;
-    
+
     int deltas[6];
     deltas[0] = abs((int)current1 - (int)neutral1);
     deltas[1] = abs((int)current2 - (int)neutral2);
@@ -71,16 +72,17 @@ int detectMovedChannel(uint16_t neutral1, uint16_t current1,
     deltas[3] = abs((int)current4 - (int)neutral4);
     deltas[4] = abs((int)current5 - (int)neutral5);
     deltas[5] = abs((int)current6 - (int)neutral6);
-    
+
     for (int i = 0; i < 6; i++) {
-        if (i == exclude1 || i == exclude2 || i == exclude3) continue;
-        
+        if (i == exclude1 || i == exclude2 || i == exclude3 ||
+            i == exclude4 || i == exclude5) continue;
+
         if (deltas[i] > maxDelta && deltas[i] > 100) {  // Threshold: 100us change
             maxDelta = deltas[i];
             maxChannel = i;
         }
     }
-    
+
     return maxChannel;
 }
 
@@ -120,7 +122,6 @@ void calibrateRadio() {
     // Storage for channel data
     struct ChannelData {
         uint16_t min, max, center, neutral;
-        String physicalControl;
     };
     ChannelData channels[6];
     
@@ -181,8 +182,6 @@ void calibrateRadio() {
     Serial.print(F("✓ Throttle detected on CH")); Serial.println(throttleChannel + 1);
     uint16_t throttle_min = getChannelValue(throttleChannel);
     channels[throttleChannel].min = throttle_min;
-    channels[throttleChannel].physicalControl = "Throttle";
-    
     Serial.println(F("\n▶ Now move throttle to MAXIMUM (full up)"));
     Serial.println(F("▶ Hold for 2 seconds..."));
     
@@ -241,8 +240,6 @@ void calibrateRadio() {
     channels[rollChannel].min = min(roll_left, roll_right);
     channels[rollChannel].max = max(roll_left, roll_right);
     channels[rollChannel].center = channels[rollChannel].neutral;
-    channels[rollChannel].physicalControl = "Roll";
-    
     Serial.print(F("✓ Roll range: ")); 
     Serial.print(channels[rollChannel].min); 
     Serial.print(F(" to ")); 
@@ -290,8 +287,6 @@ void calibrateRadio() {
     channels[pitchChannel].min = min(pitch_fwd, pitch_back);
     channels[pitchChannel].max = max(pitch_fwd, pitch_back);
     channels[pitchChannel].center = channels[pitchChannel].neutral;
-    channels[pitchChannel].physicalControl = "Pitch";
-    
     Serial.print(F("✓ Pitch range: ")); 
     Serial.print(channels[pitchChannel].min); 
     Serial.print(F(" to ")); 
@@ -339,8 +334,6 @@ void calibrateRadio() {
     channels[yawChannel].min = min(yaw_left, yaw_right);
     channels[yawChannel].max = max(yaw_left, yaw_right);
     channels[yawChannel].center = channels[yawChannel].neutral;
-    channels[yawChannel].physicalControl = "Yaw";
-    
     Serial.print(F("✓ Yaw range: ")); 
     Serial.print(channels[yawChannel].min); 
     Serial.print(F(" to ")); 
@@ -367,7 +360,7 @@ void calibrateRadio() {
         channels[3].neutral, channel_4_pwm,
         channels[4].neutral, channel_5_pwm,
         channels[5].neutral, channel_6_pwm,
-        throttleChannel, rollChannel, pitchChannel
+        throttleChannel, rollChannel, pitchChannel, yawChannel
     );
     
     // If no aux1 detected, skip
@@ -389,7 +382,6 @@ void calibrateRadio() {
         channels[aux1Channel].min = min(aux1_low, aux1_high);
         channels[aux1Channel].max = max(aux1_low, aux1_high);
         channels[aux1Channel].center = (aux1_low + aux1_high) / 2;
-        channels[aux1Channel].physicalControl = "Aux1";
         
         Serial.print(F("✓ AUX1 range: ")); 
         Serial.print(channels[aux1Channel].min); 
@@ -413,12 +405,11 @@ void calibrateRadio() {
                 channels[3].neutral, channel_4_pwm,
                 channels[4].neutral, channel_5_pwm,
                 channels[5].neutral, channel_6_pwm,
-                throttleChannel, rollChannel, pitchChannel
+                throttleChannel, rollChannel, pitchChannel, yawChannel, aux1Channel
             );
-            
-            if (aux2Channel != -1 && aux2Channel != aux1Channel) {
+
+            if (aux2Channel != -1) {
                 Serial.print(F("✓ AUX2 detected on CH")); Serial.println(aux2Channel + 1);
-                channels[aux2Channel].physicalControl = "Aux2";
             } else {
                 Serial.println(F("⚠️  No AUX2 detected"));
                 aux2Channel = 5; // Default to CH6

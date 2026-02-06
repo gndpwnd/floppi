@@ -80,54 +80,41 @@ loop() {
 
 Clean, tight, no calibration branching.
 
-### config.h Guards
+### Calibration Trigger (CH6 Switch)
 
-The `RUN_*` calibration program flags only take effect in calibration builds:
+Calibration routines are triggered via the CH6 3-position switch (hold for 3 seconds, throttle must be low, not armed):
 
-```c
-#ifdef CALIBRATION_MODE
-//#define RUN_RADIO_CALIBRATION
-//#define RUN_IMU_CALIBRATION
-//#define RUN_IMU_ORIENTATION
-#endif
-```
+| CH6 Position | Action |
+|---|---|
+| LOW (<1200us) | Normal flight mode |
+| MID (1200-1800us) | `calibrateIMU()` — IMU offset calibration with quality checks |
+| HIGH (>1800us) | `calibrateIMUWithOrientation()` — IMU cal + 3-position orientation detection |
 
-This prevents accidentally leaving a calibration flag uncommented in a live build.
+Radio calibration (`calibrateRadio()`) currently has no CH6 trigger — it's interactive and needs a serial command mechanism (TBD).
 
-### Unify Calibration Paths
+### Calibration Output Format
 
-Currently there are two overlapping IMU calibration implementations:
-1. `runAccelGyroCalibration()` in main.cpp — simple, no quality checks
-2. `calibrateIMU()` in lib/Calibration/calibration.cpp — advanced, with stability validation and quality checks
-
-**Plan:** Make the CH6-triggered calibration call the calibration.cpp versions:
-- CH6 mid (1200-1800) → `calibrateIMU()` from calibration.cpp
-- CH6 high (>1800) → `calibrateIMUWithOrientation()` from calibration.cpp
-
-Remove the duplicate simple versions from main.cpp.
-
-### Fix Calibration Output Format
-
-`printIMUCalibrationResults()` in calibration.cpp currently prints:
-```
-float AccErrorX = 0.123456;
-```
-
-Must be changed to match config.h format:
+All calibration print functions output config.h-compatible `#define` format:
 ```
 #define IMU_ACC_ERROR_X 0.123456f
 ```
 
-Same fix needed for `printRadioCalibrationResults()` — output should match the `#define` format in config.h exactly.
+### Dead Code Removed
+
+Old duplicate calibration functions removed from main.cpp:
+- `runAccelGyroCalibration()`, `runAttitudeCalibration()`, `runRadioCalibration()`
+- `calculate_IMU_error()`, `calibrateAttitude()`
+- `RUN_*` config flags (no longer needed — CH6 triggers directly)
 
 ## Files Changed
 
 | File | Change |
 |------|--------|
 | `platformio.ini` | Add `_calibration` environments using `extends` |
-| `include/config.h` | Wrap `RUN_*` flags in `#ifdef CALIBRATION_MODE` |
-| `src/main.cpp` | Add `#ifdef CALIBRATION_MODE` guards around calibration blocks, remove duplicate calibration functions |
-| `lib/Calibration/calibration.cpp` | Fix output format in print functions to match config.h `#define` syntax |
+| `include/config.h` | CH6 trigger documentation, removed `RUN_*` flags |
+| `src/main.cpp` | `#ifdef CALIBRATION_MODE` guards, dead code removed, CH6 state machine calls calibration.cpp directly |
+| `lib/Calibration/calibration.cpp` | Output format fixed to config.h `#define` syntax, AUX detection bug fixed |
+| `include/calibration.h` | `detectMovedChannel` updated to support 5 exclude channels |
 
 ## What Does NOT Change
 

@@ -7,19 +7,18 @@
 #define CONFIG_H
 
 //=============================================================================
-// CALIBRATION PROGRAMS
+// CALIBRATION MODE
 //=============================================================================
-// These only take effect in calibration builds:
-//   pio run -e teensy40_calibration
+// Calibration is triggered via CH6 switch in calibration builds:
+//   pio run -e teensy40_calibration --target upload
 //
-// Uncomment ONE at a time, flash calibration build, follow serial instructions.
-// After calibration: copy values to config.h, then flash live build.
+// CH6 positions (hold 3 seconds to trigger):
+//   LOW  (<1200us):  Normal flight mode
+//   MID  (1200-1800us): IMU offset calibration
+//   HIGH (>1800us): IMU calibration + orientation detection
 //
-#ifdef CALIBRATION_MODE
-//#define RUN_RADIO_CALIBRATION       // Step-by-step radio calibration with auto-detection
-//#define RUN_IMU_CALIBRATION         // Basic IMU offset calibration
-//#define RUN_IMU_ORIENTATION         // IMU calibration + orientation auto-detection
-#endif
+// Radio calibration: TBD (serial command trigger)
+//
 
 //=============================================================================
 // IMU SENSOR SELECTION

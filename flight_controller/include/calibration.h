@@ -49,7 +49,8 @@ int detectMovedChannel(uint16_t neutral1, uint16_t current1,
                       uint16_t neutral4, uint16_t current4,
                       uint16_t neutral5, uint16_t current5,
                       uint16_t neutral6, uint16_t current6,
-                      int exclude1 = -1, int exclude2 = -1, int exclude3 = -1);
+                      int exclude1 = -1, int exclude2 = -1, int exclude3 = -1,
+                      int exclude4 = -1, int exclude5 = -1);
 
 /**
  * Get current PWM value for a specific channel

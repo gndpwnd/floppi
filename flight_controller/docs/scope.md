@@ -27,11 +27,11 @@ Open-source VTOL flight controller firmware for Teensy microcontrollers, based o
 - [x] Automatic IMU calibration via CH6 switch
 - [x] Arming/disarming safety system
 - [x] Failsafe on signal loss
-- [ ] Firmware state machine: setup/calibration mode vs live mode
-- [ ] Auto-calibration that outputs values for hard-coding into live firmware
+- [x] Firmware state machine: setup/calibration mode vs live mode
+- [x] Auto-calibration that outputs values for hard-coding into live firmware
 - [ ] Support for multiple VTOL configurations (quad X, hex, fixed-wing, tiltrotor)
-- [ ] Radio channel auto-mapping and calibration
-- [ ] IMU orientation auto-detection
+- [x] Radio channel auto-mapping and calibration
+- [x] IMU orientation auto-detection
 - [ ] PID auto-tuning or guided tuning workflow
 
 ### Technical Requirements
@@ -39,10 +39,10 @@ Open-source VTOL flight controller firmware for Teensy microcontrollers, based o
 - [x] PlatformIO build system with multi-board support
 - [x] Teensy 4.0/4.1 as primary platform (ARM Cortex-M7 @ 600MHz)
 - [x] 2000Hz control loop rate
-- [ ] All calibration values hard-coded in live builds (no runtime configuration files)
-- [ ] Calibration mode: mutable offsets for testing and value determination
-- [ ] Clean separation between calibration/debug code and live flight code
-- [ ] Build targets for different firmware states (calibration vs live)
+- [x] All calibration values hard-coded in live builds (no runtime configuration files)
+- [x] Calibration mode: mutable offsets for testing and value determination
+- [x] Clean separation between calibration/debug code and live flight code
+- [x] Build targets for different firmware states (calibration vs live)
 
 ### Resource Requirements
 

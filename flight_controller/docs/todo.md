@@ -18,8 +18,8 @@ _Tasks waiting on something (include reason)_
 
 _Priority queue for immediate work_
 
-- [ ] Remove dead calibration functions from main.cpp (runAccelGyroCalibration, runAttitudeCalibration, runRadioCalibration, calculate_IMU_error, calibrateAttitude) — these are superseded by calibration.cpp but still exist behind CALIBRATION_MODE guards
-- [ ] Review and improve radio calibration workflow
+- [ ] Add radio calibration trigger mechanism — currently `calibrateRadio()` has no CH6 trigger (all 3 positions are used by IMU cal). Needs serial command trigger or startup sequence.
+- [ ] Update old user guides (0_quickstart.md through 3_troubleshooting.md) — reference removed `RUN_*` flags and old workflow. Rewrite when calibration system is tested on hardware.
 
 ## Backlog
 
@@ -53,6 +53,14 @@ _For context; clear periodically_
 - [x] Calibration paths unified — 2026-02-05
   - CH6 switch and calibration state machine now call calibration.cpp routines directly (calibrateIMU, calibrateIMUWithOrientation, calibrateRadio)
   - Old simple functions guarded as dead code (removal pending)
+- [x] Dead calibration code removed from main.cpp — 2026-02-05
+  - Removed: runAccelGyroCalibration, runAttitudeCalibration, runRadioCalibration, calculate_IMU_error, calibrateAttitude
+  - Removed: RUN_* config flags (now dead since CH6 triggers directly)
+  - ~194 lines of dead code eliminated
+- [x] Radio calibration bug fixes — 2026-02-05
+  - Fixed: AUX1/AUX2 detection now excludes yaw channel (was missing)
+  - Fixed: Removed `String` type from ChannelData struct (heap fragmentation risk on Teensy)
+  - Fixed: detectMovedChannel expanded to support 5 exclude channels
 
 ---
 
