@@ -4,18 +4,25 @@
 
 ## In Progress
 
-- [ ] Test serial monitor with hardware (verify connect/send/receive works)
-
-## Blocked
-
-- [ ] Define serial telemetry protocol — **Blocked by**: flight_controller firmware needs a structured output format (currently uses ad-hoc Serial.print() debug output). Can start with raw serial display in the meantime.
+- [ ] Review [plotter_discussion.md](plotter_discussion.md) and finalize feature decisions (NEXT SESSION)
 
 ## Up Next
 
+- [ ] Implement enhanced serial plotter with dynamic multi-graph support
+- [ ] Toggle between Monitor and Plotter views (button to show/hide plotter)
+- [ ] Parse `name@plotId:value` format for multi-graph assignment
+- [ ] Dynamic plot creation (sparse IDs: 1,3,11 → 3 plots)
 - [ ] Test with real Teensy hardware (serial + IMU plots)
 - [ ] Validate Windows build on real Windows machine
 
 ## Backlog (Post-v0.1)
+
+### Enhanced Plotter Features
+
+- [ ] Plot Y-axis auto-scaling per plot
+- [ ] Plot labels and legends
+- [ ] Color assignment per variable
+- [ ] Configurable time window per plot
 
 ### Serial Features
 
@@ -73,6 +80,13 @@
 
 ## Recently Completed
 
+- [x] Serial telemetry protocol defined and implemented — 2026-02-06
+  - Protocol documented in [features/serial-telemetry-protocol.md](features/serial-telemetry-protocol.md)
+  - Firmware support added: `t` command toggles telemetry mode (off/IMU/full)
+  - Format: `ax=X ay=Y az=Z gx=X gy=Y gz=Z` (key-value, fc_tool parser compatible)
+- [x] Board identification by VID/PID (Teensy, Arduino, ESP32) — 2026-02-06
+- [x] Serial monitor tested with Teensy hardware — 2026-02-06
+- [x] Board VID/PID reference document created — 2026-02-06
 - [x] IMU visualization with Chart.js (accelerometer + gyroscope plots) — 2026-02-06
 - [x] Telemetry parser (JSON, key-value, CSV formats supported) — 2026-02-06
 - [x] Real-time scrolling charts with 100-sample window — 2026-02-06
@@ -95,7 +109,7 @@
 
 ## Notes
 
-- Serial telemetry protocol TBD — start with raw serial monitor, add structured parsing later
+- Serial telemetry protocol DONE — firmware supports `t` command for fc_tool-compatible output
 - PlatformIO is optional; fc_tool must work standalone for serial monitoring
 - The flight_controller project has a calibration workflow (calibrate → hard-code → flash → fly) — fc_tool should support this
 - See [flight_controller/docs/findings/auto-calibration-research.md](/flight_controller/docs/findings/auto-calibration-research.md) for calibration approach

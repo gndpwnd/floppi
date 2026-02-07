@@ -28,6 +28,38 @@ impl Default for SerialState {
 pub struct SerialPortInfo {
     pub name: String,
     pub port_type: String,
+    pub board_name: Option<String>,
+}
+
+/// Identify board by USB VID/PID
+fn identify_board(vid: u16, pid: u16) -> Option<&'static str> {
+    match (vid, pid) {
+        // Teensy (PJRC)
+        (0x16C0, 0x0483) => Some("Teensy"),
+        (0x16C0, 0x0478) => Some("Teensy (bootloader)"),
+
+        // Arduino Official
+        (0x2341, 0x0043) => Some("Arduino Uno"),
+        (0x2341, 0x0042) => Some("Arduino Mega 2560"),
+        (0x2341, 0x8036) => Some("Arduino Leonardo"),
+        (0x2341, 0x8037) => Some("Arduino Micro"),
+        (0x2341, 0x003D) => Some("Arduino Due (Prog)"),
+        (0x2341, 0x003E) => Some("Arduino Due (Native)"),
+        (0x2341, 0x0069) => Some("Arduino Uno R4 Minima"),
+        (0x2341, 0x1002) => Some("Arduino Uno R4 WiFi"),
+
+        // ESP32 Native USB
+        (0x303A, 0x0002) => Some("ESP32-S2"),
+        (0x303A, 0x1001) => Some("ESP32-S3/C3"),
+
+        // Common USB-Serial chips (used by ESP32 DevKits, clones)
+        (0x10C4, 0xEA60) => Some("CP2102 (ESP32/generic)"),
+        (0x1A86, 0x7523) => Some("CH340 (clone/ESP32)"),
+        (0x0403, 0x6001) => Some("FTDI FT232R"),
+        (0x067B, 0x2303) => Some("PL2303"),
+
+        _ => None,
+    }
 }
 
 #[derive(Clone, Serialize)]
@@ -52,25 +84,34 @@ fn list_serial_ports() -> Result<Vec<SerialPortInfo>, String> {
     Ok(ports
         .into_iter()
         .map(|p| {
-            let port_type = match &p.port_type {
+            let (port_type, board_name) = match &p.port_type {
                 serialport::SerialPortType::UsbPort(info) => {
-                    format!(
-                        "USB (VID:{:04x} PID:{:04x}{})",
-                        info.vid,
-                        info.pid,
-                        info.product
-                            .as_deref()
-                            .map(|s| format!(" - {}", s))
-                            .unwrap_or_default()
-                    )
+                    let board = identify_board(info.vid, info.pid);
+                    let type_str = if board.is_some() {
+                        // Simplified display when board is identified
+                        format!("{:04X}:{:04X}", info.vid, info.pid)
+                    } else {
+                        // Show product name for unknown devices
+                        format!(
+                            "{:04X}:{:04X}{}",
+                            info.vid,
+                            info.pid,
+                            info.product
+                                .as_deref()
+                                .map(|s| format!(" ({})", s))
+                                .unwrap_or_default()
+                        )
+                    };
+                    (type_str, board.map(|s| s.to_string()))
                 }
-                serialport::SerialPortType::BluetoothPort => "Bluetooth".to_string(),
-                serialport::SerialPortType::PciPort => "PCI".to_string(),
-                serialport::SerialPortType::Unknown => "Unknown".to_string(),
+                serialport::SerialPortType::BluetoothPort => ("Bluetooth".to_string(), None),
+                serialport::SerialPortType::PciPort => ("PCI".to_string(), None),
+                serialport::SerialPortType::Unknown => ("Unknown".to_string(), None),
             };
             SerialPortInfo {
                 name: p.port_name,
                 port_type,
+                board_name,
             }
         })
         .collect())

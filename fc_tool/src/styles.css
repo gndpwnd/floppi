@@ -147,13 +147,15 @@ button:active {
 }
 
 #terminal-output {
-  height: 300px;
+  height: 400px;  /* 33% taller than 300px */
   overflow-y: auto;
   padding: 10px;
   font-size: 0.85em;
   line-height: 1.4;
   white-space: pre-wrap;
   word-break: break-all;
+  user-select: text;  /* Enable text selection for copy */
+  cursor: text;
 }
 
 #terminal-output .rx {

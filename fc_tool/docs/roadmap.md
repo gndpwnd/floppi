@@ -67,6 +67,35 @@ This roadmap tracks project-level features and milestones. For immediate tasks, 
 - [ ] Data export
   - Description: Export captured sensor data to CSV
 
+### Enhanced Serial Plotter
+
+> **IMPORTANT**: See [plotter_discussion.md](plotter_discussion.md) for feature discussion and open questions.
+
+**Core features:**
+
+- [ ] Toggle between Monitor and Plotter views
+  - Description: Serial Monitor shows first; "Show Plotter" button reveals charts
+- [ ] Dynamic multi-graph support
+  - Description: Variables can be assigned to different plots using `name@plotId:value` format
+  - Reference: [multi-graph-plotter-research.md](findings/multi-graph-plotter-research.md)
+- [ ] Sparse plot IDs
+  - Description: Only create plots for referenced IDs (e.g., 1,3,11 → 3 plots, not 11)
+- [ ] Variable-to-plot assignment
+  - Description: `temp@1:25.5 humidity@2:65` assigns temp to plot #1, humidity to plot #2
+- [ ] Backward-compatible with Arduino Serial Plotter
+  - Description: Plain `name:value` format works (default plot)
+
+**Oscilloscope-style features (pending discussion):**
+
+- [ ] Pause/freeze mode — stop display while buffering data
+- [ ] Mouse hover values — show X/Y coordinates at cursor
+- [ ] Measurement cursors — X1/X2, Y1/Y2 marker pairs with delta display
+- [ ] Zoom buttons — [+] [-] buttons in corner, reset to fit
+- [ ] Auto-scaling axes — handle different ranges, log scale option
+- [ ] Time window modes — scrolling vs expanding vs fixed
+
+Reference: [chartjs-oscilloscope-research.md](findings/chartjs-oscilloscope-research.md)
+
 ### PlatformIO Integration
 
 - [ ] Detect PlatformIO installation
@@ -95,12 +124,35 @@ This roadmap tracks project-level features and milestones. For immediate tasks, 
 
 ### Board Management
 
-- [ ] Teensy 4.0/4.1 detection
-  - Description: Identify Teensy boards by USB VID/PID
-- [ ] ESP32 detection (future)
-  - Description: Add when flight_controller ESP32 build is ready
-- [ ] Board info display
-  - Description: Show connected board type, port, status
+- [x] Teensy 4.0/4.1 detection
+  - Description: Identify Teensy boards by USB VID/PID (0x16C0:0x0483)
+  - Reference: [board-vid-pid-reference.md](findings/board-vid-pid-reference.md)
+  - Implementation: `identify_board()` in lib.rs maps VID/PID to friendly name
+- [x] Arduino detection
+  - Description: Identify Arduino boards by VID/PID (0x2341:*)
+  - Implementation: Uno, Mega, Leonardo, Micro, Due, R4 all recognized
+- [x] ESP32 detection
+  - Description: Identify ESP32 boards (CP2102: 0x10C4:0xEA60, CH340: 0x1A86:0x7523, native: 0x303A:*)
+  - Implementation: CP2102, CH340, FTDI, ESP32-S2/S3/C3 native all recognized
+- [x] Board info display
+  - Description: Show connected board type, port, status in dropdown
+  - Implementation: Port dropdown shows "portname — BoardName" format
+- [ ] USB hot-plug detection
+  - Description: Detect device connect/disconnect without manual refresh
+  - Notes: Use libudev on Linux, IOKit on macOS, WMI/SetupAPI on Windows
+- [ ] Port activity monitoring
+  - Description: Show which ports have active data (activity indicator)
+  - Notes: Helps users identify which port their device is on
+
+### Multi-Device Support
+
+- [ ] Multiple simultaneous connections
+  - Description: Open multiple serial monitor windows, one per device
+  - Implementation: Tauri multi-window or tabbed interface
+- [ ] Device session persistence
+  - Description: Remember port/baud settings per device by serial number
+- [ ] Device-specific UI state
+  - Description: Each connection has its own terminal, charts, and settings
 
 ---
 
@@ -137,7 +189,6 @@ Each build script sources the required env vars before compiling.
 
 - [ ] 3D attitude visualization (orientation cube/model using WebGL)
 - [ ] Dark mode / theme support
-- [ ] Multiple simultaneous serial connections
 - [ ] Plugin system for custom telemetry parsers
 - [ ] Auto-update mechanism (fetch new firmware versions from GitHub releases)
 

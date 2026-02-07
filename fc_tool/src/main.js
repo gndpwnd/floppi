@@ -261,7 +261,13 @@ async function scanPorts() {
     ports.forEach((p) => {
       const option = document.createElement("option");
       option.value = p.name;
-      option.textContent = `${p.name} - ${p.port_type}`;
+      // Show: port — BoardName — VID:PID (for known boards)
+      // Or: port — VID:PID (product) (for unknown boards)
+      if (p.board_name) {
+        option.textContent = `${p.name} — ${p.board_name} — ${p.port_type}`;
+      } else {
+        option.textContent = `${p.name} — ${p.port_type}`;
+      }
       portSelect.appendChild(option);
     });
 
