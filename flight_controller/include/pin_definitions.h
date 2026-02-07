@@ -83,6 +83,16 @@
 #define PWM_CH6_PIN  16  // Channel 6 (Aux2)
 
 //========================================================================================================================//
+//                                              OLED DISPLAY (Software I2C)                                              //
+//========================================================================================================================//
+// Dedicated pins for OLED to avoid I2C bus contention with IMU.
+// Default: pins 16/17 (free when not using PWM receiver).
+// Change these if your receiver uses PWM mode.
+
+#define OLED_SDA_PIN 16  // Software I2C SDA for OLED
+#define OLED_SCL_PIN 17  // Software I2C SCL for OLED
+
+//========================================================================================================================//
 //                                              STATUS LED                                                                //
 //========================================================================================================================//
 

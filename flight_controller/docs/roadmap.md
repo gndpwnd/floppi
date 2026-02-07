@@ -1,6 +1,6 @@
 # Flight Controller Firmware - Roadmap
 
-> Last updated: 2026-02-06
+> Last updated: 2026-02-07
 
 ## Overview
 
@@ -189,6 +189,11 @@ This roadmap tracks project-level features and milestones for the flight control
 - [ ] Rate limiting and expo curves for control inputs
   - Description: Smoother control response for different skill levels
 
+- [ ] WiFi AP mode fallback
+  - Description: ESP32 creates its own WiFi access point for field use when no infrastructure WiFi is available. Each drone has its own AP (e.g., Floppi-AABBCC). Useful for single-drone field testing.
+  - Notes: Archived code available in [docs/archive/wifi_ap_mode_implementation.md](../docs/archive/wifi_ap_mode_implementation.md)
+  - Dependencies: WiFi STA mode (done)
+
 ---
 
 ## Future Platform Features
@@ -203,27 +208,10 @@ This roadmap tracks project-level features and milestones for the flight control
   - Environments: esp32, esp32_calibration, esp32s3, esp32s3_calibration
   - Related findings: [esp32-fc-feasibility.md](findings/esp32-fc-feasibility.md)
 
-- [ ] Dual-core architecture
-  - Description: Pin FC to Core 0, WiFi/comms to Core 1 for deterministic timing
-  - Dependencies: ESP32 port
+- [x] Dual-core architecture
+  - Completed: 2026-02-07
+  - Notes: FC on Core 0 (FreeRTOS task, priority 3), Display+WiFi on Core 1 (Arduino loop). xQueueOverwrite for data transfer.
   - Related findings: [esp32-dual-core-research.md](findings/esp32-dual-core-research.md)
-
-- [ ] WiFi AP mode for configuration
-  - Description: ESP32 creates WiFi access point for wireless configuration/telemetry
-  - Dependencies: Dual-core architecture
-
-- [ ] HTTP REST API for commands
-  - Description: RESTful API for sending commands and reading state (<50ms latency target)
-  - Dependencies: WiFi AP mode
-  - Related findings: [fc-timing-requirements.md](findings/fc-timing-requirements.md)
-
-- [ ] WebSocket for real-time telemetry
-  - Description: Stream attitude, motor values at 10-50Hz for monitoring apps
-  - Dependencies: WiFi AP mode
-
-- [ ] OTA firmware updates
-  - Description: Update firmware over WiFi without USB connection
-  - Dependencies: WiFi integration stable
 
 ### Universal Firmware Goal
 
@@ -238,26 +226,58 @@ This roadmap tracks project-level features and milestones for the flight control
 
 ### OLED Display Integration
 
-- [ ] OLED display support (SSD1306)
-  - Description: Small I2C OLED for showing calibration status, WiFi info, flight status
-  - Library: U8g2
-  - Related findings: [oled-display-options.md](findings/oled-display-options.md)
+- [x] Display module abstraction layer
+  - Completed: 2026-02-07
+  - Description: Compile-time display selection via build flags. U8g2 library with SW I2C to avoid IMU bus contention. Producer-consumer pattern: flight code writes DisplayData_t struct, display module renders.
+  - Library: U8g2 (supports SSD1306 128x32, SSD1306 128x64, SH1106 128x64)
+  - Files: display.h, display_data.h, display.cpp
+  - Related findings: [display-module-architecture.md](findings/display-module-architecture.md), [oled-display-options.md](findings/oled-display-options.md)
 
-- [ ] Calibration mode display
-  - Description: Show current calibration step, progress bar, values
-  - Dependencies: OLED display support
+- [x] ESP32 dual-core architecture
+  - Completed: 2026-02-07
+  - Description: Core 0 runs flight control (FreeRTOS task, priority 3). Core 1 runs display + WiFi (Arduino loop). Queue-based data transfer via xQueueOverwrite.
+  - Related findings: [esp32-dual-core-research.md](findings/esp32-dual-core-research.md)
 
-- [ ] WiFi info display (ESP32)
-  - Description: Show SSID, IP address, MAC on OLED
-  - Dependencies: OLED + WiFi integration
+- [x] ESP32 network info display
+  - Completed: 2026-02-07
+  - Description: Show MAC address, SSID, IP address, RSSI on OLED. Core 1 populates network fields in DisplayData_t.
+  - Dependencies: Display module + WiFi STA mode
 
-- [ ] Live status display
-  - Description: Show armed status, battery voltage (if sensor), connection status
-  - Dependencies: OLED display support
+- [ ] Calibration mode display enhancement
+  - Description: Progress bar, step indicators, calibration results on OLED. Same behavior on Teensy and ESP32.
+  - Dependencies: Display module (done), hardware testing
+
+- [ ] Live flight status display
+  - Description: Show armed status, attitude, motor outputs. Screen rotation for multiple views.
+  - Dependencies: Display module (done) + flight validation
+
+### ESP32 WiFi Integration
+
+> **Architecture**: Drones connect to existing WiFi infrastructure (STA mode). This enables swarm coordination — multiple drones on the same network making API requests to centralized computers. No web servers on individual drones (at least not as primary architecture).
+
+- [x] WiFi STA mode (connect to existing WiFi)
+  - Completed: 2026-02-07
+  - Description: ESP32 connects to existing WiFi network. Supports WPA2-Personal and WPA2-Enterprise (eduroam/university via PEAP). Credentials in gitignored wifi_credentials.h. Non-blocking connection with background reconnection.
+  - Related findings: [esp32-wifi-connectivity.md](findings/esp32-wifi-connectivity.md)
+  - Reference code: ~/GravityProbe/esp32_enterprise_wpa3_eap/, esp32_ewpa2_iic_091/
+
+- [ ] API client for swarm coordination
+  - Description: HTTP POST/GET requests from ESP32 to centralized servers on the same network. Report telemetry, receive commands.
+  - Dependencies: WiFi STA mode (done)
+
+- [ ] Web status server
+  - Description: ESPAsyncWebServer on Core 1. Serve DisplayData_t as JSON. mDNS for `http://floppi.local`. WebSocket for real-time telemetry to fc_tool.
+  - Dependencies: WiFi STA mode (done)
+  - Related findings: [esp32-wifi-connectivity.md](findings/esp32-wifi-connectivity.md)
+
+- [ ] OTA firmware updates
+  - Description: Update firmware over WiFi without USB connection
+  - Dependencies: WiFi STA mode (done)
 
 ### Notes on Future Features
 
-- **Multi-drone coordination is OUT OF SCOPE** for flight_controller firmware
+- **Swarm vision**: Multiple drones on the same WiFi network, API client pattern to centralized computers
+- **Multi-drone coordination is OUT OF SCOPE** for flight_controller firmware — handled by external systems
 - **WiFi API enables** external coordination systems (fc_tool, swarm managers)
 - **Target latency**: <100ms for commands, ideally <50ms
 - **Design philosophy**: Keep FC firmware simple, let external tools handle complexity
@@ -290,6 +310,12 @@ This roadmap tracks project-level features and milestones for the flight control
 - [x] Live mode (no calibration overhead in default build) — 2026-02-05
 - [x] Serial command interface for calibration — 2026-02-06
 - [x] Modular source code architecture — 2026-02-06
+- [x] Display module architecture research — 2026-02-07
+- [x] ESP32 WiFi connectivity research — 2026-02-07
+- [x] Display module abstraction layer (U8g2 + SW I2C) — 2026-02-07
+- [x] ESP32 dual-core architecture (Core 0 FC, Core 1 display+WiFi) — 2026-02-07
+- [x] WiFi STA mode (connect to existing WiFi, WPA2-Personal + Enterprise) — 2026-02-07
+- [x] ESP32 network info display (MAC, SSID, IP, RSSI on OLED) — 2026-02-07
 - [x] 6-position accelerometer calibration — 2026-02-06
 
 ---

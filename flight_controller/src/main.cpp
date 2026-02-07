@@ -4,6 +4,10 @@
  *
  * Original by Nicholas Rehm (dRehmFlight)
  * PlatformIO port with modular refactoring
+ *
+ * Architecture:
+ *   Teensy: Single-core. Flight control + display in main loop.
+ *   ESP32:  Dual-core. Core 0 = flight control, Core 1 = display + WiFi.
  */
 
 #include <Arduino.h>
@@ -20,6 +24,21 @@
 #ifdef CALIBRATION_MODE
 #include "calibration.h"
 #include "debug.h"
+#endif
+
+#ifdef USE_OLED_DISPLAY
+#include "display.h"
+#endif
+
+#if defined(USE_ESP32) && defined(USE_WIFI)
+#include "wifi_config.h"
+#endif
+
+// ESP32 FreeRTOS for dual-core support
+#ifdef USE_ESP32
+#include "display_data.h"
+static TaskHandle_t flightControlTaskHandle = NULL;
+static QueueHandle_t displayQueue = NULL;
 #endif
 
 //========================================================================================================================//
@@ -92,11 +111,113 @@ int telemetry_mode = 0;  // 0=off, 1=IMU, 2=full
 //========================================================================================================================//
 
 void setupBlink(int num_blinks, int blink_delay);
+void flightControlTick();
+void updateStatusLED();
 
 #ifdef CALIBRATION_MODE
 void checkCalibrationMode();
 void checkSerialCommands();
+void runCalibrationIfRequested();
 #endif
+
+//========================================================================================================================//
+//                                           FLIGHT CONTROL TICK                                                           //
+//========================================================================================================================//
+// One iteration of the flight control loop.
+// Called from loop() on Teensy, or from Core 0 task on ESP32.
+
+void flightControlTick() {
+    // Keep track of time
+    prev_time = current_time;
+    current_time = micros();
+    dt = (current_time - prev_time) / 1000000.0;
+
+    #ifdef CALIBRATION_MODE
+    checkCalibrationMode();
+    checkSerialCommands();
+    #endif
+
+    // Core flight controller (skip if calibration in progress)
+    #ifdef CALIBRATION_MODE
+    if (!calibration_in_progress) {
+    #endif
+        getCommands();
+        failSafe();
+        getIMUdata();
+
+        // Attitude estimation with Madgwick filter
+        #ifdef USE_MPU6050
+            Madgwick6DOF(GyroX, -GyroY, -GyroZ, -AccX, AccY, AccZ, dt);
+        #elif defined(USE_MPU9250)
+            Madgwick(GyroX, -GyroY, -GyroZ, -AccX, AccY, AccZ, MagY, -MagX, MagZ, dt);
+        #endif
+
+        getDesState();
+        armedStatus();
+
+        if (armedFly) {
+            #ifdef USE_RATE_CONTROLLER
+                controlRATE();
+            #elif defined(USE_ANGLE_CONTROLLER)
+                controlANGLE();
+            #endif
+            controlMixer();
+        } else {
+            roll_PID = 0;
+            pitch_PID = 0;
+            yaw_PID = 0;
+            m1_command_scaled = 0;
+            m2_command_scaled = 0;
+            m3_command_scaled = 0;
+            m4_command_scaled = 0;
+            m5_command_scaled = 0;
+            m6_command_scaled = 0;
+        }
+
+        scaleCommands();
+        throttleCut();
+        commandMotors();
+
+    #ifdef CALIBRATION_MODE
+    }
+
+    runCalibrationIfRequested();
+
+    // fc_tool telemetry output (toggle with 't' command)
+    if (telemetry_mode == 1) {
+        printIMUTelemetry();
+    } else if (telemetry_mode == 2) {
+        printFullTelemetry();
+    }
+    #endif
+
+    updateStatusLED();
+    loopRate(LOOP_FREQUENCY_HZ);
+}
+
+//========================================================================================================================//
+//                                           ESP32 DUAL-CORE SUPPORT                                                      //
+//========================================================================================================================//
+
+#ifdef USE_ESP32
+
+// Core 0: Flight control task (high priority, real-time)
+void flightControlTask(void* parameter) {
+    for (;;) {
+        flightControlTick();
+
+        // Push display data to Core 1 via queue (non-blocking)
+        #ifdef USE_OLED_DISPLAY
+        if (displayQueue != NULL) {
+            DisplayData_t data;
+            populateDisplayData(&data);
+            xQueueOverwrite(displayQueue, &data);
+        }
+        #endif
+    }
+}
+
+#endif // USE_ESP32
 
 //========================================================================================================================//
 //                                                      SETUP                                                              //
@@ -108,16 +229,30 @@ void setup() {
 
     Serial.println(F("\n\n========================================"));
     Serial.println(F("  dRehmFlight VTOL Flight Controller"));
+    #ifdef USE_ESP32
+    Serial.println(F("  ESP32 Dual-Core Architecture"));
+    #else
     Serial.println(F("  Modular Architecture"));
+    #endif
     Serial.println(F("========================================\n"));
 
     // LED setup
     pinMode(LED_PIN, OUTPUT);
     digitalWrite(LED_PIN, HIGH);
 
+    // Setup OLED display (early, for startup feedback)
+    #ifdef USE_OLED_DISPLAY
+    setupDisplay();
+    displayStartupMessage("IMU init...");
+    #endif
+
     // Setup IMU
     Serial.print(F("IMU: "));
     setupIMU();
+
+    #ifdef USE_OLED_DISPLAY
+    displayStartupMessage("Radio init...");
+    #endif
 
     // Setup radio
     Serial.print(F("Radio: "));
@@ -127,7 +262,6 @@ void setup() {
     getCommands();
 
     #ifdef CALIBRATION_MODE
-    // Check if CH6 is high on startup (trigger manual calibration)
     if (channel_6_pwm > 1800) {
         Serial.println(F("\nManual calibration triggered on startup!"));
         Serial.println(F("Keep board FLAT and STILL!"));
@@ -136,10 +270,12 @@ void setup() {
     }
     #endif
 
+    #ifdef USE_OLED_DISPLAY
+    displayStartupMessage("Motors init...");
+    #endif
+
     // Setup motors and servos
     setupMotors();
-
-    // Arm ESCs
     armMotors();
 
     Serial.println(F("\n========================================"));
@@ -160,10 +296,43 @@ void setup() {
     Serial.println(F("  High: IMU + Orientation"));
     #endif
 
-    // Final setup blink
     setupBlink(3, 160);
 
+    //------------------------------------------------------------------
+    // ESP32: Start dual-core architecture
+    //------------------------------------------------------------------
+    #ifdef USE_ESP32
+    // Create display data queue (depth 1, always latest data)
+    #ifdef USE_OLED_DISPLAY
+    displayQueue = xQueueCreate(1, sizeof(DisplayData_t));
+    #endif
+
+    // Start WiFi on Core 1 (before spawning Core 0 task)
+    #ifdef USE_WIFI
+    setupWiFi();
+    #endif
+
+    #ifdef USE_OLED_DISPLAY
+    displayStartupMessage("Starting FC...");
+    #endif
+
+    // Spawn flight control on Core 0 (high priority)
+    xTaskCreatePinnedToCore(
+        flightControlTask,
+        "FlightCtrl",
+        4096,
+        NULL,
+        3,                        // Priority 3 (high)
+        &flightControlTaskHandle,
+        0                         // Core 0
+    );
+
+    Serial.println(F("[ESP32] Flight control on Core 0"));
+    Serial.println(F("[ESP32] Display + WiFi on Core 1"));
+    #else
+    // Teensy: single-core, loop() handles everything
     delay(1000);
+    #endif
 }
 
 //========================================================================================================================//
@@ -171,80 +340,67 @@ void setup() {
 //========================================================================================================================//
 
 void loop() {
-    // Keep track of time
-    prev_time = current_time;
-    current_time = micros();
-    dt = (current_time - prev_time) / 1000000.0;
+    #ifndef USE_ESP32
+    //------------------------------------------------------------------
+    // TEENSY: Single-core - flight control + display in main loop
+    //------------------------------------------------------------------
+    flightControlTick();
 
-    #ifdef CALIBRATION_MODE
-    // Check for calibration mode
-    checkCalibrationMode();
-    checkSerialCommands();
-    #endif
-
-    // Core flight controller (skip if calibration in progress)
-    #ifdef CALIBRATION_MODE
-    if (!calibration_in_progress) {
-    #endif
-        // Get radio commands
-        getCommands();
-
-        // Check failsafe
-        failSafe();
-
-        // Get IMU data
-        getIMUdata();
-
-        // Attitude estimation with Madgwick filter
-        #ifdef USE_MPU6050
-            Madgwick6DOF(GyroX, -GyroY, -GyroZ, -AccX, AccY, AccZ, dt);
-        #elif defined(USE_MPU9250)
-            Madgwick(GyroX, -GyroY, -GyroZ, -AccX, AccY, AccZ, MagY, -MagX, MagZ, dt);
-        #endif
-
-        // Get desired state from radio
-        getDesState();
-
-        // Check arming status
-        armedStatus();
-
-        // Run flight controller if armed
-        if (armedFly) {
-            #ifdef USE_RATE_CONTROLLER
-                controlRATE();
-            #elif defined(USE_ANGLE_CONTROLLER)
-                controlANGLE();
-            #endif
-
-            // Mix control outputs
-            controlMixer();
-        } else {
-            // Not armed - zero PID outputs
-            roll_PID = 0;
-            pitch_PID = 0;
-            yaw_PID = 0;
-
-            m1_command_scaled = 0;
-            m2_command_scaled = 0;
-            m3_command_scaled = 0;
-            m4_command_scaled = 0;
-            m5_command_scaled = 0;
-            m6_command_scaled = 0;
-        }
-
-        // Scale commands to PWM
-        scaleCommands();
-
-        // Apply throttle cut
-        throttleCut();
-
-        // Send commands to motors and servos
-        commandMotors();
-
-    #ifdef CALIBRATION_MODE
+    // Rate-limited OLED display update (10Hz)
+    #ifdef USE_OLED_DISPLAY
+    static unsigned long display_timer = 0;
+    if (current_time - display_timer > 100000) {
+        display_timer = current_time;
+        DisplayData_t displayData;
+        populateDisplayData(&displayData);
+        renderDisplay(&displayData);
     }
+    #endif
 
-    // Run calibration if mode is selected
+    #else
+    //------------------------------------------------------------------
+    // ESP32: Core 1 - display + WiFi (flight control is on Core 0)
+    //------------------------------------------------------------------
+
+    // Receive latest flight data from Core 0
+    #ifdef USE_OLED_DISPLAY
+    static DisplayData_t displayData = {};
+    static unsigned long display_timer = 0;
+
+    // Non-blocking receive (don't wait if no new data)
+    xQueueReceive(displayQueue, &displayData, pdMS_TO_TICKS(5));
+
+    // Add network info (Core 1 owns WiFi data)
+    #ifdef USE_WIFI
+    populateNetworkData(&displayData);
+    #endif
+
+    // Render at 10Hz
+    unsigned long now = millis();
+    if (now - display_timer > 100) {
+        display_timer = now;
+        renderDisplay(&displayData);
+    }
+    #endif // USE_OLED_DISPLAY
+
+    // WiFi task handling
+    #ifdef USE_WIFI
+    handleWiFi();
+    #endif
+
+    // Yield to other tasks (don't spin Core 1 at 100%)
+    vTaskDelay(pdMS_TO_TICKS(10));
+
+    #endif // USE_ESP32
+}
+
+//========================================================================================================================//
+//                                              CALIBRATION FUNCTIONS                                                      //
+//========================================================================================================================//
+
+#ifdef CALIBRATION_MODE
+
+void runCalibrationIfRequested() {
     if (calibration_mode != CALIB_NONE && !calibration_in_progress) {
         calibration_in_progress = true;
         calibration_start_time = millis();
@@ -282,7 +438,6 @@ void loop() {
         Serial.println(F("=== CALIBRATION COMPLETE ==="));
         Serial.println(F("Returning to normal mode...\n"));
 
-        // Blink LED to indicate calibration complete
         for (int i = 0; i < 5; i++) {
             digitalWrite(LED_PIN, HIGH);
             delay(100);
@@ -290,67 +445,17 @@ void loop() {
             delay(100);
         }
     }
-
-    // Debug output (uncomment as needed)
-    //printRadioData();
-    //printDesiredState();
-    //printGyroData();
-    //printAccelData();
-    //printRollPitchYaw();
-    //printPIDoutput();
-    //printMotorCommands();
-    //printLoopRate();
-
-    // fc_tool telemetry output (toggle with 't' command)
-    if (telemetry_mode == 1) {
-        printIMUTelemetry();      // IMU data at 50Hz
-    } else if (telemetry_mode == 2) {
-        printFullTelemetry();     // Full telemetry at 20Hz
-    }
-    #endif
-
-    // Status LED
-    static unsigned long led_timer = 0;
-    #ifdef CALIBRATION_MODE
-    if (calibration_in_progress) {
-        // Fast blink during calibration
-        if (current_time - led_timer > 100000) {
-            led_timer = current_time;
-            digitalWrite(LED_PIN, !digitalRead(LED_PIN));
-        }
-    } else
-    #endif
-    if (armedFly) {
-        // Solid when armed
-        digitalWrite(LED_PIN, HIGH);
-    } else {
-        // Normal 1Hz blink
-        if (current_time - led_timer > 500000) {
-            led_timer = current_time;
-            digitalWrite(LED_PIN, !digitalRead(LED_PIN));
-        }
-    }
-
-    // Maintain loop rate
-    loopRate(LOOP_FREQUENCY_HZ);
 }
 
-//========================================================================================================================//
-//                                              CALIBRATION FUNCTIONS                                                      //
-//========================================================================================================================//
-
-#ifdef CALIBRATION_MODE
 void checkCalibrationMode() {
     static CalibrationMode last_mode = CALIB_NONE;
     static unsigned long mode_start_time = 0;
 
-    // Safety: Don't allow calibration if armed or throttle high
     if (armedFly || channel_3_pwm > 1050) {
         calibration_mode = CALIB_NONE;
         return;
     }
 
-    // Determine mode based on CH6 position
     CalibrationMode new_mode = CALIB_NONE;
 
     if (channel_6_pwm < 1200) {
@@ -361,21 +466,18 @@ void checkCalibrationMode() {
         new_mode = CALIB_ATTITUDE;
     }
 
-    // Check if mode has changed
     if (new_mode != last_mode) {
         last_mode = new_mode;
         mode_start_time = millis();
         return;
     }
 
-    // Check if we've held this position long enough
     if (new_mode != CALIB_NONE) {
         unsigned long hold_time = millis() - mode_start_time;
 
         if (hold_time >= 3000) {
             calibration_mode = new_mode;
 
-            // Visual feedback
             digitalWrite(LED_PIN, HIGH);
             delay(100);
             digitalWrite(LED_PIN, LOW);
@@ -388,7 +490,6 @@ void checkCalibrationMode() {
 }
 
 void checkSerialCommands() {
-    // Don't process commands during active calibration
     if (calibration_in_progress) {
         return;
     }
@@ -396,7 +497,6 @@ void checkSerialCommands() {
     if (Serial.available() > 0) {
         char cmd = Serial.read();
 
-        // Clear remaining characters
         while (Serial.available()) Serial.read();
 
         switch (cmd) {
@@ -438,7 +538,6 @@ void checkSerialCommands() {
 
             case 't':
             case 'T':
-                // Cycle through telemetry modes: off -> IMU -> full -> off
                 telemetry_mode = (telemetry_mode + 1) % 3;
                 if (telemetry_mode == 0) {
                     Serial.println(F("\n>>> Telemetry OFF"));
@@ -477,6 +576,26 @@ void checkSerialCommands() {
 //========================================================================================================================//
 //                                              HELPER FUNCTIONS                                                           //
 //========================================================================================================================//
+
+void updateStatusLED() {
+    static unsigned long led_timer = 0;
+    #ifdef CALIBRATION_MODE
+    if (calibration_in_progress) {
+        if (current_time - led_timer > 100000) {
+            led_timer = current_time;
+            digitalWrite(LED_PIN, !digitalRead(LED_PIN));
+        }
+    } else
+    #endif
+    if (armedFly) {
+        digitalWrite(LED_PIN, HIGH);
+    } else {
+        if (current_time - led_timer > 500000) {
+            led_timer = current_time;
+            digitalWrite(LED_PIN, !digitalRead(LED_PIN));
+        }
+    }
+}
 
 void setupBlink(int num_blinks, int blink_delay) {
     for (int i = 0; i < num_blinks; i++) {

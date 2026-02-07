@@ -1,10 +1,37 @@
 # Flight Controller Firmware - Todo
 
-> Last updated: 2026-02-06
+> Last updated: 2026-02-07
 
 ## In Progress
 
 _No tasks in progress_
+
+## Recently Implemented (2026-02-07)
+
+- [x] Display module abstraction layer
+  - Created display.h, display_data.h, display.cpp with U8g2 + SW I2C
+  - Compile-time display selection (SSD1306 128x32, 128x64, SH1106 128x64)
+  - Producer-consumer: DisplayData_t struct filled by flight control, rendered by display module
+  - Screens: startup, calibrating, idle, armed, network info
+  - See [findings/display-module-architecture.md](findings/display-module-architecture.md)
+
+- [x] ESP32 dual-core architecture
+  - Core 0: flight control (FreeRTOS task, priority 3, real-time)
+  - Core 1: display + WiFi (Arduino loop)
+  - Queue-based data transfer: xQueueOverwrite for Core 0 → Core 1
+  - Startup feedback on OLED during boot sequence
+
+- [x] WiFi STA mode (connect to existing WiFi)
+  - Architecture: drones connect to existing infrastructure WiFi, NOT create own AP
+  - Vision: swarm of drones on same network, API POST/GET to centralized computers
+  - Supports WPA2-Personal and WPA2-Enterprise (eduroam via PEAP)
+  - Credentials in gitignored wifi_credentials.h (template: wifi_credentials.h.example)
+  - Non-blocking connection with 15s timeout, background reconnection every 5s
+  - AP mode code archived to [docs/archive/wifi_ap_mode_implementation.md](archive/wifi_ap_mode_implementation.md)
+
+- [x] ESP32 network info display on OLED
+  - Shows MAC, SSID, IP address, RSSI on network screen
+  - Connection status feedback ("WiFi: Starting..." → connected info)
 
 ## Research Completed
 
@@ -40,6 +67,19 @@ _No tasks in progress_
   - Created docs/teensy_wiring.md with Mermaid diagrams and pin tables
   - Created docs/esp32_wiring.md with Mermaid diagrams and pin tables
   - Supports all receiver types: SBUS, iBUS, DSM, PPM, PWM
+- [x] Display module architecture research — 2026-02-07
+  - Reviewed GPS_OLED_091.ino reference code (U8g2, SSD1306 128x32, SW I2C)
+  - Reviewed GravityProbe ESP32 WiFi code (WPA2-Enterprise, OLED IP display)
+  - Researched display libraries: U8g2 recommended (single lib for SSD1306 + SH1106)
+  - Designed producer-consumer architecture: DisplayData_t struct + compile-time display selection
+  - SW I2C for OLED eliminates bus contention with IMU
+  - See [findings/display-module-architecture.md](findings/display-module-architecture.md)
+- [x] ESP32 WiFi connectivity research — 2026-02-07
+  - AP mode (default for field), STA mode, WPA2-Enterprise (eduroam)
+  - Captive portal / WiFiManager for credential entry
+  - ESPAsyncWebServer + WebSocket + mDNS for telemetry
+  - Reconnection strategies, power management, antenna options
+  - See [findings/esp32-wifi-connectivity.md](findings/esp32-wifi-connectivity.md)
 
 ## Blocked
 
@@ -54,6 +94,9 @@ _Tasks waiting on something (include reason)_
 _Priority queue for immediate work_
 
 - [ ] Hardware testing when hardware is available
+- [ ] API client for swarm coordination (HTTP POST/GET to centralized servers)
+- [ ] Web status server (ESPAsyncWebServer, JSON endpoint, mDNS, WebSocket)
+- [ ] Calibration display enhancement (progress bar, step indicators, results)
 
 ## Backlog
 

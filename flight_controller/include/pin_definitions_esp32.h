@@ -137,13 +137,21 @@
 #endif
 
 //========================================================================================================================//
-//                                              OLED DISPLAY (Optional)                                                   //
+//                                              OLED DISPLAY (Software I2C)                                              //
 //========================================================================================================================//
-// Uses same I2C bus as IMU by default
+// Dedicated pins for OLED to avoid I2C bus contention with IMU.
+// Default: GPIO 23/19 (free when not using PWM receiver, which is the common case).
+// Change these if your receiver uses PWM mode.
 
-#define OLED_SDA_PIN IMU_SDA_PIN
-#define OLED_SCL_PIN IMU_SCL_PIN
-#define OLED_I2C_ADDR 0x3C  // SSD1306 default address
+#define OLED_SDA_PIN 23  // Software I2C SDA for OLED
+#define OLED_SCL_PIN 19  // Software I2C SCL for OLED
+
+#ifdef USE_ESP32S3
+    #undef OLED_SDA_PIN
+    #undef OLED_SCL_PIN
+    #define OLED_SDA_PIN 3   // S3: Software I2C SDA
+    #define OLED_SCL_PIN 46  // S3: Software I2C SCL
+#endif
 
 //========================================================================================================================//
 //                                              WIRING NOTES                                                              //
