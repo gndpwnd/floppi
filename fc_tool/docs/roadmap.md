@@ -85,16 +85,48 @@ This roadmap tracks project-level features and milestones. For immediate tasks, 
 - [ ] Backward-compatible with Arduino Serial Plotter
   - Description: Plain `name:value` format works (default plot)
 
-**Oscilloscope-style features (pending discussion):**
+**Plot interaction & measurement (decisions captured):**
 
-- [ ] Pause/freeze mode — stop display while buffering data
-- [ ] Mouse hover values — show X/Y coordinates at cursor
-- [ ] Measurement cursors — X1/X2, Y1/Y2 marker pairs with delta display
-- [ ] Zoom buttons — [+] [-] buttons in corner, reset to fit
+- [ ] Passive hover crosshair — grey dotted X/Y lines follow mouse, readout panel below plot
+- [ ] Trigger Mode — place neon yellow vertical (Y-intercept) and neon blue horizontal (X-intercept) lines for measurement
+- [ ] Axis toggle — [Axis: ON/OFF] per plot; right-click switches Y-intercept/X-intercept mode
+- [ ] Measurement readout — dedicated panel showing mouse position + ΔX/ΔY between placed lines
+- [ ] Show data points toggle — small circles at actual data points on/off
+- [ ] Measurement cursors — 2 yellow verticals + 2 blue horizontals per plot, draggable AND input fields
+
+Reference: [cursor-interaction-discussion.md](cursor-interaction-discussion.md)
+
+**Plot controls & modes:**
+
+- [ ] Pause/freeze mode — stop collecting by default; "Keep recording when paused" toggle (global)
+- [ ] Scaling controls — [+] [-] both axes, independent X/Y controls, auto-fit toggle (ON by default)
 - [ ] Auto-scaling axes — handle different ranges, log scale option
-- [ ] Time window modes — scrolling vs expanding vs fixed
+- [ ] Per-plot mode selector — Continuous / Period Mode (N) / Single period / Frozen
+- [ ] Separate clear buttons — independent clear for plots vs serial monitor
+- [ ] Font size controls — [+] [-] for serial monitor text size
 
-Reference: [chartjs-oscilloscope-research.md](findings/chartjs-oscilloscope-research.md)
+Reference: [plotter_discussion.md](plotter_discussion.md)
+
+**Visual style (decided):**
+
+- [ ] Dark background plots — `#1a1a2e` or `#0d1117` with thin grey grid lines
+- [ ] Bright data line colors — lime, coral, cyan, orange, magenta, etc. (not all neon)
+- [ ] Solid origin axes — x=0 and y=0 as subtle solid lines
+- [ ] Neon yellow Y-intercepts, neon blue X-intercepts for trigger mode
+
+**Signal / pattern analysis (research in progress):**
+
+- [ ] Period Mode — detect repetitive data, show N periods "standing still"
+- [ ] Per-plot mode selection — each plot independently: continuous, period, single, frozen
+- [ ] Period detection algorithms — zero-crossing, autocorrelation, FFT
+- [ ] Anomaly detection overlay — track max/min/critical points, detect signal changes over time
+- [ ] Signal statistics readout — period, frequency, min, max, RMS below each plot
+
+Reference: [signal-analysis-discussion.md](signal-analysis-discussion.md)
+
+**Modular architecture (decided):**
+
+- [ ] Dedicated JS modules for plot analytics (chart-manager, cursor-system, readout-panel, period-detector, anomaly-tracker, trigger-mode, color-palette)
 
 ### PlatformIO Integration
 
