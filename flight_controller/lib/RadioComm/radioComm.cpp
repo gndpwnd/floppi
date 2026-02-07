@@ -177,11 +177,13 @@ void radioSetup() {
     #ifdef USE_SBUS_RECEIVER
         sbus.begin();
         Serial.println("SBUS receiver initialized");
-        Serial.print("  Port: Serial"); 
-        #if (SBUS_SERIAL_PORT == Serial5)
-            Serial.println("5 (RX pin 21)");
+        #ifdef USE_ESP32
+            Serial.println("  Port: Serial2 (ESP32)");
+            Serial.print("  RX Pin: "); Serial.println(SBUS_RX_PIN);
+        #elif (SBUS_SERIAL_PORT == Serial5)
+            Serial.println("  Port: Serial5 (RX pin 21)");
         #elif (SBUS_SERIAL_PORT == Serial3)
-            Serial.println("3 (RX pin 15)");
+            Serial.println("  Port: Serial3 (RX pin 15)");
         #endif
         Serial.println("  Baud: 100000, 8E2 (inverted)");
         Serial.println("  Channels: 16");

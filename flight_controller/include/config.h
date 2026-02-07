@@ -240,7 +240,14 @@
 //=============================================================================
 // Loop Rate
 //=============================================================================
-#define LOOP_FREQUENCY_HZ 2000  // Main loop frequency (DO NOT EXCEED 2000Hz)
+// Can be overridden by platformio.ini build flags (-D LOOP_FREQUENCY_HZ=1000)
+#ifndef LOOP_FREQUENCY_HZ
+    #ifdef USE_ESP32
+        #define LOOP_FREQUENCY_HZ 1000  // ESP32: 1kHz (sufficient, more headroom)
+    #else
+        #define LOOP_FREQUENCY_HZ 2000  // Teensy: 2kHz (faster processor)
+    #endif
+#endif
 
 //=============================================================================
 // Debug Options

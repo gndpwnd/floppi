@@ -7,7 +7,11 @@
 #define GLOBALS_H
 
 #include <Arduino.h>
-#include <PWMServo.h>
+
+// PWMServo is Teensy-specific; ESP32 uses LEDC directly
+#ifndef USE_ESP32
+    #include <PWMServo.h>
+#endif
 
 //========================================================================================================================//
 //                                                    TIMING                                                               //
@@ -68,8 +72,12 @@ extern float error_yaw, error_yaw_prev, integral_yaw, integral_yaw_prev, derivat
 extern int m1_command_PWM, m2_command_PWM, m3_command_PWM, m4_command_PWM, m5_command_PWM, m6_command_PWM;
 extern float m1_command_scaled, m2_command_scaled, m3_command_scaled, m4_command_scaled, m5_command_scaled, m6_command_scaled;
 
-// Servo objects and commands
+// Servo objects (Teensy only - ESP32 uses LEDC directly)
+#ifndef USE_ESP32
 extern PWMServo servo1, servo2, servo3, servo4, servo5, servo6, servo7;
+#endif
+
+// Servo commands
 extern int s1_command_PWM, s2_command_PWM, s3_command_PWM, s4_command_PWM, s5_command_PWM, s6_command_PWM, s7_command_PWM;
 extern float s1_command_scaled, s2_command_scaled, s3_command_scaled, s4_command_scaled, s5_command_scaled, s6_command_scaled, s7_command_scaled;
 
@@ -95,6 +103,10 @@ enum CalibrationMode {
 extern CalibrationMode calibration_mode;
 extern bool calibration_in_progress;
 extern unsigned long calibration_start_time;
+
+// Telemetry output mode for fc_tool integration
+// 0 = off, 1 = IMU only, 2 = full telemetry
+extern int telemetry_mode;
 #endif
 
 #endif // GLOBALS_H

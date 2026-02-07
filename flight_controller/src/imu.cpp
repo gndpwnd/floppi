@@ -6,6 +6,7 @@
 #include "imu.h"
 #include "globals.h"
 #include "config.h"
+#include "pin_definitions.h"
 
 #include <Wire.h>
 
@@ -28,8 +29,15 @@
 
 void setupIMU() {
     #ifdef USE_MPU6050
-        Wire.begin();
-        Wire.setClock(1000000);
+        #ifdef USE_ESP32
+            // ESP32: Specify I2C pins explicitly
+            Wire.begin(IMU_SDA_PIN, IMU_SCL_PIN);
+            Wire.setClock(400000);  // ESP32 typically uses 400kHz for I2C
+        #else
+            // Teensy: Use default I2C pins at 1MHz
+            Wire.begin();
+            Wire.setClock(1000000);
+        #endif
         mpu6050.initialize();
 
         if (mpu6050.testConnection()) {

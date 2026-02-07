@@ -156,9 +156,10 @@ This roadmap tracks project-level features and milestones for the flight control
 - [x] Serial command interface for calibration mode
   - Completed: 2026-02-06
   - Notes: Commands r/i/o/s/h for radio, IMU, orientation, status, help
-- [ ] fc_tool integration protocol
-  - Description: Define serial protocol for fc_tool to read telemetry and send commands
-  - Related: See fc_tool docs at /fc_tool/docs/
+- [x] fc_tool integration protocol
+  - Completed: 2026-02-06
+  - Notes: Added telemetry output functions (printIMUTelemetry, printFullTelemetry) compatible with fc_tool parser. Serial command 't' toggles telemetry modes.
+  - Related: See [fc_tool/docs/features/serial-telemetry-protocol.md](/fc_tool/docs/features/serial-telemetry-protocol.md)
 
 ---
 
@@ -187,6 +188,79 @@ This roadmap tracks project-level features and milestones for the flight control
 
 - [ ] Rate limiting and expo curves for control inputs
   - Description: Smoother control response for different skill levels
+
+---
+
+## Future Platform Features
+
+> These features represent a significant evolution of the project. They are documented here for planning purposes but are lower priority than core functionality validation.
+
+### ESP32 Platform Support
+
+- [x] ESP32 port of dRehmFlight core
+  - Completed: 2026-02-06
+  - Notes: Basic port compiles for ESP32 and ESP32-S3. Includes LEDC PWM, I2C, serial port adaptations.
+  - Environments: esp32, esp32_calibration, esp32s3, esp32s3_calibration
+  - Related findings: [esp32-fc-feasibility.md](findings/esp32-fc-feasibility.md)
+
+- [ ] Dual-core architecture
+  - Description: Pin FC to Core 0, WiFi/comms to Core 1 for deterministic timing
+  - Dependencies: ESP32 port
+  - Related findings: [esp32-dual-core-research.md](findings/esp32-dual-core-research.md)
+
+- [ ] WiFi AP mode for configuration
+  - Description: ESP32 creates WiFi access point for wireless configuration/telemetry
+  - Dependencies: Dual-core architecture
+
+- [ ] HTTP REST API for commands
+  - Description: RESTful API for sending commands and reading state (<50ms latency target)
+  - Dependencies: WiFi AP mode
+  - Related findings: [fc-timing-requirements.md](findings/fc-timing-requirements.md)
+
+- [ ] WebSocket for real-time telemetry
+  - Description: Stream attitude, motor values at 10-50Hz for monitoring apps
+  - Dependencies: WiFi AP mode
+
+- [ ] OTA firmware updates
+  - Description: Update firmware over WiFi without USB connection
+  - Dependencies: WiFi integration stable
+
+### Universal Firmware Goal
+
+- [x] PlatformIO multi-board structure for ESP32
+  - Completed: 2026-02-06
+  - Notes: Added esp32, esp32_calibration, esp32s3, esp32s3_calibration environments. Same codebase, platform-specific code guarded with USE_ESP32.
+
+- [ ] Shared abstraction layer
+  - Description: Hardware abstraction for IMU, motors, radio across Teensy and ESP32
+  - Dependencies: ESP32 port
+  - Notes: Currently pin_definitions.h partially does this
+
+### OLED Display Integration
+
+- [ ] OLED display support (SSD1306)
+  - Description: Small I2C OLED for showing calibration status, WiFi info, flight status
+  - Library: U8g2
+  - Related findings: [oled-display-options.md](findings/oled-display-options.md)
+
+- [ ] Calibration mode display
+  - Description: Show current calibration step, progress bar, values
+  - Dependencies: OLED display support
+
+- [ ] WiFi info display (ESP32)
+  - Description: Show SSID, IP address, MAC on OLED
+  - Dependencies: OLED + WiFi integration
+
+- [ ] Live status display
+  - Description: Show armed status, battery voltage (if sensor), connection status
+  - Dependencies: OLED display support
+
+### Notes on Future Features
+
+- **Multi-drone coordination is OUT OF SCOPE** for flight_controller firmware
+- **WiFi API enables** external coordination systems (fc_tool, swarm managers)
+- **Target latency**: <100ms for commands, ideally <50ms
+- **Design philosophy**: Keep FC firmware simple, let external tools handle complexity
 
 ---
 

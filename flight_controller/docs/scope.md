@@ -1,6 +1,6 @@
 # Flight Controller Firmware - Scope
 
-> Last updated: 2026-02-05
+> Last updated: 2026-02-06
 > Status: Active
 
 ---
@@ -91,7 +91,7 @@ Open-source VTOL flight controller firmware for Teensy microcontrollers, based o
 
 - Physical drone design, frame construction, component selection (→ engineering360)
 - SD card logging or runtime configuration files in live firmware
-- Flight computer integration (ESP32/RPi) — separate project within floppi
+- Flight computer integration (ESP32/RPi) — planned as future platform feature, see roadmap
 - GPS, barometer, magnetometer — future scope, not current focus
 - Ground control station software
 - Professional/commercial-grade features
@@ -141,6 +141,8 @@ Open-source VTOL flight controller firmware for Teensy microcontrollers, based o
 |------|---------|-----|
 | 2026-02-05 | Initial scope for flight_controller as standalone mini-project | LLM + User |
 | 2026-02-05 | Resolved build separation approach (PlatformIO extends), added technical decision | LLM + User |
+| 2026-02-06 | Added research for ESP32 platform support as future feature (not current scope) | LLM + User |
+| 2026-02-06 | Added timing calculator tool (tools/timing_calculator.py) for platform analysis | LLM + User |
 
 ---
 

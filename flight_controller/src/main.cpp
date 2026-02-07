@@ -67,8 +67,12 @@ float error_yaw, error_yaw_prev, integral_yaw, integral_yaw_prev, derivative_yaw
 int m1_command_PWM, m2_command_PWM, m3_command_PWM, m4_command_PWM, m5_command_PWM, m6_command_PWM;
 float m1_command_scaled, m2_command_scaled, m3_command_scaled, m4_command_scaled, m5_command_scaled, m6_command_scaled;
 
-// Servo commands
+// Servo objects (Teensy only - ESP32 uses LEDC directly)
+#ifndef USE_ESP32
 PWMServo servo1, servo2, servo3, servo4, servo5, servo6, servo7;
+#endif
+
+// Servo commands
 int s1_command_PWM, s2_command_PWM, s3_command_PWM, s4_command_PWM, s5_command_PWM, s6_command_PWM, s7_command_PWM;
 float s1_command_scaled, s2_command_scaled, s3_command_scaled, s4_command_scaled, s5_command_scaled, s6_command_scaled, s7_command_scaled;
 
@@ -80,6 +84,7 @@ bool armedFly = false;
 CalibrationMode calibration_mode = CALIB_NONE;
 bool calibration_in_progress = false;
 unsigned long calibration_start_time = 0;
+int telemetry_mode = 0;  // 0=off, 1=IMU, 2=full
 #endif
 
 //========================================================================================================================//
@@ -295,6 +300,13 @@ void loop() {
     //printPIDoutput();
     //printMotorCommands();
     //printLoopRate();
+
+    // fc_tool telemetry output (toggle with 't' command)
+    if (telemetry_mode == 1) {
+        printIMUTelemetry();      // IMU data at 50Hz
+    } else if (telemetry_mode == 2) {
+        printFullTelemetry();     // Full telemetry at 20Hz
+    }
     #endif
 
     // Status LED
@@ -424,6 +436,21 @@ void checkSerialCommands() {
                 Serial.print(F("Armed: ")); Serial.println(armedFly ? "YES" : "NO");
                 break;
 
+            case 't':
+            case 'T':
+                // Cycle through telemetry modes: off -> IMU -> full -> off
+                telemetry_mode = (telemetry_mode + 1) % 3;
+                if (telemetry_mode == 0) {
+                    Serial.println(F("\n>>> Telemetry OFF"));
+                } else if (telemetry_mode == 1) {
+                    Serial.println(F("\n>>> Telemetry: IMU (50Hz)"));
+                    Serial.println(F("    Format: ax=X ay=Y az=Z gx=X gy=Y gz=Z"));
+                } else {
+                    Serial.println(F("\n>>> Telemetry: FULL (20Hz)"));
+                    Serial.println(F("    Format: ax ay az gx gy gz roll pitch yaw m1 m2 m3 m4"));
+                }
+                break;
+
             case 'h':
             case 'H':
             case '?':
@@ -433,6 +460,7 @@ void checkSerialCommands() {
                 Serial.println(F("  m - IMU calibration (6-position, offsets + scale)"));
                 Serial.println(F("  o - IMU + Orientation detection"));
                 Serial.println(F("  s - Status (show channel values)"));
+                Serial.println(F("  t - Toggle telemetry (off/IMU/full) for fc_tool"));
                 Serial.println(F("  h - Help (this menu)"));
                 Serial.println(F("\nOr use CH6 switch:"));
                 Serial.println(F("  Mid position (3s hold): IMU calibration"));

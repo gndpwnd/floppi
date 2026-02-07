@@ -41,6 +41,21 @@ void printServoCommands();
 // Print loop rate
 void printLoopRate();
 
+// ============================================================================
+// FC_TOOL TELEMETRY OUTPUT
+// ============================================================================
+// These functions output data in formats compatible with fc_tool's parser.
+// See: fc_tool/docs/features/serial-telemetry-protocol.md
+
+// Print IMU data in fc_tool format: ax=X ay=Y az=Z gx=X gy=Y gz=Z
+void printIMUTelemetry();
+
+// Print attitude in fc_tool format: roll=X pitch=Y yaw=Z
+void printAttitudeTelemetry();
+
+// Print full telemetry packet (IMU + attitude + motors)
+void printFullTelemetry();
+
 #endif // CALIBRATION_MODE
 
 #endif // DEBUG_H

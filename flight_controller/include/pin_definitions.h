@@ -1,10 +1,29 @@
 /*
- * Pin Definitions for Teensy 4.0 and 4.1
- * Physical pin assignments for all peripherals
+ * Pin Definitions - Platform Dispatcher
+ * Includes the correct pin definitions based on target platform
  */
 
 #ifndef PIN_DEFINITIONS_H
 #define PIN_DEFINITIONS_H
+
+//========================================================================================================================//
+//                                              PLATFORM DETECTION                                                        //
+//========================================================================================================================//
+
+#ifdef USE_ESP32
+    // ESP32 or ESP32-S3 platform
+    #include "pin_definitions_esp32.h"
+#else
+    // Default: Teensy platform (Teensy 4.0, 4.1, 3.6)
+    // Pin definitions are below in this file
+#endif
+
+//========================================================================================================================//
+//                                         TEENSY PIN DEFINITIONS                                                         //
+//========================================================================================================================//
+// Only compiled for Teensy builds (when USE_ESP32 is not defined)
+
+#ifndef USE_ESP32
 
 //========================================================================================================================//
 //                                              IMU PINS (I2C)                                                            //
@@ -150,5 +169,7 @@
  *   - Total: <200mA (easily handled by most 5V BECs)
  * - Motors and servos should have separate power!
  */
+
+#endif // !USE_ESP32
 
 #endif // PIN_DEFINITIONS_H

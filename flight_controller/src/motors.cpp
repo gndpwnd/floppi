@@ -1,6 +1,10 @@
 /*
  * Motors Module Implementation
  * Motor and servo control
+ *
+ * Platform support:
+ * - Teensy: Uses analogWrite with PWMServo library
+ * - ESP32: Uses LEDC peripheral for PWM output
  */
 
 #include "motors.h"
@@ -9,12 +13,82 @@
 #include "pin_definitions.h"
 #include "radioComm.h"
 
+#ifdef USE_ESP32
+    // ESP32 LEDC PWM configuration
+    #define LEDC_TIMER_BITS  12
+    #define LEDC_BASE_FREQ   250   // 250Hz for ESCs (4ms period)
+    #define LEDC_SERVO_FREQ  50    // 50Hz for servos
+
+    // LEDC channel assignments (ESP32 has 16 channels, 0-15)
+    #define MOTOR_LEDC_CH_1  0
+    #define MOTOR_LEDC_CH_2  1
+    #define MOTOR_LEDC_CH_3  2
+    #define MOTOR_LEDC_CH_4  3
+    #define MOTOR_LEDC_CH_5  4
+    #define MOTOR_LEDC_CH_6  5
+    #define SERVO_LEDC_CH_1  6
+    #define SERVO_LEDC_CH_2  7
+    #define SERVO_LEDC_CH_3  8
+    #define SERVO_LEDC_CH_4  9
+    #define SERVO_LEDC_CH_5  10
+    #define SERVO_LEDC_CH_6  11
+    #define SERVO_LEDC_CH_7  12
+
+    // Helper: Convert PWM microseconds to LEDC duty cycle
+    // For 250Hz: period = 4000us, so duty = (pwm_us / 4000) * 4095
+    inline uint32_t pwmToDuty(int pwm_us) {
+        return (uint32_t)((pwm_us / 4000.0) * 4095);
+    }
+
+    // Helper: Convert servo PWM to LEDC duty cycle
+    // For 50Hz: period = 20000us, so duty = (pwm_us / 20000) * 4095
+    inline uint32_t servoPwmToDuty(int pwm_us) {
+        return (uint32_t)((pwm_us / 20000.0) * 4095);
+    }
+#endif
+
 //========================================================================================================================//
 //                                              MOTOR SETUP                                                                //
 //========================================================================================================================//
 
 void setupMotors() {
-    // Setup motor pins
+#ifdef USE_ESP32
+    // ESP32: Setup LEDC channels for motors (250Hz)
+    ledcSetup(MOTOR_LEDC_CH_1, LEDC_BASE_FREQ, LEDC_TIMER_BITS);
+    ledcSetup(MOTOR_LEDC_CH_2, LEDC_BASE_FREQ, LEDC_TIMER_BITS);
+    ledcSetup(MOTOR_LEDC_CH_3, LEDC_BASE_FREQ, LEDC_TIMER_BITS);
+    ledcSetup(MOTOR_LEDC_CH_4, LEDC_BASE_FREQ, LEDC_TIMER_BITS);
+    ledcSetup(MOTOR_LEDC_CH_5, LEDC_BASE_FREQ, LEDC_TIMER_BITS);
+    ledcSetup(MOTOR_LEDC_CH_6, LEDC_BASE_FREQ, LEDC_TIMER_BITS);
+
+    // Attach LEDC channels to motor pins
+    ledcAttachPin(MOTOR_PIN_1, MOTOR_LEDC_CH_1);
+    ledcAttachPin(MOTOR_PIN_2, MOTOR_LEDC_CH_2);
+    ledcAttachPin(MOTOR_PIN_3, MOTOR_LEDC_CH_3);
+    ledcAttachPin(MOTOR_PIN_4, MOTOR_LEDC_CH_4);
+    ledcAttachPin(MOTOR_PIN_5, MOTOR_LEDC_CH_5);
+    ledcAttachPin(MOTOR_PIN_6, MOTOR_LEDC_CH_6);
+
+    // Setup LEDC channels for servos (50Hz)
+    ledcSetup(SERVO_LEDC_CH_1, LEDC_SERVO_FREQ, LEDC_TIMER_BITS);
+    ledcSetup(SERVO_LEDC_CH_2, LEDC_SERVO_FREQ, LEDC_TIMER_BITS);
+    ledcSetup(SERVO_LEDC_CH_3, LEDC_SERVO_FREQ, LEDC_TIMER_BITS);
+    ledcSetup(SERVO_LEDC_CH_4, LEDC_SERVO_FREQ, LEDC_TIMER_BITS);
+    ledcSetup(SERVO_LEDC_CH_5, LEDC_SERVO_FREQ, LEDC_TIMER_BITS);
+    ledcSetup(SERVO_LEDC_CH_6, LEDC_SERVO_FREQ, LEDC_TIMER_BITS);
+    ledcSetup(SERVO_LEDC_CH_7, LEDC_SERVO_FREQ, LEDC_TIMER_BITS);
+
+    // Attach LEDC channels to servo pins
+    ledcAttachPin(SERVO_PIN_1, SERVO_LEDC_CH_1);
+    ledcAttachPin(SERVO_PIN_2, SERVO_LEDC_CH_2);
+    ledcAttachPin(SERVO_PIN_3, SERVO_LEDC_CH_3);
+    ledcAttachPin(SERVO_PIN_4, SERVO_LEDC_CH_4);
+    ledcAttachPin(SERVO_PIN_5, SERVO_LEDC_CH_5);
+    ledcAttachPin(SERVO_PIN_6, SERVO_LEDC_CH_6);
+    ledcAttachPin(SERVO_PIN_7, SERVO_LEDC_CH_7);
+
+#else
+    // Teensy: Setup motor pins as outputs
     pinMode(MOTOR_PIN_1, OUTPUT);
     pinMode(MOTOR_PIN_2, OUTPUT);
     pinMode(MOTOR_PIN_3, OUTPUT);
@@ -22,7 +96,7 @@ void setupMotors() {
     pinMode(MOTOR_PIN_5, OUTPUT);
     pinMode(MOTOR_PIN_6, OUTPUT);
 
-    // Setup servo pins
+    // Teensy: Setup servo pins using PWMServo library
     servo1.attach(SERVO_PIN_1);
     servo2.attach(SERVO_PIN_2);
     servo3.attach(SERVO_PIN_3);
@@ -30,6 +104,7 @@ void setupMotors() {
     servo5.attach(SERVO_PIN_5);
     servo6.attach(SERVO_PIN_6);
     servo7.attach(SERVO_PIN_7);
+#endif
 }
 
 //========================================================================================================================//
@@ -104,6 +179,7 @@ void armMotors() {
 
     for (int i = 0; i < 100; i++) {
         #ifdef USE_ONESHOT125
+            // OneShot125: bit-bang pulse timing
             digitalWrite(MOTOR_PIN_1, HIGH);
             digitalWrite(MOTOR_PIN_2, HIGH);
             digitalWrite(MOTOR_PIN_3, HIGH);
@@ -118,7 +194,20 @@ void armMotors() {
             digitalWrite(MOTOR_PIN_5, LOW);
             digitalWrite(MOTOR_PIN_6, LOW);
             delay(2);
+
+        #elif defined(USE_ESP32)
+            // ESP32: Use LEDC to send minimum throttle
+            uint32_t min_duty = pwmToDuty(1000);
+            ledcWrite(MOTOR_LEDC_CH_1, min_duty);
+            ledcWrite(MOTOR_LEDC_CH_2, min_duty);
+            ledcWrite(MOTOR_LEDC_CH_3, min_duty);
+            ledcWrite(MOTOR_LEDC_CH_4, min_duty);
+            ledcWrite(MOTOR_LEDC_CH_5, min_duty);
+            ledcWrite(MOTOR_LEDC_CH_6, min_duty);
+            delay(20);
+
         #else
+            // Teensy: Use analogWrite
             analogWriteFrequency(MOTOR_PIN_1, 250);
             analogWriteResolution(12);
             int pwm_value = (1000.0 / 4000.0) * 4095;
@@ -145,6 +234,7 @@ void armMotors() {
 
 void commandMotors() {
     #ifdef USE_ONESHOT125
+        // OneShot125: bit-bang pulse timing
         int wentLow = 0;
         int pulseStart, timer;
         int flagM1 = 0, flagM2 = 0, flagM3 = 0;
@@ -191,7 +281,28 @@ void commandMotors() {
                 flagM6 = 1;
             }
         }
+
+    #elif defined(USE_ESP32)
+        // ESP32: Use LEDC for PWM output
+        ledcWrite(MOTOR_LEDC_CH_1, pwmToDuty(m1_command_PWM));
+        ledcWrite(MOTOR_LEDC_CH_2, pwmToDuty(m2_command_PWM));
+        ledcWrite(MOTOR_LEDC_CH_3, pwmToDuty(m3_command_PWM));
+        ledcWrite(MOTOR_LEDC_CH_4, pwmToDuty(m4_command_PWM));
+        ledcWrite(MOTOR_LEDC_CH_5, pwmToDuty(m5_command_PWM));
+        ledcWrite(MOTOR_LEDC_CH_6, pwmToDuty(m6_command_PWM));
+
+        // ESP32: Servos also use LEDC
+        ledcWrite(SERVO_LEDC_CH_1, servoPwmToDuty(s1_command_PWM));
+        ledcWrite(SERVO_LEDC_CH_2, servoPwmToDuty(s2_command_PWM));
+        ledcWrite(SERVO_LEDC_CH_3, servoPwmToDuty(s3_command_PWM));
+        ledcWrite(SERVO_LEDC_CH_4, servoPwmToDuty(s4_command_PWM));
+        ledcWrite(SERVO_LEDC_CH_5, servoPwmToDuty(s5_command_PWM));
+        ledcWrite(SERVO_LEDC_CH_6, servoPwmToDuty(s6_command_PWM));
+        ledcWrite(SERVO_LEDC_CH_7, servoPwmToDuty(s7_command_PWM));
+        return;  // Skip Teensy servo code below
+
     #else
+        // Teensy: Use analogWrite
         analogWriteFrequency(MOTOR_PIN_1, 250);
         analogWriteResolution(12);
 
@@ -203,7 +314,8 @@ void commandMotors() {
         analogWrite(MOTOR_PIN_6, (m6_command_PWM / 4000.0) * 4095);
     #endif
 
-    // Servos
+#ifndef USE_ESP32
+    // Teensy: Servos use PWMServo library
     servo1.write((s1_command_PWM - 1000) * 0.18);
     servo2.write((s2_command_PWM - 1000) * 0.18);
     servo3.write((s3_command_PWM - 1000) * 0.18);
@@ -211,6 +323,7 @@ void commandMotors() {
     servo5.write((s5_command_PWM - 1000) * 0.18);
     servo6.write((s6_command_PWM - 1000) * 0.18);
     servo7.write((s7_command_PWM - 1000) * 0.18);
+#endif
 }
 
 //========================================================================================================================//

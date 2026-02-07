@@ -12,13 +12,23 @@
 
 // Serial port definitions for receivers
 #ifdef USE_SBUS_RECEIVER
-    // SBUS uses Serial5 on Teensy 4.0 (pins 20 TX, 21 RX)
-    #define SBUS_SERIAL_PORT Serial5
+    #ifdef USE_ESP32
+        // ESP32: SBUS uses Serial2 (configurable pins)
+        #define SBUS_SERIAL_PORT Serial2
+    #else
+        // Teensy: SBUS uses Serial5 (pins 20 TX, 21 RX)
+        #define SBUS_SERIAL_PORT Serial5
+    #endif
 #endif
 
 #ifdef USE_DSM_RECEIVER
-    // DSM uses Serial3 on Teensy 4.0 (pins 14 TX, 15 RX)
-    #define DSM_SERIAL_PORT Serial3
+    #ifdef USE_ESP32
+        // ESP32: DSM uses Serial1 (configurable pins)
+        #define DSM_SERIAL_PORT Serial1
+    #else
+        // Teensy: DSM uses Serial3 (pins 14 TX, 15 RX)
+        #define DSM_SERIAL_PORT Serial3
+    #endif
 #endif
 
 // Initialize receiver hardware
