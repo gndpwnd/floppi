@@ -50,6 +50,19 @@ def main():
         help="Override clock speed (MHz)"
     )
     parser.add_argument(
+        "--cores", type=int, default=None,
+        help="Override core count (default: from platform preset)"
+    )
+    fpu_group = parser.add_mutually_exclusive_group()
+    fpu_group.add_argument(
+        "--fpu", action="store_true", default=None,
+        help="Platform has FPU (default for most presets)"
+    )
+    fpu_group.add_argument(
+        "--no-fpu", action="store_true",
+        help="Platform has no FPU (software float)"
+    )
+    parser.add_argument(
         "--config", default=None,
         help="Path to config.h (default: auto-detect)"
     )
@@ -67,17 +80,34 @@ def main():
     # Scan config.h for features
     features = scan_config(config_path, args.platform)
 
+    # Build platform: start from preset, apply overrides
+    def build_platform(preset_key):
+        plat = PLATFORMS[preset_key]
+        overrides = {}
+        if args.clock:
+            overrides["clock_mhz"] = args.clock
+        if args.cores is not None:
+            overrides["cores"] = args.cores
+        if args.no_fpu:
+            overrides["fpu"] = False
+        elif args.fpu:
+            overrides["fpu"] = True
+        if overrides:
+            # Update name if hardware is overridden
+            fpu_str = "FPU" if overrides.get("fpu", plat.fpu) else "no FPU"
+            cores = overrides.get("cores", plat.cores)
+            clock = overrides.get("clock_mhz", plat.clock_mhz)
+            overrides["name"] = f"Custom ({clock:.0f} MHz, {cores} core{'s' if cores > 1 else ''}, {fpu_str})"
+            plat = replace(plat, **overrides)
+        return plat
+
     if args.all:
         print_comparison(features)
     elif args.breakdown:
-        platform = PLATFORMS[args.platform]
-        if args.clock:
-            platform = replace(platform, clock_mhz=args.clock)
+        platform = build_platform(args.platform)
         print_breakdown(platform, features)
     else:
-        platform = PLATFORMS[args.platform]
-        if args.clock:
-            platform = replace(platform, clock_mhz=args.clock)
+        platform = build_platform(args.platform)
         print_check(args.platform, platform, features)
 
 

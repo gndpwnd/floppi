@@ -173,9 +173,9 @@ This roadmap tracks project-level features and milestones for the flight control
   - Completed: 2026-02-06
   - Notes: Added telemetry output functions (printIMUTelemetry, printFullTelemetry) compatible with fc_tool parser. Serial command 't' toggles telemetry modes.
   - Related: See [fc_tool/docs/features/serial-telemetry-protocol.md](/fc_tool/docs/features/serial-telemetry-protocol.md)
-- [x] Timing calculator (modular)
+- [x] Timing calculator (modular, simplified)
   - Completed: 2026-02-07
-  - Notes: `tools/timing_calculator.py` entry point with `tools/timing/` package (platforms, operations, calc, scanner, report). Auto-detects features from config.h. Calculates minimum clock speed required/recommended, shows per-phase breakdown and pass/fail status.
+  - Notes: `tools/timing_calculator.py` entry point with `tools/timing/` package. Simplified inputs: clock/cores/FPU (via `--clock`, `--cores`, `--fpu`/`--no-fpu`) or platform presets (`-p esp32`). Auto-detects features from config.h. Always outputs min/recommended clock speeds and pass/fail status.
 
 ---
 
@@ -224,22 +224,21 @@ Enable with `#define USE_RACING` in config.h. Betaflight-inspired optimizations 
 
 ## Timing Calculator Improvements
 
-> Current state: `tools/timing_calculator.py` with `tools/timing/` package. Works but uses hardcoded operation complexity estimates and hardcoded platform specs. The next iteration should be simpler and more accurate.
+> Current state: `tools/timing_calculator.py` with `tools/timing/` package. Simplified hardware input (clock/cores/FPU), auto-detects features from config.h, always outputs min/recommended clock speeds and pass/fail status.
 
-### Goals
+### Implemented
 
-- [ ] **Source code scanning** — Instead of manually maintaining a list of operations and their estimated cycle counts, the calculator should scan the actual flight controller source files (src/, lib/) and trace the computation path through the code. Use computer science complexity analysis (count float operations, loops, function calls) to derive real numbers from real code. This means when new features are added to the firmware, the calculator automatically picks them up.
+- [x] **Simplified inputs** — Platform reduced to clock speed (MHz) + core count + FPU (yes/no). Two FPU profiles (hardware FPU vs software float) instead of per-platform cycle costs. CLI accepts `--clock`, `--cores`, `--fpu`/`--no-fpu` for arbitrary hardware. Platform presets remain as convenience shortcuts (`-p esp32`, `-p teensy40`).
 
-- [ ] **Simplify inputs** — Remove hardcoded platform/controller configurations (Teensy 4.0 specs, ESP32 specs, etc.). The calculator only needs:
-  - Input clock speed (MHz)
-  - Core count (1 or 2)
-  - FPU (yes/no)
-  - Build environment / config.h options
-  The user provides their hardware specs, the tool tells them if it's enough.
+- [x] **Pass/fail output** — Always outputs minimum clock required and recommended clock (+10% margin). Shows "NOT ENOUGH +X%" when platform clock is insufficient. Works with both presets and arbitrary hardware input.
+
+- [x] **Auto-output of min/recommended clock speeds** — Every timing check prominently displays minimum and recommended clock speeds. No need to request these separately.
+
+### Future Goals
+
+- [ ] **Source code scanning** — Instead of manually maintaining a list of operations and their estimated cycle counts, scan the actual flight controller source files (src/, lib/) and trace the computation path through the code. Use computer science complexity analysis (count float operations, loops, function calls) to derive real numbers from real code. When new features are added to the firmware, the calculator automatically picks them up.
 
 - [ ] **Build environment awareness** — Analyze different build environments (from platformio.ini) and config.h options to determine what code paths are active. Show the compute cost for each combination so users can compare: "base only" vs "base + optimization" vs "base + optimization + racing".
-
-- [ ] **Pass/fail output** — Given a clock speed and feature set: is it enough? If not, by how much? Minimum clock required, recommended clock (+10% margin). Current version does this but against hardcoded platform specs — future version should work with any arbitrary clock/core/FPU input.
 
 ### Research Needed
 
@@ -247,16 +246,16 @@ Enable with `#define USE_RACING` in config.h. Betaflight-inspired optimizations 
 - Whether PlatformIO build system can provide intermediate files (preprocessed source, assembly) that make cycle counting easier
 - Accuracy tradeoffs: static analysis vs actual profiling on hardware vs manual annotation
 
-### Current Architecture (for reference)
+### Current Architecture
 
 ```text
-tools/timing_calculator.py     # CLI entry point
+tools/timing_calculator.py     # CLI entry point (--clock, --cores, --fpu/--no-fpu, -p preset)
 tools/timing/
-    platforms.py               # Hardcoded platform specs (TO BE REPLACED with simple clock/cores/fpu input)
-    operations.py              # Hardcoded operation complexity (TO BE REPLACED with source scanning)
-    calc.py                    # Loop timing math, min clock calculation (KEEP)
-    scanner.py                 # config.h feature detection (KEEP + enhance)
-    report.py                  # Clean tabular output (KEEP)
+    platforms.py               # Platform dataclass (clock/cores/fpu) + FPU/soft-float cycle profiles
+    operations.py              # Operation complexity definitions (TO BE REPLACED with source scanning)
+    calc.py                    # Loop timing math, min clock calculation
+    scanner.py                 # config.h feature detection
+    report.py                  # Clean tabular output with pass/fail
 ```
 
 ---
@@ -431,6 +430,7 @@ tools/timing/
 - [x] Modular feature system (USE_WEB_SERVER, USE_API_SERVER, USE_OPTIMIZATION, USE_RACING) — 2026-02-07
 - [x] Timing calculator update (feature tiers, per-core analysis) — 2026-02-07
 - [x] Timing calculator modularization (scanner, min clock, clean output) — 2026-02-07
+- [x] Timing calculator simplified inputs (clock/cores/FPU, auto min/recommended output) — 2026-02-07
 
 ---
 

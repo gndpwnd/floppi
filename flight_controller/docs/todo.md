@@ -34,6 +34,13 @@ _No tasks in progress_
   - CLI: `-p <platform>`, `--all`, `--breakdown`, `--clock N`
   - See [tools/timing/](../tools/timing/) and roadmap "Timing Calculator Improvements" for future plans
 
+- [x] Timing calculator simplified inputs
+  - Platform reduced to clock/cores/FPU (removed per-platform cycle costs, flash/RAM specs)
+  - Two FPU profiles: hardware FPU vs software float cycle costs
+  - CLI flags: `--cores N`, `--fpu`/`--no-fpu` for arbitrary hardware input
+  - Always outputs min/recommended clock speeds and pass/fail status
+  - Platform presets remain as convenience shortcuts
+
 - [x] Display module abstraction layer
   - Created display.h, display_data.h, display.cpp with U8g2 + SW I2C
   - Compile-time display selection (SSD1306 128x32, 128x64, SH1106 128x64)
@@ -132,6 +139,7 @@ _For context; clear periodically_
 - [x] Modular feature system (config.h flags) — 2026-02-07
 - [x] Library vendoring (standalone builds) — 2026-02-07
 - [x] Timing calculator modularized (scanner, min clock, clean output) — 2026-02-07
+- [x] Timing calculator simplified (clock/cores/FPU input, auto min/recommended output) — 2026-02-07
 - [x] Display module, dual-core, WiFi STA, web server, API client — 2026-02-07
 - [x] 6-position accelerometer calibration — 2026-02-06
 - [x] Modularize main.cpp — 2026-02-06
@@ -148,7 +156,7 @@ _For context; clear periodically_
 - **Platform support**: Teensy 4.x (recommended), ESP32/S3 (WiFi-enabled)
 - **NOT supported**: Arduino Uno/Mega (16MHz + no FPU = max 302Hz loop rate)
 - **Feature modularity**: Users enable features in config.h based on their MCU capabilities. Use `python3 tools/timing_calculator.py --all` to check feasibility across platforms.
-- **Timing calculator future**: Source code scanning and simplified clock/cores/FPU input planned. See roadmap "Timing Calculator Improvements" section.
+- **Timing calculator**: Simplified inputs (clock/cores/FPU) implemented. Source code scanning planned. See roadmap "Timing Calculator Improvements" section. Usage: `python3 tools/timing_calculator.py --clock 240 --cores 2 --fpu` or `-p esp32`.
 
 ---
 

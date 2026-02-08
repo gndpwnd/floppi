@@ -1,7 +1,7 @@
 """Core timing calculation functions."""
 
 from dataclasses import replace
-from .platforms import Platform
+from .platforms import Platform, get_cycle_costs
 from .operations import OPERATIONS
 
 
@@ -15,12 +15,13 @@ def calculate_operation_time(op, platform):
     Calculate execution time for an operation on a platform.
     Returns (total_cycles, time_us).
     """
+    costs = get_cycle_costs(platform.fpu)
     cycles = (
-        op.float_muls * platform.cycles_per_float_mul +
-        op.float_adds * platform.cycles_per_float_add +
-        op.float_divs * platform.cycles_per_float_div +
-        op.trig_ops * platform.cycles_per_trig +
-        op.sqrt_ops * platform.cycles_per_sqrt
+        op.float_muls * costs["mul"] +
+        op.float_adds * costs["add"] +
+        op.float_divs * costs["div"] +
+        op.trig_ops * costs["trig"] +
+        op.sqrt_ops * costs["sqrt"]
     )
     time_us = cycles_to_us(cycles, platform.clock_mhz)
     return cycles, time_us
