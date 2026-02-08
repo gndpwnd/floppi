@@ -212,6 +212,7 @@
 #define MADGWICK_BETA 0.04  // Attitude filter (0.02-0.08 typical)
 #define B_ACCEL 0.14        // Accelerometer LP filter
 #define B_GYRO 0.10         // Gyroscope LP filter
+#define B_DTERM 0.15        // D-term LP filter (prevents motor oscillation from noise)
 #define B_MAG 1.0           // Magnetometer LP filter (MPU9250 only)
 
 //=============================================================================

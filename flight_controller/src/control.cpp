@@ -44,29 +44,43 @@ void getDesState() {
 //========================================================================================================================//
 
 void controlRATE() {
+    // Previous gyro values for derivative-on-measurement
+    // (GyroX_prev is already overwritten by imu.cpp LP filter, so we track separately)
+    static float gyro_roll_prev = 0, gyro_pitch_prev = 0, gyro_yaw_prev = 0;
+    // Previous filtered D-term for low-pass filter
+    static float d_roll_prev = 0, d_pitch_prev = 0, d_yaw_prev = 0;
+
     // Roll
     error_roll = roll_des - GyroX;
     integral_roll += error_roll * dt;
     integral_roll = constrain(integral_roll, -I_LIMIT_ROLL, I_LIMIT_ROLL);
-    derivative_roll = (error_roll - error_roll_prev) / dt;
+    derivative_roll = -(GyroX - gyro_roll_prev) / dt;
+    derivative_roll = (1.0f - B_DTERM) * d_roll_prev + B_DTERM * derivative_roll;
+    d_roll_prev = derivative_roll;
     roll_PID = KP_ROLL_RATE * error_roll + KI_ROLL_RATE * integral_roll + KD_ROLL_RATE * derivative_roll;
-    error_roll_prev = error_roll;
 
     // Pitch
     error_pitch = pitch_des - GyroY;
     integral_pitch += error_pitch * dt;
     integral_pitch = constrain(integral_pitch, -I_LIMIT_PITCH, I_LIMIT_PITCH);
-    derivative_pitch = (error_pitch - error_pitch_prev) / dt;
+    derivative_pitch = -(GyroY - gyro_pitch_prev) / dt;
+    derivative_pitch = (1.0f - B_DTERM) * d_pitch_prev + B_DTERM * derivative_pitch;
+    d_pitch_prev = derivative_pitch;
     pitch_PID = KP_PITCH_RATE * error_pitch + KI_PITCH_RATE * integral_pitch + KD_PITCH_RATE * derivative_pitch;
-    error_pitch_prev = error_pitch;
 
     // Yaw
     error_yaw = yaw_des - GyroZ;
     integral_yaw += error_yaw * dt;
     integral_yaw = constrain(integral_yaw, -I_LIMIT_YAW, I_LIMIT_YAW);
-    derivative_yaw = (error_yaw - error_yaw_prev) / dt;
+    derivative_yaw = -(GyroZ - gyro_yaw_prev) / dt;
+    derivative_yaw = (1.0f - B_DTERM) * d_yaw_prev + B_DTERM * derivative_yaw;
+    d_yaw_prev = derivative_yaw;
     yaw_PID = KP_YAW_RATE * error_yaw + KI_YAW_RATE * integral_yaw + KD_YAW_RATE * derivative_yaw;
-    error_yaw_prev = error_yaw;
+
+    // Save gyro values for next iteration
+    gyro_roll_prev = GyroX;
+    gyro_pitch_prev = GyroY;
+    gyro_yaw_prev = GyroZ;
 }
 
 //========================================================================================================================//
@@ -74,29 +88,39 @@ void controlRATE() {
 //========================================================================================================================//
 
 void controlANGLE() {
-    // Roll
+    // Previous filtered D-term for low-pass filter
+    static float d_roll_prev = 0, d_pitch_prev = 0, d_yaw_prev = 0;
+    // Previous gyro value for yaw derivative-on-measurement
+    static float gyro_yaw_prev = 0;
+
+    // Roll (derivative on measurement: uses -GyroX directly)
     error_roll = roll_des - roll_IMU;
     integral_roll += error_roll * dt;
     integral_roll = constrain(integral_roll, -I_LIMIT_ROLL, I_LIMIT_ROLL);
     derivative_roll = -GyroX;
+    derivative_roll = (1.0f - B_DTERM) * d_roll_prev + B_DTERM * derivative_roll;
+    d_roll_prev = derivative_roll;
     roll_PID = KP_ROLL_ANGLE * error_roll + KI_ROLL_ANGLE * integral_roll + KD_ROLL_ANGLE * derivative_roll;
-    error_roll_prev = error_roll;
 
-    // Pitch
+    // Pitch (derivative on measurement: uses -GyroY directly)
     error_pitch = pitch_des - pitch_IMU;
     integral_pitch += error_pitch * dt;
     integral_pitch = constrain(integral_pitch, -I_LIMIT_PITCH, I_LIMIT_PITCH);
     derivative_pitch = -GyroY;
+    derivative_pitch = (1.0f - B_DTERM) * d_pitch_prev + B_DTERM * derivative_pitch;
+    d_pitch_prev = derivative_pitch;
     pitch_PID = KP_PITCH_ANGLE * error_pitch + KI_PITCH_ANGLE * integral_pitch + KD_PITCH_ANGLE * derivative_pitch;
-    error_pitch_prev = error_pitch;
 
-    // Yaw (rate control)
+    // Yaw (rate control — derivative on measurement)
     error_yaw = yaw_des - GyroZ;
     integral_yaw += error_yaw * dt;
     integral_yaw = constrain(integral_yaw, -I_LIMIT_YAW, I_LIMIT_YAW);
-    derivative_yaw = (error_yaw - error_yaw_prev) / dt;
+    derivative_yaw = -(GyroZ - gyro_yaw_prev) / dt;
+    derivative_yaw = (1.0f - B_DTERM) * d_yaw_prev + B_DTERM * derivative_yaw;
+    d_yaw_prev = derivative_yaw;
     yaw_PID = KP_YAW_RATE * error_yaw + KI_YAW_RATE * integral_yaw + KD_YAW_RATE * derivative_yaw;
-    error_yaw_prev = error_yaw;
+
+    gyro_yaw_prev = GyroZ;
 }
 
 //========================================================================================================================//

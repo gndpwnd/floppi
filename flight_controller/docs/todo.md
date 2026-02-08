@@ -8,6 +8,19 @@ _No tasks in progress_
 
 ## Recently Implemented (2026-02-07)
 
+- [x] PID improvements (D-term LP filter + derivative on measurement)
+  - D-term low-pass filter: PT1 filter with `B_DTERM` coefficient in config.h (0.15 default)
+  - Derivative on measurement: All D-terms now use `-(gyro - gyro_prev)` instead of `(error - error_prev)`
+  - Prevents motor oscillation from sensor noise amplification
+  - Prevents derivative kick when setpoint changes (stick movement)
+  - Applied to both controlRATE() (all 3 axes) and controlANGLE() (roll/pitch already correct, fixed yaw)
+  - Uses separate static variables for previous gyro tracking (GyroX_prev is overwritten by imu.cpp)
+
+- [x] build.bat replacing build.ps1.txt
+  - Windows batch file (no PowerShell execution policy issues)
+  - Updated environment names to match current platformio.ini (teensy40, teensy41, esp32)
+  - Interactive menu: build all, upload to specific board, clean
+
 - [x] Modular feature system
   - All features selectable via `#define` flags in config.h
   - USE_WEB_SERVER: live value display in browser (calibration/diagnostics)
@@ -114,9 +127,7 @@ _Tasks waiting on something (include reason)_
 
 _Priority queue for immediate work_
 
-- [ ] D-term low-pass filter (highest-impact PID improvement, prevents motor oscillation)
-  - See [findings/bare-bones-fc-research.md](findings/bare-bones-fc-research.md)
-- [ ] Rate mode derivative on measurement (prevents derivative kick)
+- [ ] IMU orientation config in config.h (move hardcoded axis inversions from main.cpp to config defines)
 - [ ] Implement USE_OPTIMIZATION features (biquad filters, notch filter)
 - [ ] Implement USE_RACING features (feed-forward, TPA, expo, air mode)
 - [ ] Hardware testing when hardware is available
@@ -140,6 +151,8 @@ _For context; clear periodically_
 - [x] Library vendoring (standalone builds) — 2026-02-07
 - [x] Timing calculator modularized (scanner, min clock, clean output) — 2026-02-07
 - [x] Timing calculator simplified (clock/cores/FPU input, auto min/recommended output) — 2026-02-07
+- [x] D-term LP filter + derivative on measurement (PID improvements) — 2026-02-07
+- [x] build.bat replacing build.ps1.txt — 2026-02-07
 - [x] Display module, dual-core, WiFi STA, web server, API client — 2026-02-07
 - [x] 6-position accelerometer calibration — 2026-02-06
 - [x] Modularize main.cpp — 2026-02-06

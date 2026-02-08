@@ -66,6 +66,12 @@ This roadmap tracks project-level features and milestones for the flight control
   - Completed: Pre-2026
   - Notes: 3-position test (level, nose-up, right-up) in lib/Calibration/calibration.cpp. Generates axis transformation code.
   - Related findings: [auto-calibration-research.md](findings/auto-calibration-research.md)
+
+- [ ] IMU orientation config in config.h
+  - Description: Move hardcoded axis sign inversions from main.cpp Madgwick call to config.h defines. Currently `Madgwick6DOF(GyroX, -GyroY, -GyroZ, -AccX, AccY, AccZ, dt)` has board-specific inversions hardcoded. These should be configurable so users can define which IMU axis maps to aircraft forward/right/up (e.g., `IMU_FORWARD_AXIS`, `IMU_UP_AXIS`) and whether each is inverted.
+  - Notes: The auto-detection calibration (serial command 'o') already outputs the correct mappings. This change makes them config.h values instead of code modifications. Zero runtime overhead — resolved at compile time with `#if`. Matches the project's pattern of all calibration values in config.h.
+  - Dependencies: None (pure code change, auto-detection already works)
+
 - [x] Multi-position accelerometer calibration
   - Completed: 2026-02-06
   - Notes: 6-position calibration for offset + scale factor. Serial command 'm'. Outputs 9 defines to config.h.
@@ -93,15 +99,15 @@ This roadmap tracks project-level features and milestones for the flight control
   - Completed: 2026-02-05
   - Notes: Default `pio run -e teensy40` compiles without CALIBRATION_MODE — all calibration code, debug prints, and state machine compiled out
 
-- [ ] D-term low-pass filter
-  - Description: Add first-order low-pass filter on PID derivative term. Prevents motor oscillation from sensor noise being amplified into motor commands. This is the single highest-impact improvement for flight quality — every serious FC has this.
-  - Notes: Simple alpha filter: `filtered_d = alpha * new_d + (1-alpha) * prev_d`. Add `D_TERM_LPF_ALPHA` to config.h. ~3 extra multiplications per axis per tick. See [findings/bare-bones-fc-research.md](findings/bare-bones-fc-research.md).
-  - Dependencies: None (pure code change)
+- [x] D-term low-pass filter
+  - Completed: 2026-02-07
+  - Description: First-order PT1 low-pass filter on PID derivative term. Prevents motor oscillation from sensor noise being amplified into motor commands. `B_DTERM` coefficient in config.h (0.15 default).
+  - Notes: Applied in both controlRATE() and controlANGLE(). ~3 extra muls per axis per tick. See [findings/bare-bones-fc-research.md](findings/bare-bones-fc-research.md).
 
-- [ ] Rate mode derivative on measurement
-  - Description: Change rate mode D-term from `(error - error_prev) / dt` to `-(measurement - measurement_prev) / dt`. Prevents "derivative kick" when setpoint changes rapidly (stick movement). Angle mode already does this correctly (uses `-GyroX` directly).
-  - Notes: One-line change per axis in `controlRATE()`. See [findings/bare-bones-fc-research.md](findings/bare-bones-fc-research.md).
-  - Dependencies: None (pure code change)
+- [x] Rate mode derivative on measurement
+  - Completed: 2026-02-07
+  - Description: All D-terms now use derivative-on-measurement: `-(GyroX - GyroX_prev) / dt` instead of `(error - error_prev) / dt`. Prevents "derivative kick" on stick input. Fixed in both rate mode (all 3 axes) and angle mode yaw.
+  - Notes: Uses separate static variables for previous gyro values since GyroX_prev is overwritten by imu.cpp LP filter.
 
 - [ ] Setup/calibration mode for PID tuning
   - Description: A mode where PID values can be adjusted via serial or fc_tool without re-flashing
@@ -431,6 +437,8 @@ tools/timing/
 - [x] Timing calculator update (feature tiers, per-core analysis) — 2026-02-07
 - [x] Timing calculator modularization (scanner, min clock, clean output) — 2026-02-07
 - [x] Timing calculator simplified inputs (clock/cores/FPU, auto min/recommended output) — 2026-02-07
+- [x] D-term low-pass filter (PT1 filter, B_DTERM in config.h) — 2026-02-07
+- [x] Rate mode derivative on measurement (all axes, both controllers) — 2026-02-07
 
 ---
 
