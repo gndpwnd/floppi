@@ -173,12 +173,17 @@ This roadmap tracks project-level features and milestones for the flight control
   - Completed: 2026-02-06
   - Notes: Added telemetry output functions (printIMUTelemetry, printFullTelemetry) compatible with fc_tool parser. Serial command 't' toggles telemetry modes.
   - Related: See [fc_tool/docs/features/serial-telemetry-protocol.md](/fc_tool/docs/features/serial-telemetry-protocol.md)
+- [x] Timing calculator (modular)
+  - Completed: 2026-02-07
+  - Notes: `tools/timing_calculator.py` entry point with `tools/timing/` package (platforms, operations, calc, scanner, report). Auto-detects features from config.h. Calculates minimum clock speed required/recommended, shows per-phase breakdown and pass/fail status.
 
 ---
 
 ## Modular Feature System
 
-> All features are config.h flags using `#ifdef`. When disabled, zero binary cost. Users enable only what their MCU can handle. Use `tools/timing_calculator.py --features` to see per-feature compute costs and `--cores` for per-core workload analysis. See [findings/bare-bones-fc-research.md](findings/bare-bones-fc-research.md) for detailed research.
+> All features are config.h flags using `#ifdef`. When disabled, zero binary cost. Users enable only what their MCU can handle. See [findings/bare-bones-fc-research.md](findings/bare-bones-fc-research.md) for detailed research.
+>
+> **Timing calculator**: `tools/timing_calculator.py` auto-detects enabled features from config.h. See [tools/timing/](../tools/timing/) for modular source. See "Timing Calculator Improvements" section below for planned enhancements.
 
 ### Feature Modules (config.h)
 
@@ -214,6 +219,45 @@ Enable with `#define USE_RACING` in config.h. Betaflight-inspired optimizations 
 - [ ] Setpoint smoothing (smooth stick input transitions)
 - [ ] Air mode (full PID at zero throttle for flips/rolls)
 - [ ] Expo curves (non-linear stick response)
+
+---
+
+## Timing Calculator Improvements
+
+> Current state: `tools/timing_calculator.py` with `tools/timing/` package. Works but uses hardcoded operation complexity estimates and hardcoded platform specs. The next iteration should be simpler and more accurate.
+
+### Goals
+
+- [ ] **Source code scanning** — Instead of manually maintaining a list of operations and their estimated cycle counts, the calculator should scan the actual flight controller source files (src/, lib/) and trace the computation path through the code. Use computer science complexity analysis (count float operations, loops, function calls) to derive real numbers from real code. This means when new features are added to the firmware, the calculator automatically picks them up.
+
+- [ ] **Simplify inputs** — Remove hardcoded platform/controller configurations (Teensy 4.0 specs, ESP32 specs, etc.). The calculator only needs:
+  - Input clock speed (MHz)
+  - Core count (1 or 2)
+  - FPU (yes/no)
+  - Build environment / config.h options
+  The user provides their hardware specs, the tool tells them if it's enough.
+
+- [ ] **Build environment awareness** — Analyze different build environments (from platformio.ini) and config.h options to determine what code paths are active. Show the compute cost for each combination so users can compare: "base only" vs "base + optimization" vs "base + optimization + racing".
+
+- [ ] **Pass/fail output** — Given a clock speed and feature set: is it enough? If not, by how much? Minimum clock required, recommended clock (+10% margin). Current version does this but against hardcoded platform specs — future version should work with any arbitrary clock/core/FPU input.
+
+### Research Needed
+
+- How to statically analyze C/C++ source for floating-point operation counts (AST parsing, regex heuristics, or compile-time instrumentation)
+- Whether PlatformIO build system can provide intermediate files (preprocessed source, assembly) that make cycle counting easier
+- Accuracy tradeoffs: static analysis vs actual profiling on hardware vs manual annotation
+
+### Current Architecture (for reference)
+
+```text
+tools/timing_calculator.py     # CLI entry point
+tools/timing/
+    platforms.py               # Hardcoded platform specs (TO BE REPLACED with simple clock/cores/fpu input)
+    operations.py              # Hardcoded operation complexity (TO BE REPLACED with source scanning)
+    calc.py                    # Loop timing math, min clock calculation (KEEP)
+    scanner.py                 # config.h feature detection (KEEP + enhance)
+    report.py                  # Clean tabular output (KEEP)
+```
 
 ---
 
@@ -386,6 +430,7 @@ Enable with `#define USE_RACING` in config.h. Betaflight-inspired optimizations 
 - [x] Library vendoring (standalone offline builds) — 2026-02-07
 - [x] Modular feature system (USE_WEB_SERVER, USE_API_SERVER, USE_OPTIMIZATION, USE_RACING) — 2026-02-07
 - [x] Timing calculator update (feature tiers, per-core analysis) — 2026-02-07
+- [x] Timing calculator modularization (scanner, min clock, clean output) — 2026-02-07
 
 ---
 

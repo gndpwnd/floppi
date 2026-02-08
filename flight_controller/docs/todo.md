@@ -25,13 +25,14 @@ _No tasks in progress_
   - platformio.ini updated: no external downloads, lib_extra_dirs for ESP32
   - Project builds offline without internet connection
 
-- [x] Timing calculator update
-  - Added feature tier analysis (`--features` flag)
-  - Added per-core workload breakdown (`--cores` flag)
-  - Operations grouped by tier: base, optimization, racing, core1
-  - Shows incremental compute cost of each feature tier per platform
-  - Per-core process listing with estimated CPU utilization
-  - See [tools/timing_calculator.py](../tools/timing_calculator.py)
+- [x] Timing calculator modularization
+  - Split from single 1,074-line file into `tools/timing/` package (platforms, operations, calc, scanner, report)
+  - Auto-detects enabled features from config.h (scanner module)
+  - Calculates minimum clock speed required and recommended (+10% margin)
+  - Pass/fail output: "NOT ENOUGH +X%" when clock < required
+  - Clean tabular output, no prose/insights
+  - CLI: `-p <platform>`, `--all`, `--breakdown`, `--clock N`
+  - See [tools/timing/](../tools/timing/) and roadmap "Timing Calculator Improvements" for future plans
 
 - [x] Display module abstraction layer
   - Created display.h, display_data.h, display.cpp with U8g2 + SW I2C
@@ -86,9 +87,9 @@ _No tasks in progress_
   - See [findings/esp32-fc-feasibility.md](findings/esp32-fc-feasibility.md)
 - [x] OLED display options documented — 2026-02-06
   - See [findings/oled-display-options.md](findings/oled-display-options.md)
-- [x] Timing calculator tool — 2026-02-06, updated 2026-02-07
-  - See [tools/timing_calculator.py](../tools/timing_calculator.py)
-  - Usage: `python3 tools/timing_calculator.py` (full), `--check` (interactive), `--features` (tier comparison), `--cores` (per-core analysis)
+- [x] Timing calculator tool — 2026-02-06, modularized 2026-02-07
+  - See [tools/timing/](../tools/timing/)
+  - Usage: `python3 tools/timing_calculator.py` (default), `-p teensy40`, `--all`, `--breakdown`, `--clock N`
 - [x] Bare-bones FC features & algorithms research — 2026-02-07
   - See [findings/bare-bones-fc-research.md](findings/bare-bones-fc-research.md)
 - [x] ESP32 WiFi connectivity research — 2026-02-07
@@ -130,7 +131,7 @@ _For context; clear periodically_
 
 - [x] Modular feature system (config.h flags) — 2026-02-07
 - [x] Library vendoring (standalone builds) — 2026-02-07
-- [x] Timing calculator update (feature tiers, per-core) — 2026-02-07
+- [x] Timing calculator modularized (scanner, min clock, clean output) — 2026-02-07
 - [x] Display module, dual-core, WiFi STA, web server, API client — 2026-02-07
 - [x] 6-position accelerometer calibration — 2026-02-06
 - [x] Modularize main.cpp — 2026-02-06
@@ -146,7 +147,8 @@ _For context; clear periodically_
 - **Modular architecture** — code split into imu, control, motors, debug modules + feature flags
 - **Platform support**: Teensy 4.x (recommended), ESP32/S3 (WiFi-enabled)
 - **NOT supported**: Arduino Uno/Mega (16MHz + no FPU = max 302Hz loop rate)
-- **Feature modularity**: Users enable features in config.h based on their MCU capabilities. Use `timing_calculator.py` to check feasibility.
+- **Feature modularity**: Users enable features in config.h based on their MCU capabilities. Use `python3 tools/timing_calculator.py --all` to check feasibility across platforms.
+- **Timing calculator future**: Source code scanning and simplified clock/cores/FPU input planned. See roadmap "Timing Calculator Improvements" section.
 
 ---
 

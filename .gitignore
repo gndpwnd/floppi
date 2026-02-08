@@ -5,3 +5,4 @@
 # Test output (scripts should be tracked, results should not)
 **/tests/results/
 **/tests/outputs/
+**__pycache__/
