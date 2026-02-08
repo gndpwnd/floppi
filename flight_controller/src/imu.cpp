@@ -8,6 +8,10 @@
 #include "config.h"
 #include "pin_definitions.h"
 
+#ifdef USE_OPTIMIZATION
+#include "filters.h"
+#endif
+
 #include <Wire.h>
 
 //========================================================================================================================//
@@ -115,6 +119,45 @@ void getIMUdata() {
         MagY = (1.0 - B_MAG) * MagY_prev + B_MAG * MagY;
         MagZ = (1.0 - B_MAG) * MagZ_prev + B_MAG * MagZ;
     #endif
+
+    #ifdef USE_OPTIMIZATION
+    // Biquad filters (2nd stage after PT1, steeper -12dB/octave rolloff)
+    static BiquadFilter gyro_lpf[3];
+    #if GYRO_NOTCH_CENTER_HZ > 0
+    static BiquadFilter gyro_notch[3];
+    #endif
+    static bool opt_init = false;
+    if (!opt_init) {
+        for (int i = 0; i < 3; i++)
+            biquad_init_lpf(&gyro_lpf[i], GYRO_LPF_CUTOFF_HZ, LOOP_FREQUENCY_HZ);
+        #if GYRO_NOTCH_CENTER_HZ > 0
+        for (int i = 0; i < 3; i++)
+            biquad_init_notch(&gyro_notch[i], GYRO_NOTCH_CENTER_HZ, GYRO_NOTCH_WIDTH_HZ, LOOP_FREQUENCY_HZ);
+        #endif
+        opt_init = true;
+    }
+
+    // Gyro biquad low-pass
+    GyroX = biquad_apply(&gyro_lpf[0], GyroX);
+    GyroY = biquad_apply(&gyro_lpf[1], GyroY);
+    GyroZ = biquad_apply(&gyro_lpf[2], GyroZ);
+
+    // Gyro notch filter (targets motor/prop resonance)
+    #if GYRO_NOTCH_CENTER_HZ > 0
+    GyroX = biquad_apply(&gyro_notch[0], GyroX);
+    GyroY = biquad_apply(&gyro_notch[1], GyroY);
+    GyroZ = biquad_apply(&gyro_notch[2], GyroZ);
+    #endif
+
+    // Accelerometer 2nd stage low-pass (extra smoothing under vibration)
+    static float AccX_s2 = 0, AccY_s2 = 0, AccZ_s2 = 0;
+    AccX = (1.0f - B_ACCEL_STAGE2) * AccX_s2 + B_ACCEL_STAGE2 * AccX;
+    AccY = (1.0f - B_ACCEL_STAGE2) * AccY_s2 + B_ACCEL_STAGE2 * AccY;
+    AccZ = (1.0f - B_ACCEL_STAGE2) * AccZ_s2 + B_ACCEL_STAGE2 * AccZ;
+    AccX_s2 = AccX;
+    AccY_s2 = AccY;
+    AccZ_s2 = AccZ;
+    #endif // USE_OPTIMIZATION
 
     // Save previous values
     AccX_prev = AccX;

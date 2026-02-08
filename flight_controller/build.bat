@@ -1,56 +1,280 @@
 @echo off
-REM Flight Controller Build Script
-REM Usage: build.bat [build|upload|clean]
+setlocal enabledelayedexpansion
 
-set ENV_T40=teensy40
-set ENV_T41=teensy41
-set ENV_ESP32=esp32
+REM Flight Controller Build Script (Windows)
+REM Dynamically reads environments from platformio.ini
+REM
+REM Usage:
+REM   build.bat                     Interactive menu
+REM   build.bat build [env]         Build (all or specific env)
+REM   build.bat upload [env]        Upload to specific env
+REM   build.bat clean [env]         Clean (all or specific env)
+REM   build.bat monitor             Serial monitor
+REM   build.bat list                List available environments
+REM   build.bat help                Show usage
 
-if "%1"=="clean" goto clean
-if "%1"=="upload" goto upload
-if "%1"=="build" goto build
+set "PLATFORMIO_INI=platformio.ini"
+
+REM Parse environments from platformio.ini
+call :parse_environments
+
+REM Handle command line arguments
 if "%1"=="" goto menu
-echo Unknown option: %1
-goto menu
+if /i "%1"=="build" goto cmd_build
+if /i "%1"=="upload" goto cmd_upload
+if /i "%1"=="clean" goto cmd_clean
+if /i "%1"=="monitor" goto cmd_monitor
+if /i "%1"=="serial" goto cmd_monitor
+if /i "%1"=="list" goto cmd_list
+if /i "%1"=="envs" goto cmd_list
+if /i "%1"=="help" goto cmd_help
+if /i "%1"=="--help" goto cmd_help
+if /i "%1"=="-h" goto cmd_help
+echo Unknown command: %1
+echo Use 'build.bat help' for usage information.
+goto done
+
+REM ======================================================================
+REM INTERACTIVE MENU
+REM ======================================================================
 
 :menu
+cls
 echo.
 echo   Flight Controller Build Tool
-echo   ----------------------------
-echo   b - Build all environments
-echo   u - Upload to device
-echo   c - Clean build artifacts
+echo   ============================
 echo.
-set /p choice="Select [b/u/c]: "
-if /i "%choice%"=="b" goto build
-if /i "%choice%"=="u" goto upload
-if /i "%choice%"=="c" goto clean
+echo   1) Select environment and build
+echo   2) Select environment and upload
+echo   3) Build all environments
+echo   4) Clean all environments
+echo   5) Serial monitor
+echo   6) List environments
+echo   0) Exit
+echo.
+set /p "choice=Select option: "
+
+if "%choice%"=="1" (
+    call :select_env
+    if defined SELECTED_ENV (
+        echo.
+        echo Building !SELECTED_ENV!...
+        echo --------------------------------------------------------
+        pio run -e !SELECTED_ENV!
+        if !errorlevel! equ 0 (
+            echo.
+            echo [OK] Build succeeded.
+        ) else (
+            echo.
+            echo [FAIL] Build failed.
+        )
+    )
+    echo.
+    pause
+    goto menu
+)
+if "%choice%"=="2" (
+    call :select_env
+    if defined SELECTED_ENV (
+        echo.
+        echo Uploading to !SELECTED_ENV!...
+        echo Ensure your board is connected!
+        echo --------------------------------------------------------
+        pio run -t upload -e !SELECTED_ENV!
+        if !errorlevel! equ 0 (
+            echo.
+            echo [OK] Upload succeeded.
+        ) else (
+            echo.
+            echo [FAIL] Upload failed.
+        )
+    )
+    echo.
+    pause
+    goto menu
+)
+if "%choice%"=="3" (
+    echo.
+    echo Building all environments...
+    echo --------------------------------------------------------
+    pio run
+    echo.
+    pause
+    goto menu
+)
+if "%choice%"=="4" (
+    echo.
+    echo Cleaning all environments...
+    echo --------------------------------------------------------
+    pio run -t clean
+    echo.
+    pause
+    goto menu
+)
+if "%choice%"=="5" goto cmd_monitor_return
+if "%choice%"=="6" (
+    call :list_envs
+    echo.
+    pause
+    goto menu
+)
+if "%choice%"=="0" goto done
 echo Invalid option.
+timeout /t 1 >nul
 goto menu
 
-:build
-echo Building...
-pio run
-goto end
+:cmd_monitor_return
+pio device monitor
+goto menu
 
-:upload
+REM ======================================================================
+REM COMMAND LINE HANDLERS
+REM ======================================================================
+
+:cmd_build
+if "%2"=="" (
+    echo Building all environments...
+    pio run
+) else (
+    call :validate_env %2
+    if defined VALID_ENV (
+        echo Building %2...
+        pio run -e %2
+    ) else (
+        echo Unknown environment: %2
+        call :list_envs
+    )
+)
+goto done
+
+:cmd_upload
+if "%2"=="" (
+    echo Upload requires an environment name.
+    echo Usage: build.bat upload ENV_NAME
+    echo.
+    call :list_envs
+) else (
+    call :validate_env %2
+    if defined VALID_ENV (
+        echo Uploading to %2...
+        echo Ensure your board is connected!
+        pio run -t upload -e %2
+    ) else (
+        echo Unknown environment: %2
+        call :list_envs
+    )
+)
+goto done
+
+:cmd_clean
+if "%2"=="" (
+    echo Cleaning all environments...
+    pio run -t clean
+) else (
+    call :validate_env %2
+    if defined VALID_ENV (
+        echo Cleaning %2...
+        pio run -t clean -e %2
+    ) else (
+        echo Unknown environment: %2
+        call :list_envs
+    )
+)
+goto done
+
+:cmd_monitor
+pio device monitor
+goto done
+
+:cmd_list
+call :list_envs
+goto done
+
+:cmd_help
 echo.
-echo   1 - Teensy 4.0
-echo   2 - Teensy 4.1
-echo   3 - ESP32
-echo   4 - ESP32 (calibration)
+echo   Flight Controller Build Tool
+echo   ============================
 echo.
-set /p device="Upload to [1/2/3/4]: "
-if "%device%"=="1" pio run -t upload -e %ENV_T40%
-if "%device%"=="2" pio run -t upload -e %ENV_T41%
-if "%device%"=="3" pio run -t upload -e %ENV_ESP32%
-if "%device%"=="4" pio run -t upload -e esp32_calibration
-goto end
+echo   Usage:
+echo     build.bat                     Interactive menu
+echo     build.bat build [env]         Build (all or specific environment)
+echo     build.bat upload env          Upload to environment
+echo     build.bat clean [env]         Clean (all or specific environment)
+echo     build.bat monitor             Start serial monitor
+echo     build.bat list                List available environments
+echo.
+echo   Examples:
+echo     build.bat build teensy40      Build for Teensy 4.0
+echo     build.bat upload esp32        Upload to ESP32
+echo     build.bat clean               Clean all environments
+echo.
+goto done
 
-:clean
-echo Cleaning build artifacts...
-if exist .pio rmdir /s /q .pio
-echo Done.
-goto end
+REM ======================================================================
+REM ENVIRONMENT PARSING
+REM ======================================================================
 
-:end
+:parse_environments
+REM Parse [env:xxx] sections from platformio.ini into ENV_n variables
+set "ENV_COUNT=0"
+if not exist "%PLATFORMIO_INI%" (
+    echo ERROR: platformio.ini not found in current directory.
+    exit /b 1
+)
+for /f "usebackq tokens=*" %%a in ("%PLATFORMIO_INI%") do (
+    set "line=%%a"
+    REM Check for [env:xxx] pattern
+    echo %%a | findstr /r /c:"^\[env:[a-zA-Z0-9_-]*\]$" >nul 2>&1
+    if !errorlevel! equ 0 (
+        REM Extract environment name between [env: and ]
+        set "envname=%%a"
+        set "envname=!envname:[env:=!"
+        set "envname=!envname:]=!"
+        set "ENV_!ENV_COUNT!=!envname!"
+        set /a "ENV_COUNT+=1"
+    )
+)
+goto :eof
+
+:select_env
+REM Display environments and let user select one
+set "SELECTED_ENV="
+echo.
+call :list_envs
+echo.
+set /p "envsel=Select environment (0-%ENV_LAST%): "
+
+REM Validate selection is a number in range
+set "valid_num="
+for /l %%i in (0,1,%ENV_LAST%) do (
+    if "%envsel%"=="%%i" set "valid_num=1"
+)
+if not defined valid_num (
+    echo Invalid selection.
+    goto :eof
+)
+set "SELECTED_ENV=!ENV_%envsel%!"
+goto :eof
+
+:list_envs
+REM Display all available environments
+echo.
+echo   Available Environments:
+echo   -----------------------
+set /a "ENV_LAST=%ENV_COUNT%-1"
+for /l %%i in (0,1,%ENV_LAST%) do (
+    echo     %%i) !ENV_%%i!
+)
+goto :eof
+
+:validate_env
+REM Check if argument matches a known environment
+set "VALID_ENV="
+set /a "ENV_LAST=%ENV_COUNT%-1"
+for /l %%i in (0,1,%ENV_LAST%) do (
+    if /i "%1"=="!ENV_%%i!" set "VALID_ENV=1"
+)
+goto :eof
+
+:done
+endlocal

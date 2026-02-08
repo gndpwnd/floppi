@@ -67,11 +67,6 @@ This roadmap tracks project-level features and milestones for the flight control
   - Notes: 3-position test (level, nose-up, right-up) in lib/Calibration/calibration.cpp. Generates axis transformation code.
   - Related findings: [auto-calibration-research.md](findings/auto-calibration-research.md)
 
-- [ ] IMU orientation config in config.h
-  - Description: Move hardcoded axis sign inversions from main.cpp Madgwick call to config.h defines. Currently `Madgwick6DOF(GyroX, -GyroY, -GyroZ, -AccX, AccY, AccZ, dt)` has board-specific inversions hardcoded. These should be configurable so users can define which IMU axis maps to aircraft forward/right/up (e.g., `IMU_FORWARD_AXIS`, `IMU_UP_AXIS`) and whether each is inverted.
-  - Notes: The auto-detection calibration (serial command 'o') already outputs the correct mappings. This change makes them config.h values instead of code modifications. Zero runtime overhead — resolved at compile time with `#if`. Matches the project's pattern of all calibration values in config.h.
-  - Dependencies: None (pure code change, auto-detection already works)
-
 - [x] Multi-position accelerometer calibration
   - Completed: 2026-02-06
   - Notes: 6-position calibration for offset + scale factor. Serial command 'm'. Outputs 9 defines to config.h.

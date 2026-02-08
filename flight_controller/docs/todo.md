@@ -127,7 +127,6 @@ _Tasks waiting on something (include reason)_
 
 _Priority queue for immediate work_
 
-- [ ] IMU orientation config in config.h (move hardcoded axis inversions from main.cpp to config defines)
 - [ ] Implement USE_OPTIMIZATION features (biquad filters, notch filter)
 - [ ] Implement USE_RACING features (feed-forward, TPA, expo, air mode)
 - [ ] Hardware testing when hardware is available
