@@ -153,6 +153,11 @@ There are only **2 files** you need to edit to configure the firmware:
 This is the main configuration file. Everything lives here:
 
 ```cpp
+// Select your OLED display
+#define DISPLAY_SSD1306_128X32       // 0.91" (DSD TECH, most common)
+//#define DISPLAY_SSD1306_128X64     // 0.96"
+//#define DISPLAY_SH1106_128X64      // 1.3"
+
 // Select your IMU
 #define USE_MPU6050          // Most common
 //#define USE_MPU9250        // 9-axis with magnetometer

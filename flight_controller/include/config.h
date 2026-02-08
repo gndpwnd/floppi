@@ -21,6 +21,62 @@
 //
 
 //=============================================================================
+// FEATURE MODULES (compile-time)
+//=============================================================================
+// Enable/disable optional features. Each uses #ifdef — disabled features
+// add zero binary cost. Use tools/timing_calculator.py to check if your
+// MCU can handle the enabled features at your target loop rate.
+//
+// Platform notes:
+//   - WiFi features require ESP32/S3 (ignored on Teensy)
+//   - OLED display works on all platforms (uses SW I2C, separate from IMU bus)
+//   - Optimization and Racing work on all platforms
+//
+// Current overhead estimates (see findings/bare-bones-fc-research.md):
+//   Base FC loop:    ~150-200us on ESP32, ~50-80us on Teensy
+//   Optimization:    +50-70 FP multiplications/tick (~5-10us on ESP32)
+//   Racing:          +30-40 FP multiplications/tick (~3-5us on ESP32)
+//   Web server:      Core 1 only (zero flight loop impact on ESP32)
+//   API server:      Core 1 only (zero flight loop impact on ESP32)
+//   OLED display:    Core 1 on ESP32 (zero FC impact), 10Hz in main loop on Teensy
+
+// WiFi sub-features (ESP32/S3 only)
+// Auto-enabled when USE_WIFI is set (platformio.ini for ESP32 builds).
+// Comment out individually to disable a feature while keeping WiFi connectivity.
+//
+// WEB_SERVER: Live value display in browser. JSON API at /api/status,
+//   WebSocket at /ws, mDNS at floppi-XXXX.local.
+//   Best for: calibration, bench testing, diagnostics.
+//
+// API_SERVER: HTTP POST telemetry to centralized server for remote control.
+//   Server URL set in wifi_credentials.h (API_SERVER_URL).
+//   Best for: live flight, swarm coordination, external flight computer.
+#if defined(USE_ESP32) && defined(USE_WIFI)
+    #define USE_WEB_SERVER      // Web status server (JSON API, WebSocket, mDNS)
+    #define USE_API_SERVER      // API client (POST to centralized servers)
+#endif
+
+// Optimization — Noise reduction for cheaper hardware.
+// Biquad gyro/D-term filters, gyro notch filter, accel second-stage LP.
+// Enable if using budget motors, unbalanced props, or flexible frames.
+// Parameters below in "OPTIMIZATION PARAMETERS" section.
+//#define USE_OPTIMIZATION
+
+// Racing — Betaflight-inspired features for aggressive/FPV flying.
+// Feed-forward, TPA, setpoint smoothing, air mode, expo curves.
+// Not for beginners. Parameters below in "RACING PARAMETERS" section.
+//#define USE_RACING
+
+//=============================================================================
+// OLED DISPLAY SELECTION
+//=============================================================================
+// Uncomment ONLY ONE display type (used when OLED display is enabled)
+// Add new displays here as needed — only the define changes, drawing code is the same.
+#define DISPLAY_SSD1306_128X32       // 0.91" OLED (DSD TECH, most common small OLED)
+//#define DISPLAY_SSD1306_128X64     // 0.96" OLED (standard size)
+//#define DISPLAY_SH1106_128X64      // 1.3" OLED (larger, same resolution as 0.96")
+
+//=============================================================================
 // IMU SENSOR SELECTION
 //=============================================================================
 // Uncomment ONLY ONE IMU type
@@ -173,9 +229,20 @@
 //=============================================================================
 // Control Mode Selection
 //=============================================================================
-// Uncomment ONLY ONE control mode
-//#define USE_RATE_CONTROLLER   // Rate mode (acro) - stick controls rotation speed
-#define USE_ANGLE_CONTROLLER    // Angle mode (stabilize) - stick controls tilt angle
+// Uncomment ONLY ONE control mode. This is a compile-time selection — only
+// the chosen controller is included in the binary (zero overhead).
+//
+// ANGLE MODE: Stick position = target tilt angle. Release stick → drone levels
+//   itself. Best for: hovering, filming, beginners, autonomous flight.
+//
+// RATE MODE:  Stick position = rotation speed. Release stick → drone holds
+//   current angle (no self-leveling). Best for: acrobatics, FPV racing.
+//
+// For in-flight switching, use a flight computer that sends pre-computed
+// commands — the FC just executes. Keep it simple on the microcontroller.
+//
+//#define USE_RATE_CONTROLLER   // Rate mode (acro)
+#define USE_ANGLE_CONTROLLER    // Angle mode (stabilize) — recommended default
 
 //=============================================================================
 // Maximum Control Limits
@@ -247,6 +314,64 @@
     #else
         #define LOOP_FREQUENCY_HZ 2000  // Teensy: 2kHz (faster processor)
     #endif
+#endif
+
+//=============================================================================
+// OPTIMIZATION PARAMETERS (only when USE_OPTIMIZATION is enabled)
+//=============================================================================
+#ifdef USE_OPTIMIZATION
+    // Gyro biquad low-pass filter cutoff (Hz)
+    // Steeper rolloff than base PT1 filter (-12dB/octave vs -6dB/octave).
+    // Lower = more filtering, more delay. 80-150Hz typical.
+    #define GYRO_LPF_CUTOFF_HZ 100
+
+    // D-term biquad low-pass filter cutoff (Hz)
+    // Usually lower than gyro cutoff. 60-120Hz typical.
+    #define DTERM_LPF_CUTOFF_HZ 80
+
+    // Gyro notch filter — narrow-band rejection at a specific frequency.
+    // Targets motor/prop resonance noise. Set center to 0 to disable.
+    // Find your noise frequency with fc_tool FFT or Betaflight blackbox viewer.
+    #define GYRO_NOTCH_CENTER_HZ 0      // 0 = disabled
+    #define GYRO_NOTCH_WIDTH_HZ 30      // Bandwidth around center
+
+    // Accelerometer second-stage low-pass filter coefficient (0.0-1.0)
+    // Extra smoothing on accel for attitude estimation under vibration.
+    #define B_ACCEL_STAGE2 0.05
+#endif
+
+//=============================================================================
+// RACING PARAMETERS (only when USE_RACING is enabled)
+//=============================================================================
+#ifdef USE_RACING
+    // Feed-forward gain — adds setpoint derivative to PID output.
+    // Improves stick response without increasing P gain.
+    // 0.0 = disabled, 0.5-2.0 typical for aggressive flying.
+    #define FF_ROLL 0.0f
+    #define FF_PITCH 0.0f
+    #define FF_YAW 0.0f
+
+    // TPA (Throttle PID Attenuation)
+    // Reduces PID gains at high throttle to prevent oscillation.
+    // Breakpoint: throttle level where attenuation starts (0.0-1.0, 0.65 typical).
+    // Rate: how much to reduce (0.0 = none, 1.0 = full attenuation at max throttle).
+    #define TPA_BREAKPOINT 0.65f
+    #define TPA_RATE 0.5f
+
+    // Setpoint smoothing — low-pass on stick input for smoother transitions.
+    // 0 = disabled. 20-80Hz typical.
+    #define SETPOINT_SMOOTH_CUTOFF_HZ 0
+
+    // Air mode — keeps PID active at zero throttle for full attitude control
+    // during flips, rolls, and inverted flight. Uncomment to enable.
+    //#define USE_AIRMODE
+
+    // Expo curves — non-linear stick response.
+    // 0.0 = linear, 0.5 = moderate curve, 0.8 = aggressive.
+    // Gentle near center, aggressive at extremes.
+    #define EXPO_ROLL 0.0f
+    #define EXPO_PITCH 0.0f
+    #define EXPO_YAW 0.0f
 #endif
 
 //=============================================================================

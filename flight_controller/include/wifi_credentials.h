@@ -23,4 +23,9 @@
 // #define WIFI_EAP_USERNAME  "user@university.edu"
 // #define WIFI_EAP_PASSWORD  "your_password"
 
+// === API Server for swarm coordination (uncomment when ready) ===
+// When defined, the ESP32 will POST telemetry to this server periodically.
+// #define API_SERVER_URL       "http://192.168.1.100:8080"
+// #define API_POST_INTERVAL_MS 500   // How often to POST (ms), default 500
+
 #endif // WIFI_CREDENTIALS_H

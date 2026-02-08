@@ -33,6 +33,12 @@
 #if defined(USE_ESP32) && defined(USE_WIFI)
 #include "wifi_config.h"
 #endif
+#if defined(USE_ESP32) && defined(USE_WEB_SERVER)
+#include "web_server.h"
+#endif
+#if defined(USE_ESP32) && defined(USE_API_SERVER)
+#include "api_client.h"
+#endif
 
 // ESP32 FreeRTOS for dual-core support
 #ifdef USE_ESP32
@@ -206,14 +212,13 @@ void flightControlTask(void* parameter) {
     for (;;) {
         flightControlTick();
 
-        // Push display data to Core 1 via queue (non-blocking)
-        #ifdef USE_OLED_DISPLAY
+        // Push telemetry data to Core 1 via queue (non-blocking)
+        // Used by: display, web server, API client
         if (displayQueue != NULL) {
             DisplayData_t data;
             populateDisplayData(&data);
             xQueueOverwrite(displayQueue, &data);
         }
-        #endif
     }
 }
 
@@ -302,14 +307,19 @@ void setup() {
     // ESP32: Start dual-core architecture
     //------------------------------------------------------------------
     #ifdef USE_ESP32
-    // Create display data queue (depth 1, always latest data)
-    #ifdef USE_OLED_DISPLAY
+    // Create telemetry data queue (depth 1, always latest data)
+    // Used by: display, web server, API client on Core 1
     displayQueue = xQueueCreate(1, sizeof(DisplayData_t));
-    #endif
 
-    // Start WiFi on Core 1 (before spawning Core 0 task)
+    // Start WiFi stack + optional web server + API client on Core 1
     #ifdef USE_WIFI
     setupWiFi();
+    #endif
+    #ifdef USE_WEB_SERVER
+    setupWebServer();
+    #endif
+    #ifdef USE_API_SERVER
+    setupApiClient();
     #endif
 
     #ifdef USE_OLED_DISPLAY
@@ -359,15 +369,12 @@ void loop() {
 
     #else
     //------------------------------------------------------------------
-    // ESP32: Core 1 - display + WiFi (flight control is on Core 0)
+    // ESP32: Core 1 - display + WiFi + web server + API client
+    // (flight control is on Core 0)
     //------------------------------------------------------------------
 
-    // Receive latest flight data from Core 0
-    #ifdef USE_OLED_DISPLAY
+    // Receive latest telemetry from Core 0
     static DisplayData_t displayData = {};
-    static unsigned long display_timer = 0;
-
-    // Non-blocking receive (don't wait if no new data)
     xQueueReceive(displayQueue, &displayData, pdMS_TO_TICKS(5));
 
     // Add network info (Core 1 owns WiFi data)
@@ -375,17 +382,25 @@ void loop() {
     populateNetworkData(&displayData);
     #endif
 
-    // Render at 10Hz
-    unsigned long now = millis();
-    if (now - display_timer > 100) {
-        display_timer = now;
+    // OLED display rendering at 10Hz
+    #ifdef USE_OLED_DISPLAY
+    static unsigned long display_timer = 0;
+    unsigned long now_display = millis();
+    if (now_display - display_timer > 100) {
+        display_timer = now_display;
         renderDisplay(&displayData);
     }
-    #endif // USE_OLED_DISPLAY
+    #endif
 
-    // WiFi task handling
+    // WiFi stack + optional web server + API client handling
     #ifdef USE_WIFI
     handleWiFi();
+    #endif
+    #ifdef USE_WEB_SERVER
+    handleWebServer(&displayData);
+    #endif
+    #ifdef USE_API_SERVER
+    handleApiClient(&displayData);
     #endif
 
     // Yield to other tasks (don't spin Core 1 at 100%)

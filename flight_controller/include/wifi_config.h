@@ -1,6 +1,6 @@
 /*
  * WiFi Configuration Module Header
- * ESP32 WiFi AP mode and network info.
+ * ESP32 WiFi STA mode, web server, and API client.
  * Gated behind USE_ESP32 + USE_WIFI build flags.
  *
  * See: docs/findings/esp32-wifi-connectivity.md
@@ -13,13 +13,13 @@
 
 #include "display_data.h"
 
-// Initialize WiFi in AP mode (call from Core 1)
+// Initialize WiFi STA mode (call from Core 1 setup)
 void setupWiFi();
 
 // Populate network fields in display data (call from Core 1)
 void populateNetworkData(DisplayData_t* data);
 
-// Handle WiFi tasks (call periodically from Core 1 loop)
+// Handle WiFi reconnection (call periodically from Core 1 loop)
 void handleWiFi();
 
 #endif // USE_ESP32 && USE_WIFI

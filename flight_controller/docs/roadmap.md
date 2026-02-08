@@ -8,7 +8,7 @@ This roadmap tracks project-level features and milestones for the flight control
 
 **Note**: No time estimates. Focus on WHAT needs to be done, not WHEN.
 
-**Design philosophy**: Usability and simplicity first. Careful iteration of features over time. Not trying to be all-in-one — a good performing open-source flight controller that people can build in their garage.
+**Design philosophy**: Bare-bones flight stabilizer, not a full autopilot. Raw performance and simplicity over feature count. The FC does lots of math really fast (read sensors → filter → PID → output motors). Complex logic (missions, mode switching, GPS navigation) belongs on an external flight computer. Not trying to be Betaflight/ArduPilot — a simple, fast, open-source flight controller that people can build in their garage. See [findings/bare-bones-fc-research.md](findings/bare-bones-fc-research.md) for detailed analysis.
 
 ---
 
@@ -93,6 +93,16 @@ This roadmap tracks project-level features and milestones for the flight control
   - Completed: 2026-02-05
   - Notes: Default `pio run -e teensy40` compiles without CALIBRATION_MODE — all calibration code, debug prints, and state machine compiled out
 
+- [ ] D-term low-pass filter
+  - Description: Add first-order low-pass filter on PID derivative term. Prevents motor oscillation from sensor noise being amplified into motor commands. This is the single highest-impact improvement for flight quality — every serious FC has this.
+  - Notes: Simple alpha filter: `filtered_d = alpha * new_d + (1-alpha) * prev_d`. Add `D_TERM_LPF_ALPHA` to config.h. ~3 extra multiplications per axis per tick. See [findings/bare-bones-fc-research.md](findings/bare-bones-fc-research.md).
+  - Dependencies: None (pure code change)
+
+- [ ] Rate mode derivative on measurement
+  - Description: Change rate mode D-term from `(error - error_prev) / dt` to `-(measurement - measurement_prev) / dt`. Prevents "derivative kick" when setpoint changes rapidly (stick movement). Angle mode already does this correctly (uses `-GyroX` directly).
+  - Notes: One-line change per axis in `controlRATE()`. See [findings/bare-bones-fc-research.md](findings/bare-bones-fc-research.md).
+  - Dependencies: None (pure code change)
+
 - [ ] Setup/calibration mode for PID tuning
   - Description: A mode where PID values can be adjusted via serial or fc_tool without re-flashing
   - Dependencies: Serial command interface
@@ -149,6 +159,9 @@ This roadmap tracks project-level features and milestones for the flight control
 - [x] PlatformIO project structure with multi-board support
 - [x] config.h for all user-configurable settings
 - [x] pin_definitions.h for hardware abstraction
+- [x] Library vendoring — standalone builds
+  - Completed: 2026-02-07
+  - Notes: All external libs vendored into lib/ (U8g2, ArduinoJson) and lib_esp32/ (AsyncTCP, ESPAsyncWebServer). No internet downloads needed. See platformio.ini.
 - [x] Library organization (SBUS, MPU6050, RadioComm, Calibration, etc.)
 - [x] Modular source code architecture
   - Completed: 2026-02-06
@@ -163,11 +176,53 @@ This roadmap tracks project-level features and milestones for the flight control
 
 ---
 
+## Modular Feature System
+
+> All features are config.h flags using `#ifdef`. When disabled, zero binary cost. Users enable only what their MCU can handle. Use `tools/timing_calculator.py --features` to see per-feature compute costs and `--cores` for per-core workload analysis. See [findings/bare-bones-fc-research.md](findings/bare-bones-fc-research.md) for detailed research.
+
+### Feature Modules (config.h)
+
+| Flag | Platform | Description | Core |
+|------|----------|-------------|------|
+| `USE_OLED_DISPLAY` | All | OLED display (status, network info) | Core 1 (ESP32) / main loop (Teensy) |
+| `USE_WEB_SERVER` | ESP32 | Live value display in browser (JSON API, WebSocket, mDNS) | Core 1 |
+| `USE_API_SERVER` | ESP32 | HTTP POST telemetry to centralized server for remote control | Core 1 |
+| `USE_OPTIMIZATION` | All | Noise reduction: biquad filters, notch filter | Core 0 |
+| `USE_RACING` | All | Betaflight-style: feed-forward, TPA, expo, air mode | Core 0 |
+
+- **Web server** is best for calibration and bench testing (browse to floppi.local)
+- **API server** is best for live flight and swarm coordination (POST to centralized server)
+- Both are independently toggleable — not required to use together
+- On dual-core ESP32, WiFi features run on Core 1 (zero flight loop impact)
+- On single-core Teensy, WiFi features are compile-time excluded (no WiFi hardware)
+
+### USE_OPTIMIZATION — Noise reduction for cheap hardware
+
+Enable with `#define USE_OPTIMIZATION` in config.h. For builds using budget motors, unbalanced props, or flexible frames that produce more vibration. Adds better filtering to compensate for noisier hardware.
+
+- [ ] Biquad gyro low-pass filter (configurable cutoff, steeper rolloff than PT1)
+- [ ] D-term biquad filter (more aggressive derivative noise rejection)
+- [ ] Configurable gyro notch filter (target specific motor noise frequencies)
+- [ ] Accelerometer second-stage low-pass (attitude stability under vibration)
+
+### USE_RACING — Performance features for aggressive flying
+
+Enable with `#define USE_RACING` in config.h. Betaflight-inspired optimizations for sharper stick response and high-speed maneuvers. Not for beginners.
+
+- [ ] Feed-forward term (faster stick response without increasing P gain)
+- [ ] TPA — Throttle PID Attenuation (reduce gains at high throttle)
+- [ ] Setpoint smoothing (smooth stick input transitions)
+- [ ] Air mode (full PID at zero throttle for flips/rolls)
+- [ ] Expo curves (non-linear stick response)
+
+---
+
 ## Nice to Have (Lower Priority)
 
 - [ ] PID auto-tuning mode
   - Description: Automated PID tuning via relay/step response test (like Betaflight/ArduPilot AUTOTUNE)
-  - Related findings: [auto-calibration-research.md](findings/auto-calibration-research.md) 
+  - Related findings: [auto-calibration-research.md](findings/auto-calibration-research.md)
+
 - [ ] Temperature compensation for IMU drift
   - Description: Adjust calibration values based on temperature sensor readings
 
@@ -186,8 +241,16 @@ This roadmap tracks project-level features and milestones for the flight control
 - [ ] Voltage monitoring and low-battery warning
   - Description: ADC reading of battery voltage, warning via LED/buzzer
 
-- [ ] Rate limiting and expo curves for control inputs
-  - Description: Smoother control response for different skill levels
+- [ ] In-flight mode switching via radio channel
+  - Description: **Likely out of scope** — flight computer territory. The flight computer commands the FC by sending pre-computed attitude targets. For manual flying, pick one mode at compile time.
+
+- [ ] Wind compensation / disturbance rejection
+  - Description: Mostly about PID tuning, not special algorithms. D-term filtering + good I-term tuning handles moderate wind. See [findings/bare-bones-fc-research.md](findings/bare-bones-fc-research.md).
+  - Dependencies: D-term low-pass filter
+
+- [ ] ESC calibration serial command
+  - Description: Add ESC endpoint calibration as a serial command in calibration build (e.g., `e`). Sends min/max PWM to all ESCs for range calibration. Uses the same single calibration build — no separate build needed.
+  - Dependencies: Hardware testing
 
 - [ ] WiFi AP mode fallback
   - Description: ESP32 creates its own WiFi access point for field use when no infrastructure WiFi is available. Each drone has its own AP (e.g., Floppi-AABBCC). Useful for single-drone field testing.
@@ -243,10 +306,6 @@ This roadmap tracks project-level features and milestones for the flight control
   - Description: Show MAC address, SSID, IP address, RSSI on OLED. Core 1 populates network fields in DisplayData_t.
   - Dependencies: Display module + WiFi STA mode
 
-- [ ] Calibration mode display enhancement
-  - Description: Progress bar, step indicators, calibration results on OLED. Same behavior on Teensy and ESP32.
-  - Dependencies: Display module (done), hardware testing
-
 - [ ] Live flight status display
   - Description: Show armed status, attitude, motor outputs. Screen rotation for multiple views.
   - Dependencies: Display module (done) + flight validation
@@ -261,14 +320,15 @@ This roadmap tracks project-level features and milestones for the flight control
   - Related findings: [esp32-wifi-connectivity.md](findings/esp32-wifi-connectivity.md)
   - Reference code: ~/GravityProbe/esp32_enterprise_wpa3_eap/, esp32_ewpa2_iic_091/
 
-- [ ] API client for swarm coordination
-  - Description: HTTP POST/GET requests from ESP32 to centralized servers on the same network. Report telemetry, receive commands.
-  - Dependencies: WiFi STA mode (done)
+- [x] API client for swarm coordination
+  - Completed: 2026-02-07
+  - Description: HTTP POST telemetry to centralized servers, configurable URL via wifi_credentials.h, non-blocking on Core 1.
+  - Notes: api_client.h/cpp
 
-- [ ] Web status server
-  - Description: ESPAsyncWebServer on Core 1. Serve DisplayData_t as JSON. mDNS for `http://floppi.local`. WebSocket for real-time telemetry to fc_tool.
-  - Dependencies: WiFi STA mode (done)
-  - Related findings: [esp32-wifi-connectivity.md](findings/esp32-wifi-connectivity.md)
+- [x] Web status server
+  - Completed: 2026-02-07
+  - Description: ESPAsyncWebServer on Core 1. JSON endpoint at /api/status, WebSocket at /ws for streaming telemetry, mDNS at floppi-XXXX.local. ArduinoJson v7.
+  - Notes: web_server.h/cpp
 
 - [ ] OTA firmware updates
   - Description: Update firmware over WiFi without USB connection
@@ -281,6 +341,8 @@ This roadmap tracks project-level features and milestones for the flight control
 - **WiFi API enables** external coordination systems (fc_tool, swarm managers)
 - **Target latency**: <100ms for commands, ideally <50ms
 - **Design philosophy**: Keep FC firmware simple, let external tools handle complexity
+- **Feature ceiling**: The FC has ~90% of target features. Resist adding more. See [findings/bare-bones-fc-research.md](findings/bare-bones-fc-research.md)
+- **Compile-time architecture**: See [features/compile-time-architecture.md](features/compile-time-architecture.md) for details on the #ifdef feature gating and dual-core vs single-core architecture.
 
 ---
 
@@ -316,7 +378,14 @@ This roadmap tracks project-level features and milestones for the flight control
 - [x] ESP32 dual-core architecture (Core 0 FC, Core 1 display+WiFi) — 2026-02-07
 - [x] WiFi STA mode (connect to existing WiFi, WPA2-Personal + Enterprise) — 2026-02-07
 - [x] ESP32 network info display (MAC, SSID, IP, RSSI on OLED) — 2026-02-07
+- [x] Web status server (ESPAsyncWebServer, JSON API, WebSocket, mDNS) — 2026-02-07
+- [x] API client for swarm coordination (HTTP POST to centralized servers) — 2026-02-07
 - [x] 6-position accelerometer calibration — 2026-02-06
+- [x] Bare-bones FC features research — 2026-02-07
+- [x] Compile-time architecture documentation — 2026-02-07
+- [x] Library vendoring (standalone offline builds) — 2026-02-07
+- [x] Modular feature system (USE_WEB_SERVER, USE_API_SERVER, USE_OPTIMIZATION, USE_RACING) — 2026-02-07
+- [x] Timing calculator update (feature tiers, per-core analysis) — 2026-02-07
 
 ---
 

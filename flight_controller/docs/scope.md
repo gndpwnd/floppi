@@ -1,13 +1,15 @@
 # Flight Controller Firmware - Scope
 
-> Last updated: 2026-02-06
+> Last updated: 2026-02-07
 > Status: Active
 
 ---
 
 ## Overview
 
-Open-source VTOL flight controller firmware for Teensy microcontrollers, based on dRehmFlight. Designed for garage-buildable drones with an emphasis on usability, simplicity, and careful feature iteration. The firmware supports a two-mode workflow: **calibration mode** for determining hardware-specific values, and **live mode** for lean, hard-coded flight operation.
+Open-source bare-bones VTOL flight controller firmware for Teensy and ESP32 microcontrollers, based on dRehmFlight. Designed for garage-buildable drones with an emphasis on raw performance, simplicity, and careful feature iteration. The firmware is a flight **stabilizer**, not a flight **autopilot** — it does lots of math really fast (read sensors, filter, PID, output motors) and leaves complex logic to an external flight computer.
+
+The firmware supports a two-mode workflow: **calibration mode** for determining hardware-specific values, and **live mode** for lean, hard-coded flight operation.
 
 ## Objectives
 
@@ -16,6 +18,7 @@ Open-source VTOL flight controller firmware for Teensy microcontrollers, based o
 - Automate calibration and setup so users can flash, calibrate, and fly with minimal manual configuration
 - Keep firmware lean: hard-coded values in live mode, no SD cards or extra memory requirements
 - Iterate carefully on features over time rather than building an all-in-one solution
+- **Do not become Betaflight.** Raw performance and simplicity over feature count. If a feature adds runtime overhead to the flight loop and isn't necessary for stable flight, it belongs on the flight computer, not in the firmware.
 
 ## Requirements
 
@@ -38,15 +41,18 @@ Open-source VTOL flight controller firmware for Teensy microcontrollers, based o
 
 - [x] PlatformIO build system with multi-board support
 - [x] Teensy 4.0/4.1 as primary platform (ARM Cortex-M7 @ 600MHz)
-- [x] 2000Hz control loop rate
+- [x] ESP32/S3 as WiFi-enabled platform (dual-core, 240MHz)
+- [x] 1-2kHz control loop rate (1kHz ESP32, 2kHz Teensy)
 - [x] All calibration values hard-coded in live builds (no runtime configuration files)
 - [x] Calibration mode: mutable offsets for testing and value determination
 - [x] Clean separation between calibration/debug code and live flight code
 - [x] Build targets for different firmware states (calibration vs live)
+- [x] Compile-time feature gating (#ifdef) — zero runtime overhead for unused features
+- [x] Dual-core architecture on ESP32 (Core 0 = FC, Core 1 = peripherals)
 
 ### Resource Requirements
 
-- [x] Teensy 4.0 or 4.1 microcontroller
+- [x] Teensy 4.0 or 4.1 microcontroller — OR — ESP32/S3 dev board
 - [x] MPU6050 IMU (GY-521 breakout)
 - [x] SBUS-compatible receiver
 - [x] PlatformIO development environment
@@ -58,7 +64,7 @@ Open-source VTOL flight controller firmware for Teensy microcontrollers, based o
 |------------|--------|-----------|
 | No SD cards or external storage in live firmware | Keep hardware simple, reduce failure points | No |
 | Hard-coded calibration values in live mode | Simplicity, reliability, minimal memory | No |
-| Teensy 4.0/4.1 primary target | Proven platform with dRehmFlight heritage | No |
+| Teensy 4.0/4.1 + ESP32/S3 targets | Proven platforms, ESP32 adds WiFi | No |
 | No paid services or cloud dependencies | Open-source, self-contained | No |
 | PlatformIO build system | Cross-platform, library management | No |
 | No separate tests/ directory | Tests are baked into firmware as build targets/calibration modes | No |
@@ -76,9 +82,9 @@ Open-source VTOL flight controller firmware for Teensy microcontrollers, based o
 
 ### In Scope
 
-- Flight controller firmware for Teensy 4.0/4.1 (Teensy 3.6 legacy)
-- PID control loops (rate, angle modes)
-- IMU integration and sensor fusion (Madgwick filter)
+- Flight controller firmware for Teensy 4.0/4.1 (Teensy 3.6 legacy) and ESP32/S3
+- PID control loops (rate, angle modes) — compile-time selection
+- IMU integration and sensor fusion (Madgwick 6DOF filter)
 - Auto-calibration features (IMU, radio, attitude)
 - Multiple VTOL configurations (quad, hex, fixed-wing, tiltrotor, hybrid)
 - Firmware state machine (calibration mode ↔ live mode)
@@ -86,18 +92,27 @@ Open-source VTOL flight controller firmware for Teensy microcontrollers, based o
 - Serial debug output and diagnostics
 - Integration with fc_tool for visual diagnostics during calibration
 - Safety systems (arming, failsafe, throttle cut)
+- ESP32: WiFi STA mode, web status server, API client for swarm coordination
+- ESP32: OLED display on Core 1 (non-real-time)
+- WiFi telemetry (JSON API, WebSocket streaming, mDNS)
+- Modular feature system — all features selectable in config.h via #ifdef flags
+- Feature tiers: USE_OPTIMIZATION (noise reduction), USE_RACING (performance)
+- Standalone library vendoring — all dependencies in lib/ and lib_esp32/
 
 ### Out of Scope (Exclusions)
 
 - Physical drone design, frame construction, component selection (→ engineering360)
 - SD card logging or runtime configuration files in live firmware
-- Flight computer integration (ESP32/RPi) — planned as future platform feature, see roadmap
-- GPS, barometer, magnetometer — future scope, not current focus
+- GPS, barometer, magnetometer — flight computer territory
 - Ground control station software
 - Professional/commercial-grade features
-- Custom PCB design (uses off-the-shelf Teensy boards)
-- Autonomous navigation or waypoint following
-- Multi-drone coordination or swarm features
+- Custom PCB design (uses off-the-shelf boards)
+- Autonomous navigation or waypoint following — flight computer territory
+- Multi-drone coordination or swarm features — flight computer territory
+- In-flight mode switching — flight computer sends commands, FC executes
+- Dynamic gyro filtering (FFT, RPM filters) — Betaflight-level complexity, not needed
+- In-flight PID tuning — calibration mode + fc_tool covers this
+- Blackbox logging — flight computer can log via WiFi
 
 ## Technical Decisions
 
@@ -111,10 +126,19 @@ Open-source VTOL flight controller firmware for Teensy microcontrollers, based o
 | Firmware states | Calibration mode vs Live mode | Separate debug/test from production flight | 2026-02-05 |
 | Testing approach | Built into firmware as build targets | Embedded firmware testing is hardware-based, not unit test files | 2026-02-05 |
 | Build separation | PlatformIO `extends` + `-D CALIBRATION_MODE` | Each board gets a `_calibration` variant. Clean, DRY, no code duplication. | 2026-02-05 |
+| Attitude filter | Madgwick 6DOF | Better noise rejection than complementary, simpler than EKF, single tuning parameter | Pre-2026 |
+| WiFi architecture | STA mode (connect to existing) | Swarm coordination — drones on same network, API to centralized computers | 2026-02-07 |
+| Dual-core split | Core 0 = FC, Core 1 = WiFi/display | Flight control isolated from non-real-time tasks, zero interference | 2026-02-07 |
+| Flight mode selection | Compile-time only | No runtime overhead. Flight computer handles mode switching externally | 2026-02-07 |
+| Feature gating | #ifdef preprocessor | Zero binary cost for unused features, see [features/compile-time-architecture.md](features/compile-time-architecture.md) | 2026-02-07 |
+| Modular features | config.h flags | USE_WEB_SERVER, USE_API_SERVER, USE_OPTIMIZATION, USE_RACING — users enable what their MCU can handle | 2026-02-07 |
+| Library vendoring | lib/ + lib_esp32/ | All deps vendored for offline/standalone builds. No external downloads needed. | 2026-02-07 |
+| Web vs API server | Separate config flags | Web server = calibration/display, API server = remote control/swarm. Independently toggleable. | 2026-02-07 |
 
 ## Integration Points
 
-- **fc_tool** (Tauri desktop app): Serial communication for real-time IMU visualization, calibration interface, firmware management
+- **fc_tool** (Tauri desktop app): Serial communication for real-time IMU visualization, calibration interface, firmware management. Future: WebSocket connection to floppi.local/ws.
+- **Flight computer** (external): Sends commands to FC via radio or WiFi API. Handles complex logic (missions, mode switching, aerobatics sequencing, swarm coordination). FC just executes.
 - **engineering360**: Receives physical platform specifications (mass, inertia, motor specs) for PID tuning
 - **PlatformIO**: Build system, library management, firmware upload
 
@@ -132,6 +156,8 @@ Open-source VTOL flight controller firmware for Teensy microcontrollers, based o
 - **Calibration workflow**: Flash calibration build → run calibration → copy values → edit config.h → flash live build → fly
 - **dRehmFlight heritage**: This project builds on Nick Rehm's work. Keep attribution and MIT license compatibility
 - **VTOL generality**: Like dRehmFlight, the mixer is user-customizable for any VTOL configuration. Don't hard-code for quadcopter only
+- **Bare-bones philosophy**: The FC has ~90% of its target features. Resist adding more. Every feature that adds runtime overhead to the flight loop must justify its existence. See [findings/bare-bones-fc-research.md](findings/bare-bones-fc-research.md)
+- **Flight computer boundary**: In-flight mode switching, autonomous features, GPS/baro/mag integration, mission planning, and complex aerobatics all belong on the flight computer. The FC stabilizes. Period.
 
 ---
 
@@ -143,6 +169,8 @@ Open-source VTOL flight controller firmware for Teensy microcontrollers, based o
 | 2026-02-05 | Resolved build separation approach (PlatformIO extends), added technical decision | LLM + User |
 | 2026-02-06 | Added research for ESP32 platform support as future feature (not current scope) | LLM + User |
 | 2026-02-06 | Added timing calculator tool (tools/timing_calculator.py) for platform analysis | LLM + User |
+| 2026-02-07 | ESP32 now in scope (dual-core, WiFi STA, web server, API client). Updated boundaries: flight computer handles complex logic. Added bare-bones philosophy. | LLM + User |
+| 2026-02-07 | Added modular feature system (USE_WEB_SERVER, USE_API_SERVER, USE_OPTIMIZATION, USE_RACING). Library vendoring for standalone builds. Updated timing calculator with per-core and feature tier analysis. | LLM + User |
 
 ---
 
