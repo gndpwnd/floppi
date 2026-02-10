@@ -26,5 +26,6 @@ Thumbs.db
 tests/results/
 tests/outputs/
 
-# Logs
+# Runtime
 *.log
+.swarm_api.pid

@@ -31,7 +31,7 @@ wait_for_api() {
             return 0
         fi
         sleep 1
-        ((waited++))
+        waited=$((waited + 1))
         printf "."
     done
     echo ""

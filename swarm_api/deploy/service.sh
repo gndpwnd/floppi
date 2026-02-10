@@ -142,7 +142,7 @@ cmd_stop() {
     local waited=0
     while is_process_running "$pid" && [[ $waited -lt 10 ]]; do
         sleep 1
-        ((waited++))
+        waited=$((waited + 1))
     done
 
     if is_process_running "$pid"; then

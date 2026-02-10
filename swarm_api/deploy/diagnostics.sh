@@ -25,12 +25,12 @@ cmd_diagnose() {
             success "$py_version"
         else
             warn "$py_version (3.10+ recommended)"
-            ((warnings++))
+            warnings=$((warnings + 1))
         fi
     else
         error "Python3 not found"
         hint "Install Python 3.10+: https://python.org"
-        ((issues++))
+        issues=$((issues + 1))
     fi
 
     # Check 2: Virtual environment
@@ -39,7 +39,7 @@ cmd_diagnose() {
         success "Found at $VENV_DIR"
     else
         warn "No venv (will be created on start)"
-        ((warnings++))
+        warnings=$((warnings + 1))
     fi
 
     # Check 3: Dependencies
@@ -63,7 +63,7 @@ if missing:
         else
             warn "Missing: $missing"
             hint "Run: ./deploy.sh repair"
-            ((warnings++))
+            warnings=$((warnings + 1))
         fi
     else
         printf "${SKIP} Can't check (no Python)\n"
@@ -87,27 +87,27 @@ except Exception as e:
             success "Valid ($count drone(s) registered)"
         else
             error "Invalid JSON: ${valid#error:}"
-            ((issues++))
+            issues=$((issues + 1))
         fi
     else
         warn "Not found (will use defaults)"
-        ((warnings++))
+        warnings=$((warnings + 1))
     fi
 
     # Check 5: Source files
     printf "Checking source files... "
     local missing_src=()
-    [[ ! -f "$SCRIPT_DIR/src/main.py" ]] && missing_src+=("src/main.py")
-    [[ ! -f "$SCRIPT_DIR/src/config.py" ]] && missing_src+=("src/config.py")
-    [[ ! -f "$SCRIPT_DIR/src/drone.py" ]] && missing_src+=("src/drone.py")
-    [[ ! -f "$SCRIPT_DIR/src/manager.py" ]] && missing_src+=("src/manager.py")
-    [[ ! -f "$SCRIPT_DIR/src/static/index.html" ]] && missing_src+=("src/static/index.html")
+    [[ -f "$SCRIPT_DIR/src/main.py" ]] || missing_src+=("src/main.py")
+    [[ -f "$SCRIPT_DIR/src/config.py" ]] || missing_src+=("src/config.py")
+    [[ -f "$SCRIPT_DIR/src/drone.py" ]] || missing_src+=("src/drone.py")
+    [[ -f "$SCRIPT_DIR/src/manager.py" ]] || missing_src+=("src/manager.py")
+    [[ -f "$SCRIPT_DIR/src/static/index.html" ]] || missing_src+=("src/static/index.html")
 
     if [[ ${#missing_src[@]} -eq 0 ]]; then
         success "All present"
     else
         error "Missing: ${missing_src[*]}"
-        ((issues++))
+        issues=$((issues + 1))
     fi
 
     # Check 6: Port
@@ -118,7 +118,7 @@ except Exception as e:
     elif lsof -i ":$port" -sTCP:LISTEN &>/dev/null 2>&1 || ss -tlnp "sport = :$port" 2>/dev/null | grep -q LISTEN; then
         warn "In use by another application"
         hint "Change port in config.json or stop the other process"
-        ((warnings++))
+        warnings=$((warnings + 1))
     else
         success "Available"
     fi
@@ -130,10 +130,10 @@ except Exception as e:
         success "${available_gb}GB available"
     elif [[ $available_gb -gt 1 ]]; then
         warn "${available_gb}GB available (low)"
-        ((warnings++))
+        warnings=$((warnings + 1))
     else
         error "${available_gb}GB available (critically low)"
-        ((issues++))
+        issues=$((issues + 1))
     fi
 
     # Check 8: mDNS support
@@ -145,7 +145,7 @@ except Exception as e:
     else
         warn "avahi not detected (mDNS discovery may fail)"
         hint "Install: sudo apt install avahi-daemon avahi-utils"
-        ((warnings++))
+        warnings=$((warnings + 1))
     fi
 
     # Check 9: Server health (if running)
@@ -157,7 +157,7 @@ except Exception as e:
         else
             warn "Server running but not responding"
             hint "Check logs: ./deploy.sh logs"
-            ((warnings++))
+            warnings=$((warnings + 1))
         fi
 
         printf "Checking dashboard... "
@@ -165,7 +165,7 @@ except Exception as e:
             success "Accessible"
         else
             warn "Not accessible"
-            ((warnings++))
+            warnings=$((warnings + 1))
         fi
 
         echo ""
@@ -210,14 +210,14 @@ cmd_repair() {
             python3 -m venv "$VENV_DIR" 2>/dev/null
             if [[ $? -eq 0 ]]; then
                 success "Created venv"
-                ((fixed++))
+                fixed=$((fixed + 1))
             else
                 error "Failed to create venv"
-                ((failed++))
+                failed=$((failed + 1))
             fi
         else
             error "Python3 not found"
-            ((failed++))
+            failed=$((failed + 1))
         fi
     else
         printf "${SKIP} Already exists\n"
@@ -230,14 +230,14 @@ cmd_repair() {
         "$pip" install -q -r "$SCRIPT_DIR/requirements.txt" 2>/dev/null
         if [[ $? -eq 0 ]]; then
             success "Dependencies installed"
-            ((fixed++))
+            fixed=$((fixed + 1))
         else
             error "Failed to install dependencies"
-            ((failed++))
+            failed=$((failed + 1))
         fi
     else
         error "pip not found"
-        ((failed++))
+        failed=$((failed + 1))
     fi
 
     # Fix 3: Create config.json if missing
@@ -259,7 +259,7 @@ cmd_repair() {
 }
 EOF
         success "Created default config.json"
-        ((fixed++))
+        fixed=$((fixed + 1))
     else
         printf "${SKIP} Already exists\n"
     fi
@@ -270,12 +270,12 @@ EOF
     for dir in src/static src/api tests; do
         if [[ ! -d "$SCRIPT_DIR/$dir" ]]; then
             mkdir -p "$SCRIPT_DIR/$dir"
-            ((created++))
+            created=$((created + 1))
         fi
     done
     if [[ $created -gt 0 ]]; then
         success "Created $created directories"
-        ((fixed++))
+        fixed=$((fixed + 1))
     else
         printf "${SKIP} All exist\n"
     fi
@@ -286,7 +286,7 @@ EOF
     if [[ -n "$pid" ]] && ! is_process_running "$pid"; then
         rm -f "$PID_FILE"
         success "Removed stale PID file"
-        ((fixed++))
+        fixed=$((fixed + 1))
     else
         printf "${SKIP} None found\n"
     fi
