@@ -12,6 +12,7 @@
 
 #include <Arduino.h>
 #include <Wire.h>
+#include <string.h>
 
 #include "config.h"
 #include "pin_definitions.h"
@@ -38,6 +39,9 @@
 #endif
 #if defined(USE_ESP32) && defined(USE_API_SERVER)
 #include "api_client.h"
+#endif
+#if defined(USE_ESP32) && defined(USE_OTA)
+#include "ota.h"
 #endif
 
 // ESP32 FreeRTOS for dual-core support
@@ -110,6 +114,26 @@ CalibrationMode calibration_mode = CALIB_NONE;
 bool calibration_in_progress = false;
 unsigned long calibration_start_time = 0;
 int telemetry_mode = 0;  // 0=off, 1=IMU, 2=full
+
+// Runtime-tunable PID gains (initialized from config.h macros)
+#ifdef USE_RATE_CONTROLLER
+float tune_kp_roll = KP_ROLL_RATE;
+float tune_ki_roll = KI_ROLL_RATE;
+float tune_kd_roll = KD_ROLL_RATE;
+float tune_kp_pitch = KP_PITCH_RATE;
+float tune_ki_pitch = KI_PITCH_RATE;
+float tune_kd_pitch = KD_PITCH_RATE;
+#else
+float tune_kp_roll = KP_ROLL_ANGLE;
+float tune_ki_roll = KI_ROLL_ANGLE;
+float tune_kd_roll = KD_ROLL_ANGLE;
+float tune_kp_pitch = KP_PITCH_ANGLE;
+float tune_ki_pitch = KI_PITCH_ANGLE;
+float tune_kd_pitch = KD_PITCH_ANGLE;
+#endif
+float tune_kp_yaw = KP_YAW_RATE;
+float tune_ki_yaw = KI_YAW_RATE;
+float tune_kd_yaw = KD_YAW_RATE;
 #endif
 
 //========================================================================================================================//
@@ -295,6 +319,8 @@ void setup() {
     Serial.println(F("  m - IMU cal (6-pos, more accurate)"));
     Serial.println(F("  o - IMU + Orientation"));
     Serial.println(F("  s - Status"));
+    Serial.println(F("  g - PID gains (show/set)"));
+    Serial.println(F("  t - Toggle telemetry"));
     Serial.println(F("  h - Help"));
     Serial.println(F("\nCH6 switch (hold 3s):"));
     Serial.println(F("  Mid:  IMU cal"));
@@ -320,6 +346,9 @@ void setup() {
     #endif
     #ifdef USE_API_SERVER
     setupApiClient();
+    #endif
+    #ifdef USE_OTA
+    setupOTA();
     #endif
 
     #ifdef USE_OLED_DISPLAY
@@ -401,6 +430,9 @@ void loop() {
     #endif
     #ifdef USE_API_SERVER
     handleApiClient(&displayData);
+    #endif
+    #ifdef USE_OTA
+    handleOTA();
     #endif
 
     // Yield to other tasks (don't spin Core 1 at 100%)
@@ -504,43 +536,65 @@ void checkCalibrationMode() {
     }
 }
 
-void checkSerialCommands() {
-    if (calibration_in_progress) {
-        return;
-    }
+// Helper: match a gain name and return pointer to it, or NULL
+static float* findGain(const char* name) {
+    if (strcmp(name, "kp_roll") == 0)  return &tune_kp_roll;
+    if (strcmp(name, "ki_roll") == 0)  return &tune_ki_roll;
+    if (strcmp(name, "kd_roll") == 0)  return &tune_kd_roll;
+    if (strcmp(name, "kp_pitch") == 0) return &tune_kp_pitch;
+    if (strcmp(name, "ki_pitch") == 0) return &tune_ki_pitch;
+    if (strcmp(name, "kd_pitch") == 0) return &tune_kd_pitch;
+    if (strcmp(name, "kp_yaw") == 0)   return &tune_kp_yaw;
+    if (strcmp(name, "ki_yaw") == 0)   return &tune_ki_yaw;
+    if (strcmp(name, "kd_yaw") == 0)   return &tune_kd_yaw;
+    return NULL;
+}
 
-    if (Serial.available() > 0) {
-        char cmd = Serial.read();
+static void printGains() {
+    Serial.println(F("\n=== PID GAINS ==="));
+    #ifdef USE_RATE_CONTROLLER
+    Serial.println(F("Mode: RATE"));
+    #else
+    Serial.println(F("Mode: ANGLE"));
+    #endif
+    Serial.print(F("  kp_roll="));  Serial.print(tune_kp_roll, 6);
+    Serial.print(F("  ki_roll="));  Serial.print(tune_ki_roll, 6);
+    Serial.print(F("  kd_roll="));  Serial.println(tune_kd_roll, 6);
+    Serial.print(F("  kp_pitch=")); Serial.print(tune_kp_pitch, 6);
+    Serial.print(F("  ki_pitch=")); Serial.print(tune_ki_pitch, 6);
+    Serial.print(F("  kd_pitch=")); Serial.println(tune_kd_pitch, 6);
+    Serial.print(F("  kp_yaw="));   Serial.print(tune_kp_yaw, 6);
+    Serial.print(F("  ki_yaw="));   Serial.print(tune_ki_yaw, 6);
+    Serial.print(F("  kd_yaw="));   Serial.println(tune_kd_yaw, 6);
+    Serial.println(F("Set: g <name> <value>  (e.g. g kp_roll 0.2)"));
+}
 
-        while (Serial.available()) Serial.read();
+static void processSerialLine(char* line) {
+    // Trim leading whitespace
+    while (*line == ' ' || *line == '\t') line++;
+    if (*line == '\0') return;
 
+    // Single-character commands (backward compatible)
+    if (line[1] == '\0' || line[1] == '\r') {
+        char cmd = line[0];
         switch (cmd) {
-            case 'r':
-            case 'R':
+            case 'r': case 'R':
                 Serial.println(F("\n>>> Radio Calibration requested via serial"));
                 calibration_mode = CALIB_RADIO;
-                break;
-
-            case 'i':
-            case 'I':
+                return;
+            case 'i': case 'I':
                 Serial.println(F("\n>>> IMU Calibration requested via serial"));
                 calibration_mode = CALIB_ACCEL_GYRO;
-                break;
-
-            case 'o':
-            case 'O':
+                return;
+            case 'o': case 'O':
                 Serial.println(F("\n>>> IMU + Orientation Calibration requested via serial"));
                 calibration_mode = CALIB_ATTITUDE;
-                break;
-
-            case 'm':
-            case 'M':
+                return;
+            case 'm': case 'M':
                 Serial.println(F("\n>>> 6-Position IMU Calibration requested via serial"));
                 calibration_mode = CALIB_6POSITION;
-                break;
-
-            case 's':
-            case 'S':
+                return;
+            case 's': case 'S':
                 Serial.println(F("\n=== STATUS ==="));
                 Serial.print(F("CH1: ")); Serial.print(channel_1_pwm);
                 Serial.print(F("  CH2: ")); Serial.print(channel_2_pwm);
@@ -549,10 +603,8 @@ void checkSerialCommands() {
                 Serial.print(F("  CH5: ")); Serial.print(channel_5_pwm);
                 Serial.print(F("  CH6: ")); Serial.println(channel_6_pwm);
                 Serial.print(F("Armed: ")); Serial.println(armedFly ? "YES" : "NO");
-                break;
-
-            case 't':
-            case 'T':
+                return;
+            case 't': case 'T':
                 telemetry_mode = (telemetry_mode + 1) % 3;
                 if (telemetry_mode == 0) {
                     Serial.println(F("\n>>> Telemetry OFF"));
@@ -563,11 +615,11 @@ void checkSerialCommands() {
                     Serial.println(F("\n>>> Telemetry: FULL (20Hz)"));
                     Serial.println(F("    Format: ax ay az gx gy gz roll pitch yaw m1 m2 m3 m4"));
                 }
-                break;
-
-            case 'h':
-            case 'H':
-            case '?':
+                return;
+            case 'g': case 'G':
+                printGains();
+                return;
+            case 'h': case 'H': case '?':
                 Serial.println(F("\n=== CALIBRATION COMMANDS ==="));
                 Serial.println(F("  r - Radio calibration (channel mapping)"));
                 Serial.println(F("  i - IMU calibration (single-position, offsets only)"));
@@ -575,14 +627,72 @@ void checkSerialCommands() {
                 Serial.println(F("  o - IMU + Orientation detection"));
                 Serial.println(F("  s - Status (show channel values)"));
                 Serial.println(F("  t - Toggle telemetry (off/IMU/full) for fc_tool"));
+                Serial.println(F("  g - Show PID gains / set gain (g <name> <value>)"));
                 Serial.println(F("  h - Help (this menu)"));
                 Serial.println(F("\nOr use CH6 switch:"));
                 Serial.println(F("  Mid position (3s hold): IMU calibration"));
                 Serial.println(F("  High position (3s hold): IMU + Orientation"));
-                break;
-
+                return;
             default:
-                break;
+                return;
+        }
+    }
+
+    // Multi-word commands: "g <name> <value>"
+    if (line[0] == 'g' && line[1] == ' ') {
+        char* name = line + 2;
+        while (*name == ' ') name++;
+        char* space = strchr(name, ' ');
+        if (space == NULL) {
+            // Just "g <name>" — print that one gain
+            float* gain = findGain(name);
+            if (gain) {
+                Serial.print(F("  "));
+                Serial.print(name);
+                Serial.print(F(" = "));
+                Serial.println(*gain, 6);
+            } else {
+                Serial.print(F("Unknown gain: "));
+                Serial.println(name);
+            }
+            return;
+        }
+        *space = '\0';
+        char* val_str = space + 1;
+        while (*val_str == ' ') val_str++;
+
+        float* gain = findGain(name);
+        if (!gain) {
+            Serial.print(F("Unknown gain: "));
+            Serial.println(name);
+            return;
+        }
+        float val = atof(val_str);
+        *gain = val;
+        Serial.print(F("  "));
+        Serial.print(name);
+        Serial.print(F(" = "));
+        Serial.println(val, 6);
+    }
+}
+
+void checkSerialCommands() {
+    if (calibration_in_progress) return;
+
+    // Non-blocking line buffer
+    static char buf[64];
+    static uint8_t pos = 0;
+
+    while (Serial.available()) {
+        char c = Serial.read();
+        if (c == '\n' || c == '\r') {
+            if (pos > 0) {
+                buf[pos] = '\0';
+                processSerialLine(buf);
+                pos = 0;
+            }
+        } else if (pos < sizeof(buf) - 1) {
+            buf[pos++] = c;
         }
     }
 }

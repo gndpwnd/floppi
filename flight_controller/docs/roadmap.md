@@ -1,6 +1,6 @@
 # Flight Controller Firmware - Roadmap
 
-> Last updated: 2026-02-07
+> Last updated: 2026-02-09
 
 ## Overview
 
@@ -104,9 +104,10 @@ This roadmap tracks project-level features and milestones for the flight control
   - Description: All D-terms now use derivative-on-measurement: `-(GyroX - GyroX_prev) / dt` instead of `(error - error_prev) / dt`. Prevents "derivative kick" on stick input. Fixed in both rate mode (all 3 axes) and angle mode yaw.
   - Notes: Uses separate static variables for previous gyro values since GyroX_prev is overwritten by imu.cpp LP filter.
 
-- [ ] Setup/calibration mode for PID tuning
-  - Description: A mode where PID values can be adjusted via serial or fc_tool without re-flashing
-  - Dependencies: Serial command interface
+- [x] Setup/calibration mode for PID tuning
+  - Completed: 2026-02-09
+  - Description: Runtime-tunable PID gains in calibration builds. Non-blocking line-buffered serial parser. Commands: `g` (show), `g kp_roll 0.2` (set). Gains initialized from config.h macros.
+  - Files: main.cpp (tunable variables, serial parser), control.cpp (uses tunable gains in CALIBRATION_MODE), globals.h (extern declarations)
 
 ### Hardware Testing & Validation
 
@@ -182,82 +183,69 @@ This roadmap tracks project-level features and milestones for the flight control
 
 ## Modular Feature System
 
-> All features are config.h flags using `#ifdef`. When disabled, zero binary cost. Users enable only what their MCU can handle. See [findings/bare-bones-fc-research.md](findings/bare-bones-fc-research.md) for detailed research.
+> **Design**: Every feature is a `#define` flag in config.h. When disabled, the code is **completely excluded** from the binary — zero flash, zero RAM, zero CPU overhead. Users enable exactly what their MCU and use case need.
 >
-> **Timing calculator**: `tools/timing_calculator.py` auto-detects enabled features from config.h. See [tools/timing/](../tools/timing/) for modular source. See "Timing Calculator Improvements" section below for planned enhancements.
+> **Independence**: All feature flags are orthogonal. Enable any combination without conflicts. Tested in all permutations (base only, optimization only, racing only, both, with/without WiFi features).
+>
+> **Platform awareness**: WiFi features (web server, API client, OTA) are ESP32-only and auto-enabled with `USE_WIFI`. Flight loop features (optimization, racing) work on all platforms. On ESP32, WiFi features run on Core 1 — **zero flight loop impact**.
+>
+> **Timing calculator**: `tools/timing_calculator.py` auto-detects enabled features from config.h and validates your MCU can handle the compute load. See [tools/timing/](../tools/timing/).
 
 ### Feature Modules (config.h)
 
-| Flag | Platform | Description | Core |
-|------|----------|-------------|------|
-| `USE_OLED_DISPLAY` | All | OLED display (status, network info) | Core 1 (ESP32) / main loop (Teensy) |
-| `USE_WEB_SERVER` | ESP32 | Live value display in browser (JSON API, WebSocket, mDNS) | Core 1 |
-| `USE_API_SERVER` | ESP32 | HTTP POST telemetry to centralized server for remote control | Core 1 |
-| `USE_OPTIMIZATION` | All | Noise reduction: biquad filters, notch filter | Core 0 |
-| `USE_RACING` | All | Betaflight-style: feed-forward, TPA, expo, air mode | Core 0 |
+| Flag | Platform | Description | Core | Status |
+| ---- | -------- | ----------- | ---- | ------ |
+| `USE_OLED_DISPLAY` | All | OLED display (status, network info) | Core 1 (ESP32) / main (Teensy) | Done |
+| `USE_WEB_SERVER` | ESP32 | JSON API, WebSocket, mDNS (floppi.local) | Core 1 | Done |
+| `USE_API_SERVER` | ESP32 | HTTP POST telemetry to centralized server | Core 1 | Done |
+| `USE_OTA` | ESP32 | Over-the-air firmware updates (ArduinoOTA) | Core 1 | Done |
+| `USE_OPTIMIZATION` | All | Biquad filters, notch filter, accel 2nd LP | Core 0 | Done |
+| `USE_RACING` | All | Feed-forward, TPA, expo, air mode, smoothing | Core 0 | Done |
 
-- **Web server** is best for calibration and bench testing (browse to floppi.local)
-- **API server** is best for live flight and swarm coordination (POST to centralized server)
-- Both are independently toggleable — not required to use together
-- On dual-core ESP32, WiFi features run on Core 1 (zero flight loop impact)
-- On single-core Teensy, WiFi features are compile-time excluded (no WiFi hardware)
+**WiFi sub-features** (`USE_WEB_SERVER`, `USE_API_SERVER`, `USE_OTA`) are auto-defined when `USE_ESP32 + USE_WIFI` are set. Comment out individually in config.h to disable while keeping WiFi connectivity.
+
+**Flight loop features** (`USE_OPTIMIZATION`, `USE_RACING`) are disabled by default. Uncomment in config.h to enable. Each has its own parameter section in config.h that's only compiled when the flag is active.
 
 ### USE_OPTIMIZATION — Noise reduction for cheap hardware
 
-Enable with `#define USE_OPTIMIZATION` in config.h. For builds using budget motors, unbalanced props, or flexible frames that produce more vibration. Adds better filtering to compensate for noisier hardware.
+Enable with `#define USE_OPTIMIZATION` in config.h. For builds using budget motors, unbalanced props, or flexible frames that produce more vibration. Adds steeper filtering to compensate for noisier hardware.
 
-- [ ] Biquad gyro low-pass filter (configurable cutoff, steeper rolloff than PT1)
-- [ ] D-term biquad filter (more aggressive derivative noise rejection)
-- [ ] Configurable gyro notch filter (target specific motor noise frequencies)
-- [ ] Accelerometer second-stage low-pass (attitude stability under vibration)
+Files: `filters.h`, `filters.cpp` (biquad DSP primitives), modifications to `imu.cpp` and `control.cpp`.
+
+- [x] Biquad gyro low-pass filter — 2nd stage after base PT1, configurable cutoff (`GYRO_LPF_CUTOFF_HZ`)
+- [x] D-term biquad filter — replaces base PT1, steeper -12dB/octave rolloff (`DTERM_LPF_CUTOFF_HZ`)
+- [x] Configurable gyro notch filter — targets motor/prop resonance (`GYRO_NOTCH_CENTER_HZ`, `GYRO_NOTCH_WIDTH_HZ`). Set center to 0 to disable.
+- [x] Accelerometer second-stage low-pass — extra PT1 for attitude stability under vibration (`B_ACCEL_STAGE2`)
 
 ### USE_RACING — Performance features for aggressive flying
 
 Enable with `#define USE_RACING` in config.h. Betaflight-inspired optimizations for sharper stick response and high-speed maneuvers. Not for beginners.
 
-- [ ] Feed-forward term (faster stick response without increasing P gain)
-- [ ] TPA — Throttle PID Attenuation (reduce gains at high throttle)
-- [ ] Setpoint smoothing (smooth stick input transitions)
-- [ ] Air mode (full PID at zero throttle for flips/rolls)
-- [ ] Expo curves (non-linear stick response)
+Files: modifications to `control.cpp` (getDesState, controlRATE, controlANGLE, controlMixer).
+
+- [x] Feed-forward term — adds setpoint derivative to PID output (`FF_ROLL`, `FF_PITCH`, `FF_YAW`). Set to 0 to disable per-axis.
+- [x] TPA — Throttle PID Attenuation — reduces PID at high throttle (`TPA_BREAKPOINT`, `TPA_RATE`)
+- [x] Setpoint smoothing — PT1 low-pass on stick input (`SETPOINT_SMOOTH_CUTOFF_HZ`). Set to 0 to disable.
+- [x] Air mode — full PID at zero throttle for flips/rolls (`USE_AIRMODE` sub-flag)
+- [x] Expo curves — cubic non-linear stick response (`EXPO_ROLL`, `EXPO_PITCH`, `EXPO_YAW`). Set to 0 for linear.
+
+### USE_OTA — Over-the-air firmware updates
+
+Auto-enabled with WiFi. Upload via `pio run -t upload --upload-port floppi-XXXX.local`. Safety: only processes when disarmed.
+
+Files: `ota.h`, `ota.cpp`.
 
 ---
 
-## Timing Calculator Improvements
+## Timing Calculator (Side Project — Low Priority)
 
-> Current state: `tools/timing_calculator.py` with `tools/timing/` package. Simplified hardware input (clock/cores/FPU), auto-detects features from config.h, always outputs min/recommended clock speeds and pass/fail status.
-
-### Implemented
-
-- [x] **Simplified inputs** — Platform reduced to clock speed (MHz) + core count + FPU (yes/no). Two FPU profiles (hardware FPU vs software float) instead of per-platform cycle costs. CLI accepts `--clock`, `--cores`, `--fpu`/`--no-fpu` for arbitrary hardware. Platform presets remain as convenience shortcuts (`-p esp32`, `-p teensy40`).
-
-- [x] **Pass/fail output** — Always outputs minimum clock required and recommended clock (+10% margin). Shows "NOT ENOUGH +X%" when platform clock is insufficient. Works with both presets and arbitrary hardware input.
-
-- [x] **Auto-output of min/recommended clock speeds** — Every timing check prominently displays minimum and recommended clock speeds. No need to request these separately.
-
-### Future Goals
-
-- [ ] **Source code scanning** — Instead of manually maintaining a list of operations and their estimated cycle counts, scan the actual flight controller source files (src/, lib/) and trace the computation path through the code. Use computer science complexity analysis (count float operations, loops, function calls) to derive real numbers from real code. When new features are added to the firmware, the calculator automatically picks them up.
-
-- [ ] **Build environment awareness** — Analyze different build environments (from platformio.ini) and config.h options to determine what code paths are active. Show the compute cost for each combination so users can compare: "base only" vs "base + optimization" vs "base + optimization + racing".
-
-### Research Needed
-
-- How to statically analyze C/C++ source for floating-point operation counts (AST parsing, regex heuristics, or compile-time instrumentation)
-- Whether PlatformIO build system can provide intermediate files (preprocessed source, assembly) that make cycle counting easier
-- Accuracy tradeoffs: static analysis vs actual profiling on hardware vs manual annotation
-
-### Current Architecture
-
-```text
-tools/timing_calculator.py     # CLI entry point (--clock, --cores, --fpu/--no-fpu, -p preset)
-tools/timing/
-    platforms.py               # Platform dataclass (clock/cores/fpu) + FPU/soft-float cycle profiles
-    operations.py              # Operation complexity definitions (TO BE REPLACED with source scanning)
-    calc.py                    # Loop timing math, min clock calculation
-    scanner.py                 # config.h feature detection
-    report.py                  # Clean tabular output with pass/fail
-```
+> **Status**: Functional but manually maintained. Not a priority for flight_controller development. May become its own project in the future.
+>
+> **Current state**: `tools/timing_calculator.py` with `tools/timing/` package. Works today with manually maintained operation counts. Don't update it when adding firmware features — the goal is to eventually replace manual maintenance with automatic source scanning.
+>
+> **Vision**: The calculator should automatically scan all C/C++ source in `flight_controller/` and derive computation complexity from the code itself. No manual operation lists. When features are added to firmware, the calculator picks them up automatically. This is a non-trivial static analysis problem and may warrant its own project.
+>
+> **Alternative**: Could become a firmware build target (e.g., `pio run -e timing_analysis`) that instruments the actual compiled code rather than doing static analysis from Python.
 
 ---
 
@@ -295,11 +283,6 @@ tools/timing/
 - [ ] ESC calibration serial command
   - Description: Add ESC endpoint calibration as a serial command in calibration build (e.g., `e`). Sends min/max PWM to all ESCs for range calibration. Uses the same single calibration build — no separate build needed.
   - Dependencies: Hardware testing
-
-- [ ] WiFi AP mode fallback
-  - Description: ESP32 creates its own WiFi access point for field use when no infrastructure WiFi is available. Each drone has its own AP (e.g., Floppi-AABBCC). Useful for single-drone field testing.
-  - Notes: Archived code available in [docs/archive/wifi_ap_mode_implementation.md](../docs/archive/wifi_ap_mode_implementation.md)
-  - Dependencies: WiFi STA mode (done)
 
 ---
 
@@ -374,9 +357,10 @@ tools/timing/
   - Description: ESPAsyncWebServer on Core 1. JSON endpoint at /api/status, WebSocket at /ws for streaming telemetry, mDNS at floppi-XXXX.local. ArduinoJson v7.
   - Notes: web_server.h/cpp
 
-- [ ] OTA firmware updates
-  - Description: Update firmware over WiFi without USB connection
-  - Dependencies: WiFi STA mode (done)
+- [x] OTA firmware updates
+  - Completed: 2026-02-09
+  - Description: ArduinoOTA on Core 1. Safety: only processes when disarmed. Upload via `pio run -t upload --upload-port floppi-XXXX.local`. Auto-enabled with USE_WIFI, individually disableable via USE_OTA.
+  - Files: ota.h, ota.cpp
 
 ### Notes on Future Features
 
@@ -434,6 +418,12 @@ tools/timing/
 - [x] Timing calculator simplified inputs (clock/cores/FPU, auto min/recommended output) — 2026-02-07
 - [x] D-term low-pass filter (PT1 filter, B_DTERM in config.h) — 2026-02-07
 - [x] Rate mode derivative on measurement (all axes, both controllers) — 2026-02-07
+- [x] USE_OPTIMIZATION implemented (biquad gyro LP, biquad D-term, gyro notch, accel 2nd LP) — 2026-02-09
+- [x] USE_RACING implemented (feed-forward, TPA, expo curves, air mode, setpoint smoothing) — 2026-02-09
+- [x] Biquad filter module (filters.h/cpp — reusable DSP primitives) — 2026-02-09
+- [x] Build scripts dynamic environment parsing (build.bat rewrite, build.sh already dynamic) — 2026-02-09
+- [x] OTA firmware updates (ArduinoOTA, Core 1, safety-gated by armedFly) — 2026-02-09
+- [x] Serial PID tuning in calibration mode (runtime-tunable gains, line-buffered serial parser) — 2026-02-09
 
 ---
 

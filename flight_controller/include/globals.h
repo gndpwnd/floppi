@@ -107,6 +107,11 @@ extern unsigned long calibration_start_time;
 // Telemetry output mode for fc_tool integration
 // 0 = off, 1 = IMU only, 2 = full telemetry
 extern int telemetry_mode;
+
+// Runtime-tunable PID gains (adjust via serial 'g' command, copy to config.h when done)
+extern float tune_kp_roll, tune_ki_roll, tune_kd_roll;
+extern float tune_kp_pitch, tune_ki_pitch, tune_kd_pitch;
+extern float tune_kp_yaw, tune_ki_yaw, tune_kd_yaw;
 #endif
 
 #endif // GLOBALS_H

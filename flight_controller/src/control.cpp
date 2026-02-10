@@ -113,7 +113,11 @@ void controlRATE() {
     derivative_roll = (1.0f - B_DTERM) * d_roll_prev + B_DTERM * derivative_roll;
     d_roll_prev = derivative_roll;
     #endif
+    #ifdef CALIBRATION_MODE
+    roll_PID = tune_kp_roll * error_roll + tune_ki_roll * integral_roll + tune_kd_roll * derivative_roll;
+    #else
     roll_PID = KP_ROLL_RATE * error_roll + KI_ROLL_RATE * integral_roll + KD_ROLL_RATE * derivative_roll;
+    #endif
 
     // Pitch
     error_pitch = pitch_des - GyroY;
@@ -126,7 +130,11 @@ void controlRATE() {
     derivative_pitch = (1.0f - B_DTERM) * d_pitch_prev + B_DTERM * derivative_pitch;
     d_pitch_prev = derivative_pitch;
     #endif
+    #ifdef CALIBRATION_MODE
+    pitch_PID = tune_kp_pitch * error_pitch + tune_ki_pitch * integral_pitch + tune_kd_pitch * derivative_pitch;
+    #else
     pitch_PID = KP_PITCH_RATE * error_pitch + KI_PITCH_RATE * integral_pitch + KD_PITCH_RATE * derivative_pitch;
+    #endif
 
     // Yaw
     error_yaw = yaw_des - GyroZ;
@@ -139,7 +147,11 @@ void controlRATE() {
     derivative_yaw = (1.0f - B_DTERM) * d_yaw_prev + B_DTERM * derivative_yaw;
     d_yaw_prev = derivative_yaw;
     #endif
+    #ifdef CALIBRATION_MODE
+    yaw_PID = tune_kp_yaw * error_yaw + tune_ki_yaw * integral_yaw + tune_kd_yaw * derivative_yaw;
+    #else
     yaw_PID = KP_YAW_RATE * error_yaw + KI_YAW_RATE * integral_yaw + KD_YAW_RATE * derivative_yaw;
+    #endif
 
     #ifdef USE_RACING
     // Feed-forward: add setpoint derivative to PID output for faster stick response
@@ -202,7 +214,11 @@ void controlANGLE() {
     derivative_roll = (1.0f - B_DTERM) * d_roll_prev + B_DTERM * derivative_roll;
     d_roll_prev = derivative_roll;
     #endif
+    #ifdef CALIBRATION_MODE
+    roll_PID = tune_kp_roll * error_roll + tune_ki_roll * integral_roll + tune_kd_roll * derivative_roll;
+    #else
     roll_PID = KP_ROLL_ANGLE * error_roll + KI_ROLL_ANGLE * integral_roll + KD_ROLL_ANGLE * derivative_roll;
+    #endif
 
     // Pitch (derivative on measurement: uses -GyroY directly)
     error_pitch = pitch_des - pitch_IMU;
@@ -215,7 +231,11 @@ void controlANGLE() {
     derivative_pitch = (1.0f - B_DTERM) * d_pitch_prev + B_DTERM * derivative_pitch;
     d_pitch_prev = derivative_pitch;
     #endif
+    #ifdef CALIBRATION_MODE
+    pitch_PID = tune_kp_pitch * error_pitch + tune_ki_pitch * integral_pitch + tune_kd_pitch * derivative_pitch;
+    #else
     pitch_PID = KP_PITCH_ANGLE * error_pitch + KI_PITCH_ANGLE * integral_pitch + KD_PITCH_ANGLE * derivative_pitch;
+    #endif
 
     // Yaw (rate control — derivative on measurement)
     error_yaw = yaw_des - GyroZ;
@@ -228,7 +248,11 @@ void controlANGLE() {
     derivative_yaw = (1.0f - B_DTERM) * d_yaw_prev + B_DTERM * derivative_yaw;
     d_yaw_prev = derivative_yaw;
     #endif
+    #ifdef CALIBRATION_MODE
+    yaw_PID = tune_kp_yaw * error_yaw + tune_ki_yaw * integral_yaw + tune_kd_yaw * derivative_yaw;
+    #else
     yaw_PID = KP_YAW_RATE * error_yaw + KI_YAW_RATE * integral_yaw + KD_YAW_RATE * derivative_yaw;
+    #endif
 
     #ifdef USE_RACING
     // Feed-forward: add setpoint derivative to PID output for faster stick response

@@ -1,6 +1,6 @@
 # Flight Controller Firmware - Scope
 
-> Last updated: 2026-02-07
+> Last updated: 2026-02-09
 > Status: Active
 
 ---
@@ -15,10 +15,11 @@ The firmware supports a two-mode workflow: **calibration mode** for determining 
 
 - Deliver a reliable, well-performing open-source flight controller accessible to hobbyists and makers
 - Support VTOL vehicles broadly (multirotors first, then fixed-wing and hybrid configurations)
-- Automate calibration and setup so users can flash, calibrate, and fly with minimal manual configuration
+- **Automate every calibration process**: Every value that needs tuning should have an auto-calibration routine. Users flash, run guided calibration, copy values to config.h, flash live build, and fly. No manual guesswork required.
 - Keep firmware lean: hard-coded values in live mode, no SD cards or extra memory requirements
 - Iterate carefully on features over time rather than building an all-in-one solution
 - **Do not become Betaflight.** Raw performance and simplicity over feature count. If a feature adds runtime overhead to the flight loop and isn't necessary for stable flight, it belongs on the flight computer, not in the firmware.
+- **Bare bones yet efficient**: Minimal code, maximum automation. The firmware does less at runtime precisely because calibration is thorough and automated upfront.
 
 ## Requirements
 
@@ -35,7 +36,11 @@ The firmware supports a two-mode workflow: **calibration mode** for determining 
 - [ ] Support for multiple VTOL configurations (quad X, hex, fixed-wing, tiltrotor)
 - [x] Radio channel auto-mapping and calibration
 - [x] IMU orientation auto-detection
-- [ ] PID auto-tuning or guided tuning workflow
+- [x] Runtime PID tuning via serial commands (calibration mode)
+- [ ] Failsafe auto-detection (measure receiver failsafe outputs)
+- [ ] ESC endpoint calibration routine
+- [ ] Magnetometer auto-calibration (MPU9250)
+- [ ] Runtime filter/limits tuning via serial commands
 
 ### Technical Requirements
 
@@ -77,6 +82,29 @@ The firmware supports a two-mode workflow: **calibration mode** for determining 
 - [ASSUMED] Teensy 4.x EEPROM emulation (flash-based) is sufficient for calibration data storage during calibration mode
 - [ASSUMED] Most users will have a 3-position switch on CH6 for mode selection
 - [ASSUMED] Garage builders will iterate: calibrate → hard-code → flash → fly → repeat
+
+## Auto-Calibration Philosophy
+
+The firmware aims to **automate every calibration process**. Every `#define` value in config.h that depends on specific hardware should have a corresponding auto-calibration routine in the calibration build. The user should never need to guess or manually measure a value.
+
+**Calibration coverage target:**
+
+| Category | Values | Auto-Calibration | Status |
+|----------|--------|-------------------|--------|
+| IMU offsets (accel + gyro) | 6 values | Single-position routine (`i`) | Done |
+| IMU offsets + scale factors | 9 values | 6-position routine (`m`) | Done |
+| IMU orientation/mounting | axis mapping | 3-position routine (`o`) | Done |
+| Radio channel mapping | 6 channels | Guided stick-move routine (`r`) | Done |
+| PID gains | 9 values | Runtime serial tuning (`g`) | Done |
+| Failsafe values | 6 values | Auto-detect from receiver (`f`) | Planned |
+| ESC endpoints | min/max PWM | ESC calibration routine (`e`) | Planned |
+| Magnetometer (MPU9250) | 6 values | Sphere calibration routine | Planned |
+| Filter coefficients | ~6 values | Runtime serial tuning (`p`) | Planned |
+| Max rates/angles | 3 values | Runtime serial tuning (`p`) | Planned |
+
+**Workflow**: Flash calibration build → run auto-calibration routines → firmware outputs `#define` values → copy to config.h → flash live build → fly. Every step is guided with serial prompts and quality validation.
+
+**Testing built-in**: Each calibration routine validates its own results (stability checks, range checks, quality scoring) and offers retry on poor results. The firmware is its own test harness.
 
 ## Boundaries
 
@@ -171,6 +199,7 @@ The firmware supports a two-mode workflow: **calibration mode** for determining 
 | 2026-02-06 | Added timing calculator tool (tools/timing_calculator.py) for platform analysis | LLM + User |
 | 2026-02-07 | ESP32 now in scope (dual-core, WiFi STA, web server, API client). Updated boundaries: flight computer handles complex logic. Added bare-bones philosophy. | LLM + User |
 | 2026-02-07 | Added modular feature system (USE_WEB_SERVER, USE_API_SERVER, USE_OPTIMIZATION, USE_RACING). Library vendoring for standalone builds. Updated timing calculator with per-core and feature tier analysis. | LLM + User |
+| 2026-02-09 | Added auto-calibration philosophy: every hardware-dependent value must have an auto-calibration routine. Documented calibration coverage table and planned routines (failsafe, ESC, magnetometer, filter/limits tuning). | LLM + User |
 
 ---
 

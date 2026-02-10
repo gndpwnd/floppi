@@ -43,7 +43,10 @@
       </section>
 
       <section id="monitor-section">
-        <h2>Serial Monitor</h2>
+        <div class="section-header">
+          <h2>Serial Monitor</h2>
+          <button id="plotter-toggle-btn" type="button">Show Plotter</button>
+        </div>
         <div id="terminal-container">
           <div id="terminal-output"></div>
           <div class="terminal-input-row">
@@ -56,7 +59,9 @@
           </div>
         </div>
         <div class="terminal-controls">
-          <button id="clear-btn" type="button">Clear</button>
+          <button id="clear-monitor-btn" type="button">Clear</button>
+          <button id="copy-monitor-btn" type="button">Copy</button>
+          <input type="text" id="filter-input" placeholder="Filter..." />
           <label class="checkbox-label">
             <input type="checkbox" id="autoscroll-checkbox" checked />
             Auto-scroll
@@ -64,24 +69,21 @@
         </div>
       </section>
 
-      <section id="imu-section">
-        <h2>IMU Data</h2>
-        <div class="imu-controls">
-          <label class="checkbox-label">
-            <input type="checkbox" id="imu-enabled-checkbox" checked />
-            Parse IMU data
-          </label>
-          <span class="imu-status" id="imu-status">Waiting for data...</span>
+      <section id="plotter-section" style="display: none;">
+        <div class="section-header">
+          <h2>Serial Plotter</h2>
+          <div class="plotter-controls">
+            <label class="plotter-label" title="Number of data points visible per plot">
+              Window:
+              <input type="number" id="plotter-window-input" value="200" min="50" max="5000" step="50" />
+            </label>
+            <button id="plotter-pause-btn" type="button" title="Pause/Resume">&#x23F8;</button>
+            <button id="plotter-clear-btn" type="button" title="Clear all plots">Clear</button>
+          </div>
         </div>
-        <div class="chart-grid">
-          <div class="chart-container">
-            <h3>Accelerometer (g)</h3>
-            <canvas id="accel-chart"></canvas>
-          </div>
-          <div class="chart-container">
-            <h3>Gyroscope (°/s)</h3>
-            <canvas id="gyro-chart"></canvas>
-          </div>
+        <div id="plotter-container"></div>
+        <div class="plotter-status">
+          <span id="plotter-status-text">Waiting for data...</span>
         </div>
       </section>
     </main>

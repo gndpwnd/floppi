@@ -1,19 +1,19 @@
 # fc_tool - Scope
 
-> Last updated: 2026-02-05
+> Last updated: 2026-02-09
 > Status: Active
 
 ---
 
 ## Overview
 
-fc_tool is a cross-platform desktop application for interacting with floppi flight controller hardware. It provides serial monitoring, real-time IMU data visualization, and firmware management via PlatformIO integration. Built in Rust with Tauri for native executables requiring no runtime dependencies.
+fc_tool is a cross-platform desktop application for interacting with floppi flight controller hardware. It provides serial monitoring, dynamic multi-graph data plotting, and (future) firmware management via PlatformIO integration. Built in Rust with Tauri 2 for native executables requiring no runtime dependencies.
 
 ## Objectives
 
 - Provide a simple, offline-first GUI for serial communication with flight controller boards
-- Visualize IMU/MPU sensor data in real time (accelerometer, gyroscope, magnetometer)
-- Integrate with PlatformIO to compile and flash firmware when users change calibration parameters or configuration
+- Visualize serial data in real time via dynamic multi-graph plotter (any `name@plotId:value` data, not limited to IMU)
+- Integrate with PlatformIO to compile and flash firmware (future)
 - Eliminate the need for users to run scripts or install runtimes
 
 ## Architecture: fc_tool vs PlatformIO Boundary
@@ -25,8 +25,8 @@ fc_tool has two layers with a clean dependency boundary:
 │  fc_tool (standalone — no external dependencies)        │
 │                                                         │
 │  ┌─────────────────┐  ┌──────────────────────────────┐  │
-│  │ Serial Monitor  │  │ IMU/Sensor Visualization     │  │
-│  │ (serialport-rs) │  │ (charts, calibration view)   │  │
+│  │ Serial Monitor  │  │ Dynamic Serial Plotter       │  │
+│  │ (serialport-rs) │  │ (Chart.js, multi-graph)      │  │
 │  └─────────────────┘  └──────────────────────────────┘  │
 ├─────────────────────────────────────────────────────────┤
 │  fc_tool + PlatformIO (optional — requires pio on PATH) │
@@ -42,8 +42,8 @@ fc_tool has two layers with a clean dependency boundary:
 
 - **Serial port detection and connection** — via `serialport-rs` (Rust). No PlatformIO serial monitor dependency. fc_tool talks to the USB serial device directly.
 - **Serial terminal** — send/receive raw serial data.
-- **IMU data visualization** — parses telemetry from the serial stream and renders charts.
-- **Calibration display** — shows calibration values from live telemetry.
+- **Dynamic serial plotter** — parses `name@plotId:value` (and other formats) from the serial stream, creates Chart.js graphs dynamically per plot ID. Dark theme, crosshair, neon data palette.
+- **Auto-reconnect** — detects device disconnect, automatically retries connection.
 
 These features work with just the compiled fc_tool binary. No Python, no PlatformIO, no Node.js at runtime.
 
@@ -60,7 +60,7 @@ fc_tool detects PlatformIO at startup by checking if `pio` or `platformio` is on
 | Concern | fc_tool owns it? | Why |
 |---------|-----------------|-----|
 | Serial comms | Yes | serialport-rs is better than shelling out to pio device monitor. No Python dependency. Direct USB access. |
-| IMU parsing | Yes | fc_tool defines how to parse telemetry. Tightly coupled to the GUI. |
+| Data parsing/plotting | Yes | fc_tool defines how to parse telemetry. Tightly coupled to the GUI. |
 | Firmware compile | No — delegates to PlatformIO | PlatformIO already handles toolchains, board definitions, library management. Reimplementing this would be reinventing the wheel. |
 | Firmware flash | No — delegates to PlatformIO | Upload protocols (Teensy Loader, esptool) are complex and platform-specific. PlatformIO handles this correctly. |
 
@@ -164,11 +164,12 @@ Scripts for unvalidated platforms include `# TODO: UNTESTED` comments at the top
 
 ### Functional Requirements
 
-- [ ] Connect to serial ports (auto-detect and manual selection)
-- [ ] Serial monitor/terminal with send and receive
-- [ ] Parse and display IMU telemetry data in real-time plots
+- [x] Connect to serial ports (auto-detect and manual selection)
+- [x] Serial monitor/terminal with send and receive
+- [x] Dynamic multi-graph serial plotter (`name@plotId:value` protocol)
+- [x] Board detection (Teensy, Arduino, ESP32 by VID/PID)
+- [x] Auto-reconnect on device disconnect
 - [ ] Integrate with PlatformIO CLI for firmware compilation and flashing
-- [ ] Board detection (Teensy 4.0/4.1 initially, ESP32 later)
 - [ ] Calibration parameter display and visualization
 - [ ] Graceful degradation when PlatformIO is not installed
 
@@ -200,24 +201,24 @@ Scripts for unvalidated platforms include `# TODO: UNTESTED` comments at the top
 ## Assumptions
 
 - [VERIFIED] Primary use case is developer workflow: change params, compile, flash, monitor
-- [VERIFIED] Firmware does not yet have a defined serial telemetry protocol — will be defined as firmware matures
 - [VERIFIED] PlatformIO is optional; core features work without it
 - [VERIFIED] Windows and macOS are the primary end-user platforms; Linux is dev platform
+- [VERIFIED] Frontend uses Chart.js 4.x for dynamic data visualization
+- [VERIFIED] Serial plotter protocol: `name@plotId:value`, `name:value`, `name=value`, plain CSV
 - [ASSUMED] PlatformIO CLI is pip-installable on all target platforms
 - [ASSUMED] Teensy boards use USB serial (CDC) for communication
-- [ASSUMED] Frontend will use charting libraries (e.g., Chart.js, Plotly, or similar) for IMU visualization
 
 ## Boundaries
 
 ### In Scope
 
 - Serial port connection and monitoring (standalone, no PlatformIO)
-- Real-time IMU data plotting (accel, gyro, mag)
-- PlatformIO compile and flash integration (optional)
-- Teensy 4.0/4.1 board support
-- Calibration parameter viewing
+- Dynamic multi-graph serial plotter (any named data, not IMU-specific)
+- Auto-reconnect on device disconnect
+- Board detection (Teensy, Arduino, ESP32)
+- PlatformIO compile and flash integration (optional, future)
+- Calibration parameter viewing (future)
 - Connection management (port selection, baud rate)
-- Data logging and export
 
 ### Out of Scope (Exclusions)
 
@@ -227,15 +228,17 @@ Scripts for unvalidated platforms include `# TODO: UNTESTED` comments at the top
 - This project will NOT bundle PlatformIO or Python — users install separately
 - This project will NOT cross-compile from Linux to other platforms — build on each platform locally
 - 3D attitude visualization is a future enhancement, not MVP
-- ESP32 support is deferred until firmware is compiled for it
+- ESP32 support: board detection works, firmware compilation is separate concern
 
 ## Technical Decisions
 
 | Decision | Choice | Rationale | Date |
 |----------|--------|-----------|------|
 | Language | Rust | Best serial library ecosystem, compiled executables | 2026-01-27 |
-| GUI Framework | Tauri | Web frontend + Rust backend, small binaries, OS webview | 2026-01-27 |
+| GUI Framework | Tauri 2 | Web frontend + Rust backend, small binaries, OS webview | 2026-01-27 |
 | Serial Library | serialport-rs | Most mature cross-platform serial in Rust. Standalone, no Python. | 2026-01-27 |
+| Charting | Chart.js 4.x | Rich plugin API, adequate perf for sensor data, UMD global | 2026-02-06 |
+| Frontend | Vanilla JS (ES modules) | No bundler needed, Tauri serves src/ directly | 2026-02-06 |
 | Build Integration | PlatformIO CLI (optional) | Existing build system for flight_controller. Not bundled. | 2026-01-27 |
 | Cross-platform builds | Local builds per platform | Cannot cross-compile Tauri; build natively on each OS | 2026-01-27 |
 | Serial monitoring | Standalone (not PlatformIO) | Avoids Python dependency for core features | 2026-01-27 |
@@ -248,18 +251,16 @@ Scripts for unvalidated platforms include `# TODO: UNTESTED` comments at the top
   - See [flight_controller/docs/scope.md](/flight_controller/docs/scope.md) for firmware architecture
   - See [flight_controller/docs/findings/auto-calibration-research.md](/flight_controller/docs/findings/auto-calibration-research.md) for calibration approach research
 - **PlatformIO CLI** — called by fc_tool for build/upload operations (optional)
-- **Serial telemetry protocol** — TBD, will be co-designed between firmware and fc_tool. The firmware currently uses debug `Serial.print()` output; a structured protocol is needed for reliable parsing
+- **Serial data protocol** — fc_tool's plotter accepts `name@plotId:value`, `name:value`, `name=value`, and plain CSV. Firmware can use any of these formats via `Serial.print()`
 
 ## Open Questions
 
-- [ ] What serial telemetry format will the firmware use? (needs firmware-side design)
 - [ ] Should fc_tool edit platformio.ini or calibration header files directly for parameter changes?
-- [ ] What baud rate will be standard for telemetry? (115200 default assumed)
 - [ ] Should fc_tool support multiple simultaneous serial connections?
 
 ## Critical Notes
 
-- The serial telemetry protocol is a shared contract between firmware and fc_tool — changes to one affect the other
+- The serial plotter protocol (`name@plotId:value`) is flexible enough that firmware doesn't need a strict contract — any key-value or CSV output works
 - PlatformIO is optional. fc_tool must be fully usable for monitoring without it.
 - Cross-platform builds require building locally on each platform.
 
@@ -269,6 +270,7 @@ Scripts for unvalidated platforms include `# TODO: UNTESTED` comments at the top
 
 | Date | Changes | By |
 |------|---------|-----|
+| 2026-02-09 | Updated for dynamic plotter (replaced IMU-specific references), auto-reconnect, Chart.js decisions, verified assumptions | LLM + User |
 | 2026-02-05 | Updated integration points with flight_controller calibration workflow context, promoted to Active status | LLM + User |
 | 2026-01-27 | Added architecture boundary (standalone vs PlatformIO), cross-platform build strategy, CI/CD plan | LLM + User |
 | 2026-01-27 | Initial draft | LLM + User |

@@ -1,6 +1,6 @@
 # fc_tool - Roadmap
 
-> Last updated: 2026-02-06
+> Last updated: 2026-02-10
 
 ## Overview
 
@@ -14,13 +14,14 @@ This roadmap tracks project-level features and milestones. For immediate tasks, 
 
 ### Midterm Goal: v0.1 — First Stable Release
 
-**"Deployable/testable" means:** A user can download a single executable, connect a Teensy board via USB, open a serial monitor, and see live IMU data plots. No internet required.
+**"Deployable/testable" means:** A user can download a single executable, connect a board via USB, open a serial monitor, and see live data plots. No internet required.
 
 **Must-have for v0.1:**
 
 - [x] Serial port detection and connection
 - [x] Serial monitor (send/receive terminal)
-- [x] Real-time IMU data parsing and plotting (accel + gyro)
+- [x] Real-time data plotting (dynamic multi-graph plotter)
+- [x] Auto-reconnect on serial disconnect
 - [ ] Cross-platform builds (manual local builds on each platform)
 
 **Nice-to-have (defer if needed):**
@@ -46,75 +47,62 @@ This roadmap tracks project-level features and milestones. For immediate tasks, 
   - Description: Bidirectional text terminal (send commands, receive output)
   - Implementation: Terminal UI with RX (green) / TX (blue) / system (gray) color coding
 - [x] Connection management
-  - Description: Port selection, baud rate, connect/disconnect, reconnect on drop
+  - Description: Port selection, baud rate, connect/disconnect
   - Implementation: `open_serial_port`, `close_serial_port`, `send_serial_data` commands; background reader thread with Tauri events
+- [x] Auto-reconnect on disconnect
+  - Description: Detect device disconnect, automatically retry connection
+  - Implementation: Backend reader thread detects EOF/error, emits `serial-disconnected` event; frontend retries every 2s, max 15 attempts
 - [ ] Raw data logging
   - Description: Save serial output to file for offline analysis
 
-### IMU Data Visualization
+### Dynamic Serial Plotter
 
-- [x] Telemetry data parser
-  - Description: Parse structured serial output into sensor values
-  - Implementation: Supports JSON, key-value (ax=...), and CSV formats
-- [x] Real-time accelerometer plot
-  - Description: Live X/Y/Z acceleration graph
-  - Implementation: Chart.js with 100-sample scrolling window
-- [x] Real-time gyroscope plot
-  - Description: Live X/Y/Z angular rate graph
-  - Implementation: Chart.js with 100-sample scrolling window
-- [ ] Magnetometer plot
-  - Description: Live X/Y/Z magnetic field graph (when available)
-- [ ] Data export
-  - Description: Export captured sensor data to CSV
-
-### Enhanced Serial Plotter
-
-> **IMPORTANT**: See [plotter_discussion.md](plotter_discussion.md) for feature discussion and open questions.
-
-**Core features:**
-
-- [ ] Toggle between Monitor and Plotter views
+- [x] Toggle between Monitor and Plotter views
   - Description: Serial Monitor shows first; "Show Plotter" button reveals charts
-- [ ] Dynamic multi-graph support
-  - Description: Variables can be assigned to different plots using `name@plotId:value` format
-  - Reference: [multi-graph-plotter-research.md](findings/multi-graph-plotter-research.md)
-- [ ] Sparse plot IDs
-  - Description: Only create plots for referenced IDs (e.g., 1,3,11 → 3 plots, not 11)
-- [ ] Variable-to-plot assignment
+  - Implementation: Hidden plotter section toggled by button in section header
+- [x] Dynamic multi-graph support
+  - Description: Variables assigned to different plots using `name@plotId:value` format
+  - Implementation: PlotterManager class in src/plotter.js, creates Chart.js instances on demand
+- [x] Sparse plot IDs
+  - Description: Only create plots for referenced IDs (e.g., 1,3,11 → 3 plots)
+  - Implementation: Map-based plot tracking, charts created as new IDs arrive
+- [x] Variable-to-plot assignment
   - Description: `temp@1:25.5 humidity@2:65` assigns temp to plot #1, humidity to plot #2
-- [ ] Backward-compatible with Arduino Serial Plotter
-  - Description: Plain `name:value` format works (default plot)
+  - Implementation: Regex parser handles `name@plotId:value`, `name:value`, `name=value`
+- [x] Backward-compatible with Arduino Serial Plotter
+  - Description: Plain `name:value` and CSV formats work (default plot 0)
+  - Implementation: Fallback parser splits plain numbers by whitespace/comma
+- [x] Dark theme plots
+  - Description: Dark canvas background (`#1a1a2e`/`#0d1117`), bright neon data colors
+  - Implementation: canvasBackgroundPlugin, NEON_PALETTE (8 colors: lime, coral, cyan, orange, magenta, white, lavender, pink)
+- [x] Passive hover crosshair
+  - Description: Grey dotted X/Y lines follow mouse, readout panel below plot
+  - Implementation: Per-chart inline crosshair plugin via factory function
+- [x] Separate clear buttons
+  - Description: Independent clear for plots vs serial monitor
+  - Implementation: Two separate clear buttons in their respective sections
 
-**Plot interaction & measurement (decisions captured):**
+**Plot interaction & measurement (future):**
 
-- [ ] Passive hover crosshair — grey dotted X/Y lines follow mouse, readout panel below plot
 - [ ] Trigger Mode — place neon yellow vertical (Y-intercept) and neon blue horizontal (X-intercept) lines for measurement
 - [ ] Axis toggle — [Axis: ON/OFF] per plot; right-click switches Y-intercept/X-intercept mode
-- [ ] Measurement readout — dedicated panel showing mouse position + ΔX/ΔY between placed lines
+- [ ] Measurement readout — dedicated panel showing mouse position + delta between placed lines
 - [ ] Show data points toggle — small circles at actual data points on/off
 - [ ] Measurement cursors — 2 yellow verticals + 2 blue horizontals per plot, draggable AND input fields
 
 Reference: [cursor-interaction-discussion.md](cursor-interaction-discussion.md)
 
-**Plot controls & modes:**
+**Plot controls & modes (future):**
 
 - [ ] Pause/freeze mode — stop collecting by default; "Keep recording when paused" toggle (global)
-- [ ] Scaling controls — [+] [-] both axes, independent X/Y controls, auto-fit toggle (ON by default)
-- [ ] Auto-scaling axes — handle different ranges, log scale option
+- [x] Y-axis zoom controls — [+] [-] [A] per plot, zoom in/out/auto-fit
+- [ ] X-axis scaling — independent zoom/pan for time axis
 - [ ] Per-plot mode selector — Continuous / Period Mode (N) / Single period / Frozen
-- [ ] Separate clear buttons — independent clear for plots vs serial monitor
 - [ ] Font size controls — [+] [-] for serial monitor text size
 
 Reference: [plotter_discussion.md](plotter_discussion.md)
 
-**Visual style (decided):**
-
-- [ ] Dark background plots — `#1a1a2e` or `#0d1117` with thin grey grid lines
-- [ ] Bright data line colors — lime, coral, cyan, orange, magenta, etc. (not all neon)
-- [ ] Solid origin axes — x=0 and y=0 as subtle solid lines
-- [ ] Neon yellow Y-intercepts, neon blue X-intercepts for trigger mode
-
-**Signal / pattern analysis (research in progress):**
+**Signal / pattern analysis (future):**
 
 - [ ] Period Mode — detect repetitive data, show N periods "standing still"
 - [ ] Per-plot mode selection — each plot independently: continuous, period, single, frozen
@@ -124,7 +112,7 @@ Reference: [plotter_discussion.md](plotter_discussion.md)
 
 Reference: [signal-analysis-discussion.md](signal-analysis-discussion.md)
 
-**Modular architecture (decided):**
+**Modular architecture (future):**
 
 - [ ] Dedicated JS modules for plot analytics (chart-manager, cursor-system, readout-panel, period-detector, anomaly-tracker, trigger-mode, color-palette)
 
@@ -144,13 +132,13 @@ Reference: [signal-analysis-discussion.md](signal-analysis-discussion.md)
 ### Calibration Interface
 
 - [ ] Display current calibration values
-  - Description: Read and show IMU calibration parameters from serial stream
+  - Description: Read and show calibration parameters from serial stream
   - Related: [flight_controller/docs/findings/auto-calibration-research.md](/flight_controller/docs/findings/auto-calibration-research.md)
 - [ ] Calibration visualization
   - Description: Visual feedback showing calibration quality/progress
 - [ ] Generate config.h snippet from calibration data
-  - Description: Export calibration values in copy-pasteable config.h format for the hard-coded live firmware
-  - Notes: Key usability feature — supports the calibrate → hard-code → flash → fly workflow
+  - Description: Export calibration values in copy-pasteable config.h format
+  - Notes: Supports the calibrate → hard-code → flash → fly workflow
 - [ ] Save/load calibration profiles
   - Description: Store calibration snapshots for different boards or configurations
 
@@ -174,7 +162,6 @@ Reference: [signal-analysis-discussion.md](signal-analysis-discussion.md)
   - Notes: Use libudev on Linux, IOKit on macOS, WMI/SetupAPI on Windows
 - [ ] Port activity monitoring
   - Description: Show which ports have active data (activity indicator)
-  - Notes: Helps users identify which port their device is on
 
 ### Multi-Device Support
 
@@ -220,7 +207,6 @@ Each build script sources the required env vars before compiling.
 ## Nice to Have (Lower Priority)
 
 - [ ] 3D attitude visualization (orientation cube/model using WebGL)
-- [ ] Dark mode / theme support
 - [ ] Plugin system for custom telemetry parsers
 - [ ] Auto-update mechanism (fetch new firmware versions from GitHub releases)
 
@@ -230,6 +216,10 @@ Each build script sources the required env vars before compiling.
 
 > Features moved here when done, for historical reference.
 
+- [x] Plotter polish: Y-axis zoom, data rate display, auto-fit grid, origin line, legend toggle — 2026-02-10
+- [x] Terminal polish: clipboard copy, filter (Ctrl+F), buffer limit, keyboard shortcuts — 2026-02-10
+- [x] Enhanced serial plotter (PlotterManager, dark theme, crosshair, multi-graph protocol) — 2026-02-09
+- [x] Auto-reconnect on serial disconnect (backend event + frontend retry loop) — 2026-02-09
 - [x] Serial monitor UI with terminal (port selector, baud rate, connect/disconnect, send/receive) — 2026-02-06
 - [x] Serial connection backend (open_serial_port, close_serial_port, send_serial_data, events) — 2026-02-06
 - [x] Project initialized (Rust + Tauri 2, vanilla JS frontend) — 2026-01-27
@@ -244,9 +234,9 @@ Each build script sources the required env vars before compiling.
 
 ## Notes
 
-- The serial telemetry protocol is undefined — fc_tool should be flexible enough to handle format changes as firmware matures. The firmware currently uses `Serial.print()` debug output; structured parsing will be added later.
-- MVP focuses on serial + IMU plots; PlatformIO integration and calibration UI come after
-- Stability mode applies: if serial monitoring works, ship it before adding more features
+- The serial plotter uses a flexible protocol parser that handles `name@plotId:value`, `name:value`, `name=value`, and plain CSV/space-separated numbers
+- MVP focuses on serial + plotter; PlatformIO integration and calibration UI come after
+- Stability mode applies: if serial monitoring + plotting works, ship it before adding more features
 - The flight_controller has a calibration mode vs live mode workflow — fc_tool's calibration interface should help users go from raw calibration output to hard-coded config.h values seamlessly
 - See [flight_controller/docs/scope.md](/flight_controller/docs/scope.md) and [flight_controller/docs/roadmap.md](/flight_controller/docs/roadmap.md) for firmware context
 

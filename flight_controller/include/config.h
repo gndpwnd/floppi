@@ -17,7 +17,7 @@
 //   MID  (1200-1800us): IMU offset calibration
 //   HIGH (>1800us): IMU calibration + orientation detection
 //
-// Radio calibration: TBD (serial command trigger)
+// Radio calibration: serial command 'r' in calibration builds
 //
 
 //=============================================================================
@@ -54,6 +54,7 @@
 #if defined(USE_ESP32) && defined(USE_WIFI)
     #define USE_WEB_SERVER      // Web status server (JSON API, WebSocket, mDNS)
     #define USE_API_SERVER      // API client (POST to centralized servers)
+    #define USE_OTA             // Over-the-air firmware updates (ArduinoOTA)
 #endif
 
 // Optimization — Noise reduction for cheaper hardware.
@@ -74,7 +75,7 @@
 // Add new displays here as needed — only the define changes, drawing code is the same.
 #define DISPLAY_SSD1306_128X32       // 0.91" OLED (DSD TECH, most common small OLED)
 //#define DISPLAY_SSD1306_128X64     // 0.96" OLED (standard size)
-//#define DISPLAY_SH1106_128X64      // 1.3" OLED (larger, same resolution as 0.96")
+//#define DISPLAY_SH1106_128X64      // 1.3" OLED (HiLetGo, larger, same resolution as 0.96")
 
 //=============================================================================
 // IMU SENSOR SELECTION

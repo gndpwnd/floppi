@@ -1,101 +1,67 @@
 # Flight Controller Firmware - Todo
 
-> Last updated: 2026-02-07
+> Last updated: 2026-02-09
 
 ## In Progress
 
 _No tasks in progress_
 
-## Recently Implemented (2026-02-07)
+## Up Next
 
-- [x] PID improvements (D-term LP filter + derivative on measurement)
-  - D-term low-pass filter: PT1 filter with `B_DTERM` coefficient in config.h (0.15 default)
-  - Derivative on measurement: All D-terms now use `-(gyro - gyro_prev)` instead of `(error - error_prev)`
-  - Prevents motor oscillation from sensor noise amplification
-  - Prevents derivative kick when setpoint changes (stick movement)
-  - Applied to both controlRATE() (all 3 axes) and controlANGLE() (roll/pitch already correct, fixed yaw)
-  - Uses separate static variables for previous gyro tracking (GyroX_prev is overwritten by imu.cpp)
+_Priority queue for immediate work_
 
-- [x] build.bat replacing build.ps1.txt
-  - Windows batch file (no PowerShell execution policy issues)
-  - Updated environment names to match current platformio.ini (teensy40, teensy41, esp32)
-  - Interactive menu: build all, upload to specific board, clean
+- [ ] Hardware testing when hardware is available
+- [ ] fc_tool WebSocket integration (connect to floppi.local/ws) — **deferred**, fc_tool still in development
 
-- [x] Modular feature system
-  - All features selectable via `#define` flags in config.h
-  - USE_WEB_SERVER: live value display in browser (calibration/diagnostics)
-  - USE_API_SERVER: HTTP POST telemetry for remote control/swarm
-  - USE_OPTIMIZATION: noise reduction filters for cheap hardware (placeholder params in config.h)
-  - USE_RACING: Betaflight-style performance features (placeholder params in config.h)
-  - Web server and API server split from monolithic USE_WIFI into separate toggles
-  - Config.h has parameter sections for each tier (only compiled when enabled)
-  - See [findings/bare-bones-fc-research.md](findings/bare-bones-fc-research.md) for feature tier research
+## Backlog
 
-- [x] Library vendoring for standalone builds
-  - All external PlatformIO libraries vendored into project
-  - Shared libs (U8g2, ArduinoJson) in lib/
-  - ESP32-only libs (AsyncTCP, ESPAsyncWebServer) in lib_esp32/
-  - platformio.ini updated: no external downloads, lib_extra_dirs for ESP32
-  - Project builds offline without internet connection
+_Lower priority, do when time permits_
 
-- [x] Timing calculator modularization
-  - Split from single 1,074-line file into `tools/timing/` package (platforms, operations, calc, scanner, report)
-  - Auto-detects enabled features from config.h (scanner module)
-  - Calculates minimum clock speed required and recommended (+10% margin)
-  - Pass/fail output: "NOT ENOUGH +X%" when clock < required
-  - Clean tabular output, no prose/insights
-  - CLI: `-p <platform>`, `--all`, `--breakdown`, `--clock N`
-  - See [tools/timing/](../tools/timing/) and roadmap "Timing Calculator Improvements" for future plans
+- [ ] Create example configurations for common VTOL types
+- [ ] Implement full 9DOF Madgwick filter for MPU9250
+- [ ] Low battery voltage monitoring (ADC)
 
-- [x] Timing calculator simplified inputs
-  - Platform reduced to clock/cores/FPU (removed per-platform cycle costs, flash/RAM specs)
-  - Two FPU profiles: hardware FPU vs software float cycle costs
-  - CLI flags: `--cores N`, `--fpu`/`--no-fpu` for arbitrary hardware input
-  - Always outputs min/recommended clock speeds and pass/fail status
-  - Platform presets remain as convenience shortcuts
+## Blocked
 
-- [x] Display module abstraction layer
-  - Created display.h, display_data.h, display.cpp with U8g2 + SW I2C
-  - Compile-time display selection (SSD1306 128x32, 128x64, SH1106 128x64)
-  - Producer-consumer: DisplayData_t struct filled by flight control, rendered by display module
-  - Screens: startup, calibrating, idle, armed, network info
-  - See [findings/display-module-architecture.md](findings/display-module-architecture.md)
+_Tasks waiting on something (include reason)_
 
-- [x] ESP32 dual-core architecture
-  - Core 0: flight control (FreeRTOS task, priority 3, real-time)
-  - Core 1: display + WiFi (Arduino loop)
-  - Queue-based data transfer: xQueueOverwrite for Core 0 → Core 1
-  - Startup feedback on OLED during boot sequence
+- [ ] Bench test: IMU sensor validation — **Blocked by**: Hardware not yet assembled
+- [ ] Bench test: SBUS receiver communication — **Blocked by**: Hardware not yet assembled
+- [ ] Bench test: Motor/ESC response — **Blocked by**: Hardware not yet assembled
 
-- [x] WiFi STA mode (connect to existing WiFi)
-  - Architecture: drones connect to existing infrastructure WiFi, NOT create own AP
-  - Vision: swarm of drones on same network, API POST/GET to centralized computers
-  - Supports WPA2-Personal and WPA2-Enterprise (eduroam via PEAP)
-  - Credentials in include/wifi_credentials.h (edit directly, tracked with placeholder values)
-  - Non-blocking connection with 15s timeout, background reconnection every 5s
-  - AP mode code archived to [docs/archive/wifi_ap_mode_implementation.md](archive/wifi_ap_mode_implementation.md)
+## Recently Completed
 
-- [x] ESP32 network info display on OLED
-  - Shows MAC, SSID, IP address, RSSI on network screen
-  - Connection status feedback ("WiFi: Starting..." -> connected info)
+_For context; clear periodically_
 
-- [x] Web status server (ESPAsyncWebServer)
-  - JSON endpoint: GET /api/status (full telemetry)
-  - WebSocket: /ws (real-time streaming at 10Hz)
-  - mDNS: http://floppi-XXXX.local
-  - Runs on Core 1, async callbacks
-  - Now gated by USE_WEB_SERVER (independently disableable)
-
-- [x] API client for swarm coordination
-  - HTTP POST telemetry to configurable centralized server
-  - Server URL configured via API_SERVER_URL in wifi_credentials.h
-  - Non-blocking on Core 1, 2Hz default rate
-  - Now gated by USE_API_SERVER (independently disableable)
-
-- [x] Bare-bones FC features research
-  - Comprehensive research on what a bare-bones FC needs vs doesn't need
-  - Feature tier design: Base / USE_OPTIMIZATION / USE_RACING
-  - See [findings/bare-bones-fc-research.md](findings/bare-bones-fc-research.md)
+- [x] Serial PID tuning in calibration mode — 2026-02-09
+  - Runtime-tunable PID gains (9 variables: kp/ki/kd × roll/pitch/yaw)
+  - Non-blocking line-buffered serial parser (no flight loop impact)
+  - Commands: `g` (show gains), `g kp_roll 0.2` (set gain)
+  - Gains initialized from config.h macros, adjust live, copy back when done
+- [x] OTA firmware updates (ArduinoOTA, Core 1, safety-gated) — 2026-02-09
+  - ota.h/cpp: ArduinoOTA on Core 1, only processes when disarmed
+  - Auto-enabled with USE_WIFI, individually disableable via USE_OTA in config.h
+  - Upload: `pio run -t upload --upload-port floppi-XXXX.local`
+- [x] USE_OPTIMIZATION features (biquad gyro LP, biquad D-term, gyro notch, accel 2nd stage LP) — 2026-02-09
+  - filters.h/cpp: Biquad filter module (Butterworth LPF + notch, Direct Form II Transposed)
+  - imu.cpp: Biquad LP on gyro (2nd stage after PT1), notch filter (configurable center/width), accel 2nd stage PT1
+  - control.cpp: Biquad replaces PT1 for D-term filtering when USE_OPTIMIZATION enabled
+  - Config params: GYRO_LPF_CUTOFF_HZ, DTERM_LPF_CUTOFF_HZ, GYRO_NOTCH_CENTER_HZ, GYRO_NOTCH_WIDTH_HZ, B_ACCEL_STAGE2
+- [x] USE_RACING features (feed-forward, TPA, expo, air mode, setpoint smoothing) — 2026-02-09
+  - getDesState(): Expo curves (cubic blend), setpoint smoothing (PT1 with configurable cutoff)
+  - controlRATE()/controlANGLE(): Feed-forward on setpoint derivative, TPA from breakpoint
+  - controlMixer(): Air mode shifts motor outputs to preserve PID at zero throttle
+  - Config params: FF_ROLL/PITCH/YAW, TPA_BREAKPOINT, TPA_RATE, SETPOINT_SMOOTH_CUTOFF_HZ, EXPO_ROLL/PITCH/YAW, USE_AIRMODE
+- [x] Build scripts dynamic environments — 2026-02-09
+  - build.bat: Complete rewrite — dynamically parses [env:xxx] from platformio.ini
+  - build.sh: Already dynamic (no changes needed)
+  - Both support: build/upload/clean any env, interactive menu, CLI arguments
+- [x] PID improvements (D-term LP filter + derivative on measurement) — 2026-02-07
+- [x] build.bat replacing build.ps1.txt — 2026-02-07
+- [x] Modular feature system (config.h flags) — 2026-02-07
+- [x] Library vendoring (standalone builds) — 2026-02-07
+- [x] Timing calculator modularized + simplified — 2026-02-07
+- [x] Display module, dual-core, WiFi STA, web server, API client — 2026-02-07
 
 ## Research Completed
 
@@ -109,54 +75,10 @@ _No tasks in progress_
   - See [findings/oled-display-options.md](findings/oled-display-options.md)
 - [x] Timing calculator tool — 2026-02-06, modularized 2026-02-07
   - See [tools/timing/](../tools/timing/)
-  - Usage: `python3 tools/timing_calculator.py` (default), `-p teensy40`, `--all`, `--breakdown`, `--clock N`
 - [x] Bare-bones FC features & algorithms research — 2026-02-07
   - See [findings/bare-bones-fc-research.md](findings/bare-bones-fc-research.md)
 - [x] ESP32 WiFi connectivity research — 2026-02-07
   - See [findings/esp32-wifi-connectivity.md](findings/esp32-wifi-connectivity.md)
-
-## Blocked
-
-_Tasks waiting on something (include reason)_
-
-- [ ] Bench test: IMU sensor validation — **Blocked by**: Hardware not yet assembled
-- [ ] Bench test: SBUS receiver communication — **Blocked by**: Hardware not yet assembled
-- [ ] Bench test: Motor/ESC response — **Blocked by**: Hardware not yet assembled
-
-## Up Next
-
-_Priority queue for immediate work_
-
-- [ ] Implement USE_OPTIMIZATION features (biquad filters, notch filter)
-- [ ] Implement USE_RACING features (feed-forward, TPA, expo, air mode)
-- [ ] Hardware testing when hardware is available
-- [ ] OTA firmware updates
-- [ ] fc_tool WebSocket integration (connect to floppi.local/ws)
-
-## Backlog
-
-_Lower priority, do when time permits_
-
-- [ ] Create example configurations for common VTOL types
-- [ ] Implement full 9DOF Madgwick filter for MPU9250
-- [ ] Serial command interface for PID tuning in calibration mode
-- [ ] Low battery voltage monitoring (ADC)
-
-## Recently Completed
-
-_For context; clear periodically_
-
-- [x] Modular feature system (config.h flags) — 2026-02-07
-- [x] Library vendoring (standalone builds) — 2026-02-07
-- [x] Timing calculator modularized (scanner, min clock, clean output) — 2026-02-07
-- [x] Timing calculator simplified (clock/cores/FPU input, auto min/recommended output) — 2026-02-07
-- [x] D-term LP filter + derivative on measurement (PID improvements) — 2026-02-07
-- [x] build.bat replacing build.ps1.txt — 2026-02-07
-- [x] Display module, dual-core, WiFi STA, web server, API client — 2026-02-07
-- [x] 6-position accelerometer calibration — 2026-02-06
-- [x] Modularize main.cpp — 2026-02-06
-- [x] Serial command interface for calibration — 2026-02-06
-- [x] Build target separation implemented — 2026-02-05
 
 ---
 
@@ -168,7 +90,7 @@ _For context; clear periodically_
 - **Platform support**: Teensy 4.x (recommended), ESP32/S3 (WiFi-enabled)
 - **NOT supported**: Arduino Uno/Mega (16MHz + no FPU = max 302Hz loop rate)
 - **Feature modularity**: Users enable features in config.h based on their MCU capabilities. Use `python3 tools/timing_calculator.py --all` to check feasibility across platforms.
-- **Timing calculator**: Simplified inputs (clock/cores/FPU) implemented. Source code scanning planned. See roadmap "Timing Calculator Improvements" section. Usage: `python3 tools/timing_calculator.py --clock 240 --cores 2 --fpu` or `-p esp32`.
+- **Feature tiers fully implemented**: Base (always), USE_OPTIMIZATION (biquad/notch), USE_RACING (FF/TPA/expo/air mode). All compile-tested in all combinations.
 
 ---
 

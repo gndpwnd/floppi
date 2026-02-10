@@ -1,34 +1,26 @@
 # fc_tool - Todo
 
-> Last updated: 2026-02-07
+> Last updated: 2026-02-10
 
 ## In Progress
 
-- [ ] Plotter discussion — partially complete, resume next session
+- [ ] Plotter discussion — partially complete (low priority, not blocking)
   - Decisions captured: cursor system, scaling controls, pause mode, visual style, trigger vs period mode
   - Open questions remain: Q6, Q7, Q11-Q14, Q16, Q18-Q20, Q23-Q25, plus cursor/visual Qs
   - See [plotter_discussion.md](plotter_discussion.md), [cursor-interaction-discussion.md](cursor-interaction-discussion.md), [signal-analysis-discussion.md](signal-analysis-discussion.md)
-- [x] Collect remaining research agent results (cursor-crosshair, dark-theme) — completed
 
 ## Up Next
 
-- [ ] Finish plotter discussion (answer remaining open questions)
-- [ ] Implement enhanced serial plotter with dynamic multi-graph support
-- [ ] Toggle between Monitor and Plotter views (button to show/hide plotter)
-- [ ] Parse `name@plotId:value` format for multi-graph assignment
-- [ ] Dynamic plot creation (sparse IDs: 1,3,11 → 3 plots)
-- [ ] Dark theme for plots (dark background, bright data colors)
-- [ ] Passive hover crosshair (grey dotted lines + readout panel)
+- [ ] Test with real Teensy hardware (serial + plotter visualization)
+- [ ] Validate cross-platform builds (Windows, macOS)
 - [ ] Trigger Mode cursor system (neon yellow/blue intercept lines)
-- [ ] Test with real Teensy hardware (serial + IMU plots)
+- [ ] X-axis scaling controls (independent zoom/pan)
 
 ## Backlog (Post-v0.1)
 
 ### Enhanced Plotter — Decided Features (ready to implement)
 
-- [ ] Scaling controls — [+] [-] both axes, independent X/Y, auto-fit toggle
 - [ ] Pause/freeze mode — stop collecting by default, "Keep recording" toggle
-- [ ] Separate clear buttons — plots vs serial monitor
 - [ ] Font size controls — [+] [-] for serial monitor
 - [ ] Show data points toggle — circles at actual data points
 - [ ] Measurement cursors — 2 yellow verticals + 2 blue horizontals, draggable + input fields
@@ -50,10 +42,7 @@
 
 ### Serial Features
 
-- [ ] Auto-reconnect on disconnect/unplug
 - [ ] Raw data logging to file (timestamped)
-- [ ] Copy terminal output to clipboard
-- [ ] Search/filter terminal output
 
 ### PlatformIO Integration
 
@@ -82,12 +71,38 @@
 
 ## Recently Completed
 
+- [x] Plotter improvements — 2026-02-10
+  - Fixed sample count bug (was counting per-event, now per-line)
+  - Data window size control (50-5000, adjustable in toolbar)
+  - Y=0 origin line (subtle solid line when zero in view)
+  - Legend click to toggle series visibility
+  - Plot headers show variable names (e.g. "Plot 0: ax, ay, az")
+  - Y-axis zoom controls per plot ([+] [-] [A] buttons)
+  - Auto-fit grid layout (1 plot = full width, 2+ = columns)
+  - Data rate display in status bar (Hz)
+- [x] Terminal improvements — 2026-02-10
+  - Copy to clipboard button (with "Copied!" feedback)
+  - Terminal buffer limit (5000 lines max, prevents memory growth)
+  - Search/filter input (Ctrl+F to focus, Esc to clear)
+  - Keyboard shortcuts: Ctrl+L clear, Ctrl+Shift+P plotter toggle, Ctrl+Shift+Space pause
+- [x] Documentation updated — 2026-02-09
+  - Root docs/scope.md rewritten
+  - fc_tool docs/scope.md, roadmap.md, todo.md updated
+- [x] Enhanced serial plotter — dynamic multi-graph support — 2026-02-09
+  - PlotterManager class in src/plotter.js
+  - Protocol: `name@plotId:value`, `name:value`, `name=value`, plain CSV
+  - Dynamic plot creation (sparse IDs: 1,3,11 → 3 plots)
+  - Dark theme (dark canvas background, bright neon data palette)
+  - Passive hover crosshair (grey dotted lines + readout below plot)
+  - Toggle "Show Plotter" button (hidden by default)
+  - Separate clear buttons for plots vs serial monitor
+  - Replaced old hardcoded IMU accel/gyro charts
+- [x] Auto-reconnect on serial disconnect — 2026-02-09
+  - Backend detects disconnect via reader thread exit, emits `serial-disconnected` event
+  - Frontend retries every 2s, max 15 attempts
+  - Shows "Reconnecting..." status during attempts
+- [x] Research agents completed (cursor-crosshair, dark-theme-neon) — 2026-02-09
 - [x] Plotter discussion — major progress on feature design — 2026-02-07
-  - Created cursor-interaction-discussion.md (full cursor/interaction system design)
-  - Created signal-analysis-discussion.md (period mode + anomaly detection)
-  - Research completed: signal period detection, anomaly detection, Chart.js visualization
-  - 5 research documents produced in findings/
-  - Decisions: trigger mode vs period mode, scaling controls, pause behavior, visual style
 - [x] Deploy script created (deploy.sh) — 2026-02-06
 - [x] Multi-graph plotter protocol designed — 2026-02-06
 - [x] Serial telemetry protocol defined and implemented — 2026-02-06
@@ -101,7 +116,7 @@
 
 ---
 
-## Research Documents (for next session)
+## Research Documents
 
 All in `fc_tool/docs/findings/`:
 

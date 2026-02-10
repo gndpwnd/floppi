@@ -72,6 +72,11 @@ pub struct SerialErrorEvent {
     pub error: String,
 }
 
+#[derive(Clone, Serialize)]
+pub struct SerialDisconnectedEvent {
+    pub port: String,
+}
+
 #[derive(Serialize)]
 pub struct ConnectionStatus {
     pub connected: bool,
@@ -151,6 +156,9 @@ fn open_serial_port(
     // Start reader thread
     state.reader_running.store(true, Ordering::SeqCst);
     let running = state.reader_running.clone();
+    let port_arc = state.port.clone();
+    let connected_arc = state.connected_port.clone();
+    let port_name_for_thread = port_name.clone();
 
     thread::spawn(move || {
         let mut reader = BufReader::new(reader_port);
@@ -160,7 +168,7 @@ fn open_serial_port(
             line.clear();
             match reader.read_line(&mut line) {
                 Ok(0) => {
-                    // EOF - port closed
+                    // EOF - port closed/disconnected
                     break;
                 }
                 Ok(_) => {
@@ -174,11 +182,28 @@ fn open_serial_port(
                                 error: e.to_string(),
                             },
                         );
-                        // For non-timeout errors, add a small delay to avoid busy loop
-                        thread::sleep(Duration::from_millis(10));
+                        // Non-timeout error = likely disconnect
+                        break;
                     }
                 }
             }
+        }
+
+        // If reader exited unexpectedly (not user-initiated close), clean up
+        if running.load(Ordering::SeqCst) {
+            running.store(false, Ordering::SeqCst);
+            if let Ok(mut p) = port_arc.lock() {
+                *p = None;
+            }
+            if let Ok(mut c) = connected_arc.lock() {
+                *c = None;
+            }
+            let _ = app.emit(
+                "serial-disconnected",
+                SerialDisconnectedEvent {
+                    port: port_name_for_thread,
+                },
+            );
         }
     });
 

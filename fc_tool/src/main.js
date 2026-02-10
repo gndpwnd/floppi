@@ -1,3 +1,5 @@
+import { PlotterManager } from './plotter.js';
+
 const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
 
@@ -12,231 +14,92 @@ const connectionStatus = document.getElementById("connection-status");
 const terminalOutput = document.getElementById("terminal-output");
 const terminalInput = document.getElementById("terminal-input");
 const sendBtn = document.getElementById("send-btn");
-const clearBtn = document.getElementById("clear-btn");
+const clearMonitorBtn = document.getElementById("clear-monitor-btn");
+const copyMonitorBtn = document.getElementById("copy-monitor-btn");
 const newlineCheckbox = document.getElementById("newline-checkbox");
 const autoscrollCheckbox = document.getElementById("autoscroll-checkbox");
+const filterInput = document.getElementById("filter-input");
 
-// DOM Elements - IMU
-const imuEnabledCheckbox = document.getElementById("imu-enabled-checkbox");
-const imuStatus = document.getElementById("imu-status");
+// DOM Elements - Plotter
+const plotterToggleBtn = document.getElementById("plotter-toggle-btn");
+const plotterSection = document.getElementById("plotter-section");
+const plotterPauseBtn = document.getElementById("plotter-pause-btn");
+const plotterClearBtn = document.getElementById("plotter-clear-btn");
+const plotterStatusText = document.getElementById("plotter-status-text");
+const plotterWindowInput = document.getElementById("plotter-window-input");
 
 let isConnected = false;
+let lastPort = null;
+let lastBaud = null;
+let reconnectTimer = null;
+let reconnectAttempts = 0;
+const RECONNECT_INTERVAL_MS = 2000;
+const RECONNECT_MAX_ATTEMPTS = 15;
+const TERMINAL_MAX_LINES = 5000;
+let activeFilter = "";
 
 // ============================================================================
-// IMU Charts Configuration
+// Plotter
 // ============================================================================
 
-const MAX_DATA_POINTS = 100; // ~10 seconds at 10Hz
-const CHART_COLORS = {
-  x: { border: "#ef5350", background: "#ef535040" }, // Red
-  y: { border: "#81c784", background: "#81c78440" }, // Green
-  z: { border: "#4fc3f7", background: "#4fc3f740" }, // Blue
-};
+const plotter = new PlotterManager(
+  document.getElementById("plotter-container"),
+);
 
-// Chart.js default options for dark theme
-const chartOptions = {
-  responsive: true,
-  maintainAspectRatio: false,
-  animation: false, // Disable for real-time performance
-  scales: {
-    x: {
-      display: false,
-    },
-    y: {
-      grid: { color: "#333" },
-      ticks: { color: "#888" },
-    },
-  },
-  plugins: {
-    legend: {
-      labels: { color: "#888", boxWidth: 12, padding: 8 },
-    },
-  },
-};
+let plotterVisible = false;
+let totalSamples = 0;
+let rateCounter = 0;
+let lastRateTime = 0;
+let currentRate = 0;
 
-// Initialize accelerometer chart
-const accelCtx = document.getElementById("accel-chart").getContext("2d");
-const accelChart = new Chart(accelCtx, {
-  type: "line",
-  data: {
-    labels: [],
-    datasets: [
-      {
-        label: "X",
-        data: [],
-        borderColor: CHART_COLORS.x.border,
-        backgroundColor: CHART_COLORS.x.background,
-        borderWidth: 1.5,
-        pointRadius: 0,
-        tension: 0.2,
-      },
-      {
-        label: "Y",
-        data: [],
-        borderColor: CHART_COLORS.y.border,
-        backgroundColor: CHART_COLORS.y.background,
-        borderWidth: 1.5,
-        pointRadius: 0,
-        tension: 0.2,
-      },
-      {
-        label: "Z",
-        data: [],
-        borderColor: CHART_COLORS.z.border,
-        backgroundColor: CHART_COLORS.z.background,
-        borderWidth: 1.5,
-        pointRadius: 0,
-        tension: 0.2,
-      },
-    ],
-  },
-  options: chartOptions,
+plotterToggleBtn.addEventListener("click", () => {
+  plotterVisible = !plotterVisible;
+  plotterSection.style.display = plotterVisible ? "" : "none";
+  plotterToggleBtn.textContent = plotterVisible ? "Hide Plotter" : "Show Plotter";
+  plotter.enabled = plotterVisible;
 });
 
-// Initialize gyroscope chart
-const gyroCtx = document.getElementById("gyro-chart").getContext("2d");
-const gyroChart = new Chart(gyroCtx, {
-  type: "line",
-  data: {
-    labels: [],
-    datasets: [
-      {
-        label: "X",
-        data: [],
-        borderColor: CHART_COLORS.x.border,
-        backgroundColor: CHART_COLORS.x.background,
-        borderWidth: 1.5,
-        pointRadius: 0,
-        tension: 0.2,
-      },
-      {
-        label: "Y",
-        data: [],
-        borderColor: CHART_COLORS.y.border,
-        backgroundColor: CHART_COLORS.y.background,
-        borderWidth: 1.5,
-        pointRadius: 0,
-        tension: 0.2,
-      },
-      {
-        label: "Z",
-        data: [],
-        borderColor: CHART_COLORS.z.border,
-        backgroundColor: CHART_COLORS.z.background,
-        borderWidth: 1.5,
-        pointRadius: 0,
-        tension: 0.2,
-      },
-    ],
-  },
-  options: chartOptions,
+plotterPauseBtn.addEventListener("click", () => {
+  const paused = plotter.togglePause();
+  plotterPauseBtn.textContent = paused ? "\u25B6" : "\u23F8";
+  plotterPauseBtn.title = paused ? "Resume" : "Pause";
 });
 
-let imuSampleCount = 0;
+plotterClearBtn.addEventListener("click", () => {
+  plotter.clearAll();
+  totalSamples = 0;
+  rateCounter = 0;
+  currentRate = 0;
+  plotterStatusText.textContent = "Cleared";
+});
 
-// ============================================================================
-// IMU Data Parsing
-// ============================================================================
-
-// Telemetry format patterns (configurable)
-// Format 1: "IMU: ax=1.23 ay=4.56 az=7.89 gx=0.12 gy=0.34 gz=0.56"
-// Format 2: "A:1.23,4.56,7.89 G:0.12,0.34,0.56"
-// Format 3: JSON: {"accel":[1.23,4.56,7.89],"gyro":[0.12,0.34,0.56]}
-
-const IMU_PATTERNS = [
-  // Pattern 1: Key-value format
-  /ax[=:]?\s*([-\d.]+).*?ay[=:]?\s*([-\d.]+).*?az[=:]?\s*([-\d.]+).*?gx[=:]?\s*([-\d.]+).*?gy[=:]?\s*([-\d.]+).*?gz[=:]?\s*([-\d.]+)/i,
-  // Pattern 2: Compact format "A:x,y,z G:x,y,z"
-  /A[=:]?\s*([-\d.]+)[,\s]+([-\d.]+)[,\s]+([-\d.]+).*?G[=:]?\s*([-\d.]+)[,\s]+([-\d.]+)[,\s]+([-\d.]+)/i,
-  // Pattern 3: Simple CSV "ax,ay,az,gx,gy,gz"
-  /^([-\d.]+),([-\d.]+),([-\d.]+),([-\d.]+),([-\d.]+),([-\d.]+)$/,
-];
-
-function parseImuData(line) {
-  // Try JSON first
-  try {
-    const json = JSON.parse(line);
-    if (json.accel && json.gyro) {
-      return {
-        accel: { x: json.accel[0], y: json.accel[1], z: json.accel[2] },
-        gyro: { x: json.gyro[0], y: json.gyro[1], z: json.gyro[2] },
-      };
-    }
-    if (json.ax !== undefined) {
-      return {
-        accel: { x: json.ax, y: json.ay, z: json.az },
-        gyro: { x: json.gx, y: json.gy, z: json.gz },
-      };
-    }
-  } catch {
-    // Not JSON, try regex patterns
+plotterWindowInput.addEventListener("change", () => {
+  const val = parseInt(plotterWindowInput.value, 10);
+  if (val >= 50 && val <= 5000) {
+    plotter.maxDataPoints = val;
   }
+});
 
-  // Try regex patterns
-  for (const pattern of IMU_PATTERNS) {
-    const match = line.match(pattern);
-    if (match) {
-      return {
-        accel: {
-          x: parseFloat(match[1]),
-          y: parseFloat(match[2]),
-          z: parseFloat(match[3]),
-        },
-        gyro: {
-          x: parseFloat(match[4]),
-          y: parseFloat(match[5]),
-          z: parseFloat(match[6]),
-        },
-      };
-    }
-  }
-
-  return null;
-}
-
-function updateCharts(imuData) {
-  const timestamp = imuSampleCount++;
-
-  // Update accelerometer chart
-  accelChart.data.labels.push(timestamp);
-  accelChart.data.datasets[0].data.push(imuData.accel.x);
-  accelChart.data.datasets[1].data.push(imuData.accel.y);
-  accelChart.data.datasets[2].data.push(imuData.accel.z);
-
-  // Update gyroscope chart
-  gyroChart.data.labels.push(timestamp);
-  gyroChart.data.datasets[0].data.push(imuData.gyro.x);
-  gyroChart.data.datasets[1].data.push(imuData.gyro.y);
-  gyroChart.data.datasets[2].data.push(imuData.gyro.z);
-
-  // Trim old data
-  if (accelChart.data.labels.length > MAX_DATA_POINTS) {
-    accelChart.data.labels.shift();
-    accelChart.data.datasets.forEach((ds) => ds.data.shift());
-    gyroChart.data.labels.shift();
-    gyroChart.data.datasets.forEach((ds) => ds.data.shift());
-  }
-
-  // Update charts
-  accelChart.update("none");
-  gyroChart.update("none");
-
-  // Update status
-  imuStatus.textContent = `Samples: ${imuSampleCount} | A: ${imuData.accel.x.toFixed(2)}, ${imuData.accel.y.toFixed(2)}, ${imuData.accel.z.toFixed(2)}`;
-}
-
-function processSerialData(data) {
-  // Only parse if IMU parsing is enabled
-  if (!imuEnabledCheckbox.checked) return;
-
-  // Split by newlines in case multiple lines arrive at once
-  const lines = data.split("\n").filter((line) => line.trim());
-
+function processSerialForPlotter(data) {
+  if (!plotterVisible) return;
+  const lines = data.split("\n").filter(l => l.trim());
   for (const line of lines) {
-    const imuData = parseImuData(line.trim());
-    if (imuData) {
-      updateCharts(imuData);
-    }
+    plotter.processLine(line.trim());
+  }
+  totalSamples += lines.length;
+  rateCounter += lines.length;
+
+  const now = performance.now();
+  if (now - lastRateTime >= 1000) {
+    currentRate = rateCounter;
+    rateCounter = 0;
+    lastRateTime = now;
+  }
+
+  if (totalSamples % 10 < lines.length) {
+    const rateStr = currentRate > 0 ? ` | ${currentRate} Hz` : "";
+    plotterStatusText.textContent =
+      `${plotter.plots.size} plot(s) | ${totalSamples} samples${rateStr}`;
   }
 }
 
@@ -261,8 +124,6 @@ async function scanPorts() {
     ports.forEach((p) => {
       const option = document.createElement("option");
       option.value = p.name;
-      // Show: port — BoardName — VID:PID (for known boards)
-      // Or: port — VID:PID (product) (for unknown boards)
       if (p.board_name) {
         option.textContent = `${p.name} — ${p.board_name} — ${p.port_type}`;
       } else {
@@ -290,16 +151,19 @@ async function connect() {
 
   try {
     await invoke("open_serial_port", { portName: port, baudRate: baud });
+    lastPort = port;
+    lastBaud = baud;
+    stopReconnect();
     setConnected(true, port);
     appendSystem(`Connected to ${port} at ${baud} baud`);
-    imuStatus.textContent = "Waiting for data...";
-    imuSampleCount = 0;
+    totalSamples = 0;
   } catch (e) {
     appendSystem(`Connection failed: ${e}`);
   }
 }
 
 async function disconnect() {
+  stopReconnect();
   try {
     await invoke("close_serial_port");
     setConnected(false);
@@ -307,6 +171,49 @@ async function disconnect() {
   } catch (e) {
     appendSystem(`Disconnect failed: ${e}`);
   }
+}
+
+// ============================================================================
+// Auto-Reconnect
+// ============================================================================
+
+function stopReconnect() {
+  if (reconnectTimer) {
+    clearInterval(reconnectTimer);
+    reconnectTimer = null;
+    reconnectAttempts = 0;
+  }
+}
+
+function startReconnect(port) {
+  if (reconnectTimer) return;
+  const targetPort = port || lastPort;
+  const targetBaud = lastBaud || parseInt(baudSelect.value, 10);
+  if (!targetPort) return;
+
+  reconnectAttempts = 0;
+  appendSystem(`Reconnecting to ${targetPort}...`);
+  connectionStatus.textContent = "Reconnecting...";
+  connectionStatus.className = "status-disconnected";
+
+  reconnectTimer = setInterval(async () => {
+    reconnectAttempts++;
+    if (reconnectAttempts > RECONNECT_MAX_ATTEMPTS) {
+      stopReconnect();
+      appendSystem("Reconnect failed — device not found");
+      return;
+    }
+    try {
+      await invoke("open_serial_port", { portName: targetPort, baudRate: targetBaud });
+      stopReconnect();
+      lastPort = targetPort;
+      lastBaud = targetBaud;
+      setConnected(true, targetPort);
+      appendSystem(`Reconnected to ${targetPort}`);
+    } catch {
+      // Port not available yet
+    }
+  }, RECONNECT_INTERVAL_MS);
 }
 
 function setConnected(connected, port = null) {
@@ -352,21 +259,29 @@ async function sendData() {
 // Terminal Functions
 // ============================================================================
 
+function applyFilter(span) {
+  if (activeFilter && !span.textContent.includes(activeFilter)) {
+    span.classList.add("filtered");
+  }
+}
+
 function appendRx(data) {
   const span = document.createElement("span");
   span.className = "rx";
   span.textContent = data;
+  applyFilter(span);
   terminalOutput.appendChild(span);
+  trimTerminal();
   autoScroll();
 
-  // Process for IMU data
-  processSerialData(data);
+  processSerialForPlotter(data);
 }
 
 function appendTx(data) {
   const span = document.createElement("span");
   span.className = "tx";
   span.textContent = `> ${data}\n`;
+  applyFilter(span);
   terminalOutput.appendChild(span);
   autoScroll();
 }
@@ -377,6 +292,12 @@ function appendSystem(msg) {
   span.textContent = `[${msg}]\n`;
   terminalOutput.appendChild(span);
   autoScroll();
+}
+
+function trimTerminal() {
+  while (terminalOutput.childNodes.length > TERMINAL_MAX_LINES) {
+    terminalOutput.removeChild(terminalOutput.firstChild);
+  }
 }
 
 function autoScroll() {
@@ -411,7 +332,62 @@ terminalInput.addEventListener("keydown", (e) => {
   }
 });
 
-clearBtn.addEventListener("click", clearTerminal);
+clearMonitorBtn.addEventListener("click", clearTerminal);
+
+filterInput.addEventListener("input", () => {
+  activeFilter = filterInput.value;
+  const spans = terminalOutput.querySelectorAll("span");
+  for (const span of spans) {
+    if (span.classList.contains("system")) continue;
+    if (activeFilter && !span.textContent.includes(activeFilter)) {
+      span.classList.add("filtered");
+    } else {
+      span.classList.remove("filtered");
+    }
+  }
+});
+
+copyMonitorBtn.addEventListener("click", async () => {
+  const text = terminalOutput.textContent;
+  try {
+    await navigator.clipboard.writeText(text);
+    copyMonitorBtn.textContent = "Copied!";
+    setTimeout(() => { copyMonitorBtn.textContent = "Copy"; }, 1500);
+  } catch {
+    appendSystem("Clipboard copy failed");
+  }
+});
+
+// Keyboard shortcuts
+document.addEventListener("keydown", (e) => {
+  // Ctrl+L — clear terminal
+  if (e.ctrlKey && e.key === "l") {
+    e.preventDefault();
+    clearTerminal();
+  }
+  // Ctrl+Shift+P — toggle plotter
+  if (e.ctrlKey && e.shiftKey && e.key === "P") {
+    e.preventDefault();
+    plotterToggleBtn.click();
+  }
+  // Ctrl+Shift+Space — pause/resume plotter
+  if (e.ctrlKey && e.shiftKey && e.key === " ") {
+    e.preventDefault();
+    if (plotterVisible) plotterPauseBtn.click();
+  }
+  // Ctrl+F — focus filter input
+  if (e.ctrlKey && !e.shiftKey && e.key === "f") {
+    e.preventDefault();
+    filterInput.focus();
+    filterInput.select();
+  }
+  // Escape — clear filter and return focus
+  if (e.key === "Escape" && document.activeElement === filterInput) {
+    filterInput.value = "";
+    filterInput.dispatchEvent(new Event("input"));
+    filterInput.blur();
+  }
+});
 
 // Listen for serial data events from Tauri backend
 listen("serial-data", (event) => {
@@ -420,6 +396,12 @@ listen("serial-data", (event) => {
 
 listen("serial-error", (event) => {
   appendSystem(`Error: ${event.payload.error}`);
+});
+
+listen("serial-disconnected", (event) => {
+  setConnected(false);
+  appendSystem(`Device disconnected: ${event.payload.port}`);
+  startReconnect(event.payload.port);
 });
 
 // Initial scan on load

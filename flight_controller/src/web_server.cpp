@@ -36,6 +36,9 @@ static DisplayData_t latestData = {};
 #define WS_BROADCAST_INTERVAL_MS 100  // 10Hz
 static unsigned long ws_broadcast_timer = 0;
 
+// mDNS hostname (e.g. "floppi-A1B2"), computed once in setupWebServer()
+static char mdns_hostname[20] = "";
+
 //========================================================================================================================//
 //                                              HELPER: SERIALIZE DATA                                                     //
 //========================================================================================================================//
@@ -72,6 +75,7 @@ static void serializeDisplayData(JsonObject& root, const DisplayData_t* data) {
     // Network
     JsonObject net = root["net"].to<JsonObject>();
     net["mac"] = data->mac_address;
+    net["hostname"] = mdns_hostname;
     net["ssid"] = data->ssid;
     net["ip"] = data->ip_address;
     net["rssi"] = data->wifi_rssi;
@@ -110,16 +114,13 @@ static void onWsEvent(AsyncWebSocket* server, AsyncWebSocketClient* client,
 
 void setupWebServer() {
     // mDNS: use MAC suffix for unique drone names in swarm
-    String hostname = "floppi";
     uint8_t mac[6];
     WiFi.macAddress(mac);
-    char suffix[8];
-    snprintf(suffix, sizeof(suffix), "-%02X%02X", mac[4], mac[5]);
-    hostname += suffix;
+    snprintf(mdns_hostname, sizeof(mdns_hostname), "floppi-%02X%02X", mac[4], mac[5]);
 
-    if (MDNS.begin(hostname.c_str())) {
+    if (MDNS.begin(mdns_hostname)) {
         MDNS.addService("http", "tcp", 80);
-        Serial.printf("[Web] mDNS: http://%s.local\n", hostname.c_str());
+        Serial.printf("[Web] mDNS: http://%s.local\n", mdns_hostname);
     }
 
     // WebSocket handler
@@ -148,14 +149,18 @@ void setupWebServer() {
         snapshot = latestData;
         portEXIT_CRITICAL(&dataMux);
 
-        char buf[256];
+        char buf[320];
         snprintf(buf, sizeof(buf),
             "FLOPPI FC\n"
+            "Hostname: %s\n"
+            "MAC: %s\n"
             "Armed: %s\n"
             "Roll: %.1f  Pitch: %.1f  Yaw: %.1f\n"
             "Loop: %lu us\n"
             "IP: %s  RSSI: %d dBm\n"
             "Heap: %u bytes\n",
+            mdns_hostname,
+            snapshot.mac_address,
             snapshot.armed ? "YES" : "NO",
             snapshot.roll, snapshot.pitch, snapshot.yaw,
             (unsigned long)snapshot.loop_dt_us,
