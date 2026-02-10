@@ -24,7 +24,7 @@
 // FEATURE MODULES (compile-time)
 //=============================================================================
 // Enable/disable optional features. Each uses #ifdef — disabled features
-// add zero binary cost. Use tools/timing_calculator.py to check if your
+// add zero binary cost. Use tools/complexity_calculator.py to check if your
 // MCU can handle the enabled features at your target loop rate.
 //
 // Platform notes:

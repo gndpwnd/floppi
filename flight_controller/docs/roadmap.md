@@ -1,6 +1,6 @@
 # Flight Controller Firmware - Roadmap
 
-> Last updated: 2026-02-09
+> Last updated: 2026-02-10
 
 ## Overview
 
@@ -209,9 +209,9 @@ This roadmap tracks project-level features and milestones for the flight control
   - Completed: 2026-02-06
   - Notes: Added telemetry output functions (printIMUTelemetry, printFullTelemetry) compatible with fc_tool parser. Serial command 't' toggles telemetry modes.
   - Related: See [fc_tool/docs/features/serial-telemetry-protocol.md](/fc_tool/docs/features/serial-telemetry-protocol.md)
-- [x] Timing calculator (modular, simplified)
-  - Completed: 2026-02-07
-  - Notes: `tools/timing_calculator.py` entry point with `tools/timing/` package. Simplified inputs: clock/cores/FPU (via `--clock`, `--cores`, `--fpu`/`--no-fpu`) or platform presets (`-p esp32`). Auto-detects features from config.h. Always outputs min/recommended clock speeds and pass/fail status.
+- [x] Complexity calculator (CPU timing, memory, source analysis)
+  - Completed: 2026-02-10 (replaces timing_calculator)
+  - Notes: `tools/complexity_calculator.py` entry point with `tools/complexity/` package. Dynamic source scanning (no manual operation lists). CPU timing from source-scanned FP ops, memory analysis from ELF builds, per-tier breakdown. Inputs: clock/cores/FPU (via `--clock`, `--cores`, `--fpu`/`--no-fpu`) or platform presets (`-p esp32`). Modes: `--full`, `--memory`, `--source`, `--all`, `--builds`.
 
 ---
 
@@ -223,7 +223,7 @@ This roadmap tracks project-level features and milestones for the flight control
 >
 > **Platform awareness**: WiFi features (web server, API client, OTA) are ESP32-only and auto-enabled with `USE_WIFI`. Flight loop features (optimization, racing) work on all platforms. On ESP32, WiFi features run on Core 1 — **zero flight loop impact**.
 >
-> **Timing calculator**: `tools/timing_calculator.py` auto-detects enabled features from config.h and validates your MCU can handle the compute load. See [tools/timing/](../tools/timing/).
+> **Complexity calculator**: `tools/complexity_calculator.py` auto-detects enabled features from config.h and dynamically scans source code for CPU/memory analysis. See [tools/complexity/](../tools/complexity/).
 
 ### Feature Modules (config.h)
 
@@ -271,15 +271,13 @@ Files: `ota.h`, `ota.cpp`.
 
 ---
 
-## Timing Calculator (Side Project — Low Priority)
+## Complexity Calculator
 
-> **Status**: Functional but manually maintained. Not a priority for flight_controller development. May become its own project in the future.
+> **Status**: Functional with automatic source scanning. No manual updates needed when firmware code changes.
 >
-> **Current state**: `tools/timing_calculator.py` with `tools/timing/` package. Works today with manually maintained operation counts. Don't update it when adding firmware features — the goal is to eventually replace manual maintenance with automatic source scanning.
+> **Current state**: `tools/complexity_calculator.py` with `tools/complexity/` package. Dynamically scans all C/C++ source files for floating-point operations, maps them to feature tiers via `#ifdef` tracking, and calculates CPU timing from per-architecture cycle costs. Also analyzes PlatformIO build artifacts (ELF) for actual flash/RAM usage.
 >
-> **Vision**: The calculator should automatically scan all C/C++ source in `flight_controller/` and derive computation complexity from the code itself. No manual operation lists. When features are added to firmware, the calculator picks them up automatically. This is a non-trivial static analysis problem and may warrant its own project.
->
-> **Alternative**: Could become a firmware build target (e.g., `pio run -e timing_analysis`) that instruments the actual compiled code rather than doing static analysis from Python.
+> **Usage**: `python3 tools/complexity_calculator.py --full` (CPU + memory + source scan), `--all` (compare platforms), `--memory` (build artifacts), `--source` (FP operation scan), `--builds` (list available builds). Supports custom hardware: `--clock 133 --cores 2 --no-fpu`.
 
 ---
 
@@ -313,9 +311,10 @@ Files: `ota.h`, `ota.cpp`.
   - Calibration routines should print the full guide text to serial at the start of each routine (what to do, what physical action is needed, what output to expect).
   - Dependencies: Display module (done), calibration routines (done)
 
-- [ ] Sequential calibration workflow
-  - Description: A guided "full calibration" mode that runs all calibration routines in sequence (e.g., serial command `a` for "all"). User goes through IMU → radio → failsafe → ESC in one session, with clear prompts between each step. Can also run individual tests independently as today.
-  - Notes: Currently each calibration is triggered individually via serial commands or CH6 switch. Both modes (individual and sequential) should coexist.
+- [x] Sequential calibration workflow
+  - Completed: 2026-02-10
+  - Description: Guided "full calibration" mode via serial command `a`. Walks through IMU → radio → failsafe → ESC stages, skips already-completed stages (via CALIBRATED_* markers in config.h). Command `c` shows status checklist. Individual calibrations still work independently.
+  - Notes: CALIBRATED_* #define markers in config.h track completion. Calibration reset tool re-comments markers.
 
 - [ ] Wiring validation on startup
   - Description: Basic startup checks — detect if IMU is responding, if receiver is sending data, if OLED is connected. Report status on serial and display. Helps users catch wiring mistakes before attempting calibration.
@@ -531,6 +530,8 @@ Files: `ota.h`, `ota.cpp`.
 - [x] Timing calculator update (feature tiers, per-core analysis) — 2026-02-07
 - [x] Timing calculator modularization (scanner, min clock, clean output) — 2026-02-07
 - [x] Timing calculator simplified inputs (clock/cores/FPU, auto min/recommended output) — 2026-02-07
+- [x] Complexity calculator (replaces timing_calculator, dynamic source scanning, memory analysis) — 2026-02-10
+- [x] Sequential calibration workflow (`a` command, CALIBRATED_* markers) — 2026-02-10
 - [x] D-term low-pass filter (PT1 filter, B_DTERM in config.h) — 2026-02-07
 - [x] Rate mode derivative on measurement (all axes, both controllers) — 2026-02-07
 - [x] USE_OPTIMIZATION implemented (biquad gyro LP, biquad D-term, gyro notch, accel 2nd LP) — 2026-02-09

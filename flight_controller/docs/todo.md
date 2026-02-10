@@ -104,8 +104,8 @@ _For context; clear periodically_
   - See [findings/esp32-fc-feasibility.md](findings/esp32-fc-feasibility.md)
 - [x] OLED display options documented — 2026-02-06
   - See [findings/oled-display-options.md](findings/oled-display-options.md)
-- [x] Timing calculator tool — 2026-02-06, modularized 2026-02-07
-  - See [tools/timing/](../tools/timing/)
+- [x] Timing calculator tool — 2026-02-06, replaced by complexity_calculator 2026-02-10
+  - See [tools/complexity/](../tools/complexity/)
 - [x] Bare-bones FC features & algorithms research — 2026-02-07
   - See [findings/bare-bones-fc-research.md](findings/bare-bones-fc-research.md)
 - [x] ESP32 WiFi connectivity research — 2026-02-07
@@ -122,7 +122,7 @@ _For context; clear periodically_
 - **Modular architecture** — code split into imu, control, motors, debug modules + feature flags
 - **Platform support**: Teensy 4.x (recommended), ESP32/S3 (WiFi-enabled)
 - **NOT supported**: Arduino Uno/Mega (16MHz + no FPU = max 302Hz loop rate)
-- **Feature modularity**: Users enable features in config.h based on their MCU capabilities. Use `python3 tools/timing_calculator.py --all` to check feasibility across platforms.
+- **Feature modularity**: Users enable features in config.h based on their MCU capabilities. Use `python3 tools/complexity_calculator.py --all` to check feasibility across platforms.
 - **Feature tiers fully implemented**: Base (always), USE_OPTIMIZATION (biquad/notch), USE_RACING (FF/TPA/expo/air mode). All compile-tested in all combinations.
 
 ---

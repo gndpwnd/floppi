@@ -1,7 +1,7 @@
 # Timing Calculator Analysis Results
 
-> Generated: 2026-02-06
-> Tool: `tools/timing_calculator.py`
+> Generated: 2026-02-06 (historical — timing_calculator replaced by complexity_calculator 2026-02-10)
+> Tool: `tools/complexity_calculator.py` (was `tools/timing_calculator.py`)
 
 ## Overview
 
@@ -116,7 +116,7 @@ ESP32 at 1kHz FC loop:
 
 ```bash
 cd flight_controller
-python3 tools/timing_calculator.py
+python3 tools/complexity_calculator.py
 ```
 
 The tool outputs:

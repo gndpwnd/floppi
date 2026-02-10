@@ -242,7 +242,7 @@ flight_controller/
 ## Related Projects
 
 - **[fc_tool](../fc_tool/)** - Desktop app for serial monitoring and IMU visualization
-- **[tools/timing_calculator.py](tools/timing_calculator.py)** - CPU timing analysis tool
+- **[tools/complexity_calculator.py](tools/complexity_calculator.py)** - CPU timing, memory usage, and source complexity analysis tool
 
 ---
 
