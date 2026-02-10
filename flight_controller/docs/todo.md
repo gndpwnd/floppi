@@ -10,6 +10,10 @@ _No tasks in progress_
 
 _Priority queue for immediate work_
 
+- [ ] Failsafe auto-detection (`f` command) — measure receiver failsafe PWM outputs
+- [ ] Runtime filter/limits tuning (`p` command) — serial tuning for B_ACCEL, B_GYRO, B_DTERM, MADGWICK_BETA, max rates/angles
+- [ ] ESC endpoint calibration (`e` command) — guided min/max PWM routine
+- [ ] Magnetometer calibration (MPU9250 sphere calibration routine)
 - [ ] Hardware testing when hardware is available
 - [ ] fc_tool WebSocket integration (connect to floppi.local/ws) — **deferred**, fc_tool still in development
 
@@ -84,6 +88,7 @@ _For context; clear periodically_
 
 ## Notes
 
+- **Calibration automation is the next milestone** — every config.h value should have an auto-calibration routine
 - **Hardware testing is the critical path** — firmware is ready, need physical drone to validate
 - **fc_tool will help** — visual diagnostics during calibration (separate project at /fc_tool/)
 - **Modular architecture** — code split into imu, control, motors, debug modules + feature flags

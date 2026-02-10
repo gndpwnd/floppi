@@ -50,30 +50,69 @@ This roadmap tracks project-level features and milestones for the flight control
 
 ### Calibration System
 
-- [x] Basic IMU auto-calibration via CH6 switch
+> **Goal**: Every hardware-dependent `#define` in config.h has a corresponding auto-calibration routine. Users never guess values — they run guided routines, get validated results, and copy-paste into config.h. The firmware is bare-bones at runtime precisely because calibration is thorough and automated upfront.
+>
+> **Pattern**: Each routine is a serial command in calibration builds. Routines guide the user step-by-step, validate results with quality checks, offer retry on poor results, and output copy-paste-ready `#define` blocks.
+
+#### Completed Calibration Routines
+
+- [x] IMU offset calibration — serial command `i`
   - Completed: Pre-2026
-  - Notes: Gyro bias + accelerometer offset calculation, 2000 samples
+  - Notes: Gyro bias + accelerometer offset, 2000 samples, stability/level checks, retry on poor results.
+  - Outputs: `IMU_ACC_ERROR_X/Y/Z`, `IMU_GYRO_ERROR_X/Y/Z` (6 values)
+
+- [x] 6-position accelerometer calibration — serial command `m`
+  - Completed: 2026-02-06
+  - Notes: Offset + scale factor from 6 orientations. More accurate than single-position.
+  - Outputs: `IMU_ACC_ERROR_X/Y/Z`, `IMU_ACC_SCALE_X/Y/Z`, `IMU_GYRO_ERROR_X/Y/Z` (9 values)
+
+- [x] IMU orientation auto-detection — serial command `o`
+  - Completed: Pre-2026
+  - Notes: 3-position test (level, nose-up, right-up). Generates axis transformation code.
+  - Outputs: Axis transformation code for imu.cpp
+
+- [x] Radio channel auto-mapping — serial command `r`
+  - Completed: Pre-2026
+  - Notes: Guided stick-move routine. Auto-detects channel mapping, measures ranges.
+  - Outputs: `THROTTLE_CHANNEL`, `ROLL_CHANNEL`, `PITCH_CHANNEL`, `YAW_CHANNEL`, `AUX1_CHANNEL`, `AUX2_CHANNEL` (6 values)
+
+- [x] Runtime PID tuning — serial command `g`
+  - Completed: 2026-02-09
+  - Notes: Runtime-tunable PID gains in calibration builds. Non-blocking line-buffered serial parser.
+  - Outputs: User copies tuned values back to config.h PID sections (9 values)
 
 - [x] Attitude filter warm-up calibration
   - Completed: Pre-2026
 
-- [x] Radio channel auto-mapping and calibration
-  - Completed: Pre-2026
-  - Notes: Step-by-step guided routine in lib/Calibration/calibration.cpp. Auto-detects channel mapping, outputs copy-paste config.h values.
-  - Related findings: [auto-calibration-research.md](findings/auto-calibration-research.md)
-
-- [x] IMU orientation auto-detection
-  - Completed: Pre-2026
-  - Notes: 3-position test (level, nose-up, right-up) in lib/Calibration/calibration.cpp. Generates axis transformation code.
-  - Related findings: [auto-calibration-research.md](findings/auto-calibration-research.md)
-
-- [x] Multi-position accelerometer calibration
-  - Completed: 2026-02-06
-  - Notes: 6-position calibration for offset + scale factor. Serial command 'm'. Outputs 9 defines to config.h.
-
 - [x] Calibration value export workflow
   - Completed: 2026-02-05
-  - Notes: Calibration mode outputs values in config.h `#define` format, ready to copy-paste. Output format fixed to match config.h syntax.
+  - Notes: All routines output values in config.h `#define` format, ready to copy-paste.
+
+- [x] CH6 switch calibration trigger
+  - Completed: Pre-2026
+  - Notes: CH6 MID = IMU cal, HIGH = IMU + orientation. Hold 3 seconds to trigger.
+
+#### Planned Calibration Routines
+
+- [ ] Failsafe auto-detection — serial command `f`
+  - Description: Auto-detect receiver failsafe PWM outputs. Power off transmitter during routine, measure what the receiver sends, output as `FAILSAFE_THROTTLE/ROLL/PITCH/YAW/AUX1/AUX2` defines.
+  - Outputs: 6 failsafe values for config.h
+  - Notes: Currently these are manual guesses (1000/1500/2000). Auto-detection eliminates guesswork and matches actual receiver behavior.
+
+- [ ] ESC endpoint calibration — serial command `e`
+  - Description: Send min/max PWM sequence to all ESCs for range calibration. Guided routine: connect battery with throttle high → ESCs beep → send low → ESCs confirm. Standard ESC calibration procedure automated in firmware.
+  - Dependencies: Hardware testing
+  - Notes: Safety-gated (requires explicit confirmation, props-off warning).
+
+- [ ] Magnetometer calibration — MPU9250 only
+  - Description: Sphere calibration routine. User rotates aircraft in all orientations while firmware records min/max per axis. Calculates hard-iron offsets and soft-iron scale factors.
+  - Outputs: `MAG_ERROR_X/Y/Z`, `MAG_SCALE_X/Y/Z` (6 values)
+  - Notes: Only relevant for MPU9250 builds. Guarded by `#ifdef USE_MPU9250`.
+
+- [ ] Runtime filter/limits tuning — serial command `p`
+  - Description: Extend the serial tuning interface (like PID `g` command) to cover filter coefficients and control limits. Allows runtime adjustment of `B_ACCEL`, `B_GYRO`, `B_DTERM`, `MADGWICK_BETA`, `MAX_ROLL_ANGLE/RATE`, `MAX_PITCH_ANGLE/RATE`, `MAX_YAW_RATE`, and (when USE_OPTIMIZATION enabled) biquad cutoff frequencies.
+  - Outputs: User copies tuned values back to config.h
+  - Notes: Same pattern as PID tuning — show current values, set individual values, copy back when satisfied.
 
 ### Firmware State Machine
 
@@ -252,17 +291,15 @@ Files: `ota.h`, `ota.cpp`.
 ## Nice to Have (Lower Priority)
 
 - [ ] PID auto-tuning mode
-  - Description: Automated PID tuning via relay/step response test (like Betaflight/ArduPilot AUTOTUNE)
+  - Description: Fully automated PID tuning via relay/step response test (like Betaflight/ArduPilot AUTOTUNE). Currently the `g` command allows manual runtime tuning — auto-tuning would replace human judgment with algorithmic optimization.
   - Related findings: [auto-calibration-research.md](findings/auto-calibration-research.md)
+  - Notes: High complexity, requires flight-ready hardware. Manual `g` tuning covers 90% of use cases.
 
 - [ ] Temperature compensation for IMU drift
   - Description: Adjust calibration values based on temperature sensor readings
 
 - [ ] MPU9250 full 9DOF Madgwick filter
   - Description: Currently falls back to 6DOF — implement full 9DOF with magnetometer
-
-- [ ] ESC calibration routine
-  - Description: Automated ESC endpoint calibration via firmware
 
 - [ ] Motor direction auto-detection
   - Description: Detect motor spin direction and warn if incorrect
@@ -279,10 +316,6 @@ Files: `ota.h`, `ota.cpp`.
 - [ ] Wind compensation / disturbance rejection
   - Description: Mostly about PID tuning, not special algorithms. D-term filtering + good I-term tuning handles moderate wind. See [findings/bare-bones-fc-research.md](findings/bare-bones-fc-research.md).
   - Dependencies: D-term low-pass filter
-
-- [ ] ESC calibration serial command
-  - Description: Add ESC endpoint calibration as a serial command in calibration build (e.g., `e`). Sends min/max PWM to all ESCs for range calibration. Uses the same single calibration build — no separate build needed.
-  - Dependencies: Hardware testing
 
 ---
 
@@ -333,9 +366,14 @@ Files: `ota.h`, `ota.cpp`.
   - Description: Show MAC address, SSID, IP address, RSSI on OLED. Core 1 populates network fields in DisplayData_t.
   - Dependencies: Display module + WiFi STA mode
 
+- [x] Display screen rotation for small displays
+  - Completed: 2026-02-09
+  - Description: 128x32 displays rotate between info screens every 2 seconds. 128x64 displays show all info at once. State changes reset rotation. Compile-time selection via DISPLAY_LINES macro.
+  - Related findings: [display-screen-capacity.md](findings/display-screen-capacity.md)
+
 - [ ] Live flight status display
-  - Description: Show armed status, attitude, motor outputs. Screen rotation for multiple views.
-  - Dependencies: Display module (done) + flight validation
+  - Description: Validate display during actual flight. Currently shows armed/idle/calibrating states with motor outputs, attitude, WiFi info.
+  - Dependencies: Hardware testing
 
 ### ESP32 WiFi Integration
 
@@ -424,15 +462,18 @@ Files: `ota.h`, `ota.cpp`.
 - [x] Build scripts dynamic environment parsing (build.bat rewrite, build.sh already dynamic) — 2026-02-09
 - [x] OTA firmware updates (ArduinoOTA, Core 1, safety-gated by armedFly) — 2026-02-09
 - [x] Serial PID tuning in calibration mode (runtime-tunable gains, line-buffered serial parser) — 2026-02-09
+- [x] Display screen rotation for small OLEDs (128x32 cycles screens every 2s, 128x64 shows all) — 2026-02-09
 
 ---
 
 ## Notes
 
-- **Testing is hardware-based**: Tests are baked into the firmware as calibration modes and debug builds, not as separate test files. The firmware itself is the test harness.
-- **Calibration workflow**: Flash calibration build → run calibration → copy values to config.h → flash live build → fly. This is by design — keeps live firmware lean.
+- **Testing is hardware-based**: Tests are baked into the firmware as calibration modes and debug builds, not as separate test files. The firmware itself is the test harness. Each calibration routine validates its own results with quality checks and retry logic.
+- **Calibration workflow**: Flash calibration build → run auto-calibration routines → copy `#define` values to config.h → flash live build → fly. This is by design — thorough automated calibration upfront means lean runtime.
+- **Calibration automation goal**: Every hardware-dependent value in config.h should have a guided auto-calibration routine. No manual guesswork. The serial command interface in calibration builds is the primary calibration tool.
 - **fc_tool synergy**: The fc_tool desktop app will provide visual diagnostics during calibration, making the calibrate → hard-code → flash cycle more user-friendly.
 - **VTOL generality**: Always design features to work across vehicle types, not just quadcopters. The mixer pattern from dRehmFlight supports this well.
+- **Bare bones + automation**: The firmware is intentionally minimal at runtime. It can afford to be simple because calibration is thorough. Automation has a large impact with minimal code.
 
 ---
 
