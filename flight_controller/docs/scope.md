@@ -123,9 +123,9 @@ I2C commands   ────┤
 WiFi API (ESP32) ──┘
 ```
 
-**Current state**: RadioComm handles RC protocols (SBUS, iBUS, DSM, PPM, PWM) and serial commands from external flight computers (`USE_SERIAL_COMMANDS`), selected at compile time. One source active per build. Outputs `channel_1_pwm` through `channel_6_pwm` (1000-2000us range).
+**Current state**: RadioComm handles 5 RC protocols (SBUS, iBUS, DSM, PPM, PWM) + 3 command sources (serial, I2C, WiFi API), compile-time selected. One source active per build. Outputs `channel_1_pwm` through `channel_6_pwm` (1000-2000us range).
 
-**Planned expansion**: Add additional command sources that feed into the same `channel_X_pwm` output format:
+**Command sources**:
 
 | Source | Interface | Config Flag | Priority | Notes |
 |--------|-----------|-------------|----------|-------|
@@ -135,7 +135,7 @@ WiFi API (ESP32) ──┘
 | PPM | Single GPIO | `USE_PPM_RECEIVER` | Primary | Legacy |
 | PWM | 6 GPIOs | `USE_PWM_RECEIVER` | Primary | Legacy |
 | Serial commands | UART | `USE_SERIAL_COMMANDS` | Override | Done. Binary protocol, 15-byte frames, 115200 baud |
-| I2C commands | I2C slave | `USE_I2C_COMMANDS` | Override | Flight computer sends commands over I2C bus |
+| I2C commands | I2C slave | `USE_I2C_COMMANDS` | Override | Done. FC as I2C slave on Wire1 (0x42), 12-byte frames |
 | WiFi API | HTTP/WebSocket | `USE_WEB_SERVER` | Override | Done. POST /api/commands + WebSocket, spinlock cross-core |
 
 **Priority / arbitration**: When multiple sources are active, RadioComm needs an arbitration strategy. RC receiver is the primary (real-time, hardware). Serial/I2C/WiFi are override sources (typically from a flight computer). If an override source is active and sending, it takes priority. If it goes silent, RC receiver resumes. Failsafe applies across all sources.
@@ -309,6 +309,7 @@ This is a separate project. The FC firmware just exposes the WiFi API endpoints.
 | 2026-02-09 | Added auto-calibration philosophy: every hardware-dependent value must have an auto-calibration routine. Documented calibration coverage table and planned routines (failsafe, ESC, magnetometer, filter/limits tuning). | LLM + User |
 | 2026-02-09 | Calibration coverage table: all items marked Done. Added RadioComm universal command layer design (all command sources → RadioComm → FC). Added configurable pin definitions as technical decision. | LLM + User |
 | 2026-02-10 | Added hardware architecture vision (modular base system, progression path, external controller app). Added iBUS receiver support. Updated RadioComm to include iBUS. Wiring diagrams reorganized into dedicated folder with specific build guides. | LLM + User |
+| 2026-02-10 | All RadioComm command sources implemented (serial, I2C, WiFi API). I2C slave on Wire1, OLED-guided calibration with progress bars. Arbitration design doc written. External controller app (swarm_api) marked as built. | LLM + User |
 
 ---
 

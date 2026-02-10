@@ -47,11 +47,13 @@ Full swarm control platform: coordinate multiple drones simultaneously, define g
 
 ## Core Features
 
-### Drone Registry
+### Drone Registry & Identity
 
-- [x] Config.json schema (drones list with MAC, name, last_ip, mdns_hostname, last_seen) ✓
+- [x] Config.json schema (drones list with MAC, name, last_ip, mdns_hostname, last_seen, group, tags) ✓
 - [x] Add/remove drones via API endpoints (POST/DELETE /api/drones) ✓
-- [x] Persist changes to config.json on add/remove ✓
+- [x] Update drone metadata via PUT /api/drones/{mac} (name, group, tags) ✓
+- [x] Persist changes to config.json on add/remove/update ✓
+- [x] Drone identity tracking: group, tags, hostname, rssi, uptime in summary ✓
 - [ ] Network interface selection in config
 
 ### Drone Discovery & Connection
@@ -77,6 +79,23 @@ Full swarm control platform: coordinate multiple drones simultaneously, define g
 - [x] Command rate: 10Hz while actively controlling ✓
 - [x] Failsafe: stop sending → drone's 500ms timeout activates ✓
 
+### Fleet Operations (Scripting / Automation API)
+
+- [x] GET /api/fleet/status — fleet overview (total/online/offline/armed, group breakdown) ✓
+- [x] GET /api/fleet/drones — filtered drone list (by group, tag, online status) ✓
+- [x] POST /api/fleet/command — batch command to multiple drones (by macs, group, tag, or all) ✓
+- [x] POST /api/fleet/disarm — emergency disarm all online drones ✓
+- [x] GET /api/fleet/groups — list groups with member counts ✓
+- [x] GET /api/fleet/tags — list tags with member MACs ✓
+
+### System / Config API
+
+- [x] GET /api/system/info — server version, uptime, fleet stats, dashboard clients ✓
+- [x] GET /api/system/config — read full config ✓
+- [x] GET /api/system/config/network — read network config ✓
+- [x] PUT /api/system/config/network — update network settings ✓
+- [x] GET /health — enhanced with fleet summary ✓
+
 ### Web Dashboard
 
 - [x] FastAPI serves static HTML/JS dashboard at / ✓
@@ -93,9 +112,6 @@ Full swarm control platform: coordinate multiple drones simultaneously, define g
 
 - [ ] Gamepad/joystick input mapping (browser Gamepad API)
 - [ ] Telemetry recording/playback (log to file)
-- [ ] Drone groups/tags for fleet organization
-- [ ] Multi-drone simultaneous command sending
-- [ ] Configuration editor in dashboard (edit config.json via UI)
 - [ ] Notification system (drone disconnected, low signal, etc.)
 
 ---
@@ -126,6 +142,13 @@ Full swarm control platform: coordinate multiple drones simultaneously, define g
 - [x] REST API — CRUD for drones, telemetry retrieval, command sending
 - [x] Dashboard WebSocket bridge — telemetry from drones → browser, commands from browser → drones
 - [x] Web dashboard — fleet panel, drone control view, sliders, telemetry cards, arm/disarm
+
+### Fleet & Scripting API (2026-02-10)
+
+- [x] Drone identity: group, tags, metadata update (PUT /api/drones/{mac})
+- [x] Fleet API: status, filtered listing, batch commands, emergency disarm
+- [x] System API: server info, config read/update
+- [x] Enhanced /health endpoint with fleet summary
 
 ---
 

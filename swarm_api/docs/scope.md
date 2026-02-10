@@ -7,7 +7,7 @@
 
 ## Overview
 
-Python FastAPI application for controlling ESP32-based drones over WiFi. Provides a browser-based dashboard for manual drone control (throttle, roll, pitch, yaw) and telemetry monitoring. Manages a fleet of known ESP32 drones via configuration file, resolves their network addresses, and sends flight commands. Designed as the ground-station counterpart to the floppi flight controller firmware's WiFi API.
+Python FastAPI application for controlling ESP32-based drones over WiFi. Provides a browser-based dashboard for manual drone control (throttle, roll, pitch, yaw) and telemetry monitoring, plus a scripting-friendly REST API for automation. Manages a fleet of known ESP32 drones via configuration file, resolves their network addresses, tracks drone identity (groups, tags, metadata), and sends flight commands. Designed as the ground-station counterpart to the floppi flight controller firmware's WiFi API.
 
 ## Objectives
 
@@ -16,6 +16,7 @@ Python FastAPI application for controlling ESP32-based drones over WiFi. Provide
 - Send flight commands to ESP32 drones via HTTP/WebSocket
 - Receive and display telemetry from multiple drones simultaneously
 - Work on both Linux and Windows without platform-specific dependencies
+- Expose a scripting-friendly REST API for automation (curl, httpie, Python scripts)
 - Keep it simple: one Python project, minimal dependencies, easy to run
 
 ## Requirements
@@ -59,7 +60,7 @@ Python FastAPI application for controlling ESP32-based drones over WiFi. Provide
 
 ## Assumptions
 
-- [ASSUMED] ESP32 drones will expose a `/api/commands` endpoint for receiving flight commands (not yet implemented in firmware — Python side built to the documented API contract)
+- [VERIFIED] ESP32 drones expose `/api/commands` (POST) for receiving flight commands (implemented in firmware web_server.cpp)
 - [ASSUMED] ESP32 drones expose `/api/status` (GET) and `/ws` (WebSocket) for telemetry (verified in firmware code)
 - [ASSUMED] mDNS resolution works on the host network (requires avahi on Linux, Bonjour on Windows)
 - [ASSUMED] All drones and the host are on the same WiFi network / subnet
@@ -71,14 +72,18 @@ Python FastAPI application for controlling ESP32-based drones over WiFi. Provide
 ### In Scope
 
 - FastAPI backend serving REST API + WebSocket + static web dashboard
-- Drone registry management (add/remove/rename drones in config.json)
+- Drone registry management (add/remove/rename/tag/group drones in config.json)
 - Drone discovery via mDNS with config.json IP fallback
 - Manual flight control input (virtual sticks / sliders → channel values 1000-2000us)
 - Telemetry reception and display (polling GET or WebSocket from each drone)
 - Command transmission to drones (POST/WebSocket channel values)
+- Fleet-level operations: batch commands, fleet status, emergency disarm-all
+- Drone identity tracking: groups, tags, metadata, network identity (hostname, rssi, uptime)
+- Scripting-friendly API: all operations accessible via REST for curl/httpie/Python automation
+- System/config API: read and update server configuration programmatically
 - Network interface selection for multi-NIC hosts
 - Connection health monitoring (ping, latency, online/offline status)
-- Basic fleet overview (which drones are online, their status at a glance)
+- Fleet overview (which drones are online, group/tag breakdowns)
 
 ### Out of Scope (Exclusions)
 
@@ -172,7 +177,7 @@ The ESP32 has a 500ms failsafe timeout. If no commands arrive within 500ms, chan
 
 - [ ] Should the dashboard support gamepad/joystick input for drone control?
 - [ ] What's the minimum viable command rate for responsive drone control via WiFi? (10Hz? 20Hz? 50Hz?)
-- [ ] Should config.json support drone groups/tags for future swarm grouping?
+- [x] ~~Should config.json support drone groups/tags for future swarm grouping?~~ — Yes, implemented. DroneEntry has group + tags fields.
 
 ## Critical Notes
 
@@ -188,6 +193,7 @@ The ESP32 has a 500ms failsafe timeout. If no commands arrive within 500ms, chan
 | Date | Changes | By |
 |------|---------|-----|
 | 2026-02-10 | Initial scope draft | LLM + User |
+| 2026-02-10 | Added fleet/scripting API, drone identity tracking, system API | LLM + User |
 
 ---
 

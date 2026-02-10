@@ -20,12 +20,15 @@ _(none)_
 ## Backlog
 
 - [ ] Telemetry recording/playback
-- [ ] Drone groups/tags
 - [ ] Config editor in dashboard UI
 - [ ] Notification system (drone disconnected, low signal)
 
 ## Recently Completed
 
+- [x] Fleet API: status, batch commands, emergency disarm, group/tag listing — 2026-02-10
+- [x] System API: server info, config read/update — 2026-02-10
+- [x] Drone identity: groups, tags, metadata update (PUT endpoint) — 2026-02-10
+- [x] Enhanced /health with fleet summary — 2026-02-10
 - [x] Project scope, roadmap, docs — 2026-02-10
 - [x] Config management (Pydantic validation, load/save) — 2026-02-10
 - [x] DroneClient (HTTP polling + WebSocket + command sending) — 2026-02-10
@@ -42,6 +45,8 @@ _(none)_
 - ESP32 `/api/commands` IS implemented in firmware — both POST and WebSocket commands work
 - First real test needs an ESP32 running floppi firmware with WiFi on the same network
 - Command rate is 10Hz when actively controlling — drone failsafe at 500ms timeout
+- Full API reference available at /docs (FastAPI auto-generated Swagger UI)
+- All fleet operations accessible via REST for scripting: curl, httpie, Python requests, etc.
 
 ---
 

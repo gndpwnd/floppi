@@ -41,6 +41,8 @@ class DroneManager:
             ip=entry.last_ip,
             mdns_hostname=entry.mdns_hostname,
             timeout_s=self.config.network.connection_timeout_ms / 1000.0,
+            group=entry.group,
+            tags=list(entry.tags),
         )
         # Wire up telemetry forwarding to all listeners
         client.on_telemetry(self._on_drone_telemetry)
@@ -64,6 +66,97 @@ class DroneManager:
     def list_drones(self) -> list[dict]:
         """Get status summary for all drones."""
         return [d.summary() for d in self.drones.values()]
+
+    def fleet_status(self) -> dict:
+        """Get fleet-level status summary."""
+        total = len(self.drones)
+        online = sum(1 for d in self.drones.values() if d.state.online)
+        armed = sum(1 for d in self.drones.values()
+                    if d.state.last_telemetry.get("armed", False))
+        groups = {}
+        for d in self.drones.values():
+            g = d.group or "ungrouped"
+            if g not in groups:
+                groups[g] = {"total": 0, "online": 0}
+            groups[g]["total"] += 1
+            if d.state.online:
+                groups[g]["online"] += 1
+
+        return {
+            "total": total,
+            "online": online,
+            "offline": total - online,
+            "armed": armed,
+            "groups": groups,
+        }
+
+    def get_drones_by_group(self, group: str) -> list[DroneClient]:
+        """Get all drones in a given group."""
+        return [d for d in self.drones.values() if d.group == group]
+
+    def get_drones_by_tag(self, tag: str) -> list[DroneClient]:
+        """Get all drones with a given tag."""
+        return [d for d in self.drones.values() if tag in d.tags]
+
+    def get_online_drones(self) -> list[DroneClient]:
+        """Get all currently online drones."""
+        return [d for d in self.drones.values() if d.state.online]
+
+    async def send_command_to_many(self, macs: list[str], channels: dict) -> dict:
+        """Send the same command to multiple drones. Returns {mac: success_bool}."""
+        results = {}
+        tasks = []
+        for mac in macs:
+            drone = self.drones.get(mac)
+            if not drone:
+                results[mac] = False
+                continue
+            if not drone.state.online:
+                results[mac] = False
+                continue
+            tasks.append((mac, drone.send_command(channels)))
+
+        if tasks:
+            coros = [t[1] for t in tasks]
+            outcomes = await asyncio.gather(*coros, return_exceptions=True)
+            for (mac, _), outcome in zip(tasks, outcomes):
+                results[mac] = outcome is True
+
+        return results
+
+    async def disarm_all(self) -> dict:
+        """Emergency disarm: send ch5=1000 to ALL online drones."""
+        safe = {"ch1": 1500, "ch2": 1500, "ch3": 1000, "ch4": 1500, "ch5": 1000, "ch6": 1000}
+        online_macs = [d.mac for d in self.drones.values() if d.state.online]
+        return await self.send_command_to_many(online_macs, safe)
+
+    async def update_drone_metadata(self, mac: str, updates: dict) -> bool:
+        """Update drone identity metadata from a dict of field:value.
+        Only updates fields present in the dict. Returns False if drone not found."""
+        client = self.drones.get(mac)
+        if not client:
+            return False
+
+        if "name" in updates:
+            client.name = updates["name"]
+        if "group" in updates:
+            client.group = updates["group"]
+        if "tags" in updates:
+            client.tags = updates["tags"]
+
+        # Sync back to config entry
+        for entry in self.config.drones:
+            if entry.mac == mac:
+                if "name" in updates:
+                    entry.name = updates["name"]
+                if "group" in updates:
+                    entry.group = updates["group"]
+                if "tags" in updates:
+                    entry.tags = updates["tags"]
+                break
+
+        save_config(self.config)
+        return True
 
     async def resolve_drone(self, drone: DroneClient) -> Optional[str]:
         """
@@ -172,9 +265,11 @@ class DroneManager:
         self._sync_config_ips()
         logger.info("Drone manager stopped")
 
-    async def add_drone(self, mac: str, name: str, mdns_hostname: Optional[str] = None) -> DroneClient:
+    async def add_drone(self, mac: str, name: str, mdns_hostname: Optional[str] = None,
+                        group: Optional[str] = None, tags: Optional[list[str]] = None) -> DroneClient:
         """Add a new drone to the fleet and config."""
-        entry = DroneEntry(mac=mac, name=name, mdns_hostname=mdns_hostname)
+        entry = DroneEntry(mac=mac, name=name, mdns_hostname=mdns_hostname,
+                           group=group, tags=tags or [])
         self.config.drones.append(entry)
         client = self._add_drone(entry)
         save_config(self.config)

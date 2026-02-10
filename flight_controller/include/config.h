@@ -95,6 +95,7 @@
 //#define USE_IBUS_RECEIVER      // iBUS (FlySky standard, 115200 baud)
 //#define USE_DSM_RECEIVER       // DSM/DSM2/DSMX (Spektrum)
 //#define USE_SERIAL_COMMANDS    // External flight computer over UART (115200, binary)
+//#define USE_I2C_COMMANDS       // External flight computer over I2C slave (Wire1)
 //
 // WiFi-only (ESP32): Comment out ALL receiver/command defines above.
 // The web server becomes the sole command source via POST /api/commands
@@ -456,6 +457,11 @@
 //#define SBUS_RX_PIN 21
 //#define DSM_RX_PIN 15
 //#define PPM_PIN 23
+//
+// I2C command pins (USE_I2C_COMMANDS — Wire1, separate from IMU):
+//#define I2C_CMD_SDA_PIN 17
+//#define I2C_CMD_SCL_PIN 16
+//#define I2C_CMD_ADDRESS 0x42
 //
 // Status LED:
 //#define LED_PIN 13

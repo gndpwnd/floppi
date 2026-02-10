@@ -309,11 +309,7 @@ Files: `ota.h`, `ota.cpp`.
   - Completed: 2026-02-10
   - Description: Each calibration section in config.h now has STATUS comments (UNCALIBRATED or defaults-are-safe) with references to the calibration guide stage and serial command. Users can scan config.h and immediately see what needs calibration.
 
-- [ ] OLED-guided calibration workflow
-  - Description: Show calibration instructions and progress on the OLED display during calibration mode. Currently, all calibration guidance is via serial only. Users without a connected laptop should still be able to calibrate using just the OLED + switches.
-  - Design: Serial monitor = primary output (full instructions, real-time progress, copy-paste `#define` values). OLED = summary display (current state, key values, pass/fail). Both outputs run in parallel — serial is comprehensive, OLED is glanceable.
-  - Calibration routines should print the full guide text to serial at the start of each routine (what to do, what physical action is needed, what output to expect).
-  - Dependencies: Display module (done), calibration routines (done)
+- ~~OLED-guided calibration workflow~~ — **Dropped**. Serial-only calibration is sufficient with a proper test bench. OLED shows flight status, not calibration.
 
 - [x] Sequential calibration workflow
   - Completed: 2026-02-10
@@ -332,19 +328,19 @@ Files: `ota.h`, `ota.cpp`.
 >
 > **Key insight**: The API web server is NOT a separate command path. It feeds INTO RadioComm, which feeds the flight controller. One entry point, one data format, one failsafe path.
 
-**Current state**: RadioComm handles 5 RC protocols (SBUS, iBUS, DSM, PPM, PWM) + serial commands from external flight computer, compile-time selected. One source per build. All produce `channel_1_pwm` through `channel_6_pwm` in 1000-2000us format.
+**Current state**: RadioComm handles 5 RC protocols (SBUS, iBUS, DSM, PPM, PWM) + 3 command sources (serial, I2C, WiFi API), compile-time selected. One source per build. All produce `channel_1_pwm` through `channel_6_pwm` in 1000-2000us format.
 
-**Planned command sources:**
+**Command sources:**
 
 | Source | Interface | Config Flag | Notes |
 | ------ | --------- | ----------- | ----- |
-| SBUS | Serial (inverted) | `USE_SBUS_RECEIVER` | Current default. Existing. |
-| iBUS | Serial (115200) | `USE_IBUS_RECEIVER` | FlySky recommended. Existing. |
-| DSM/DSMX | Serial | `USE_DSM_RECEIVER` | Spektrum. Existing. |
-| PPM | Single GPIO | `USE_PPM_RECEIVER` | Legacy. Existing. |
-| PWM | 6 GPIOs | `USE_PWM_RECEIVER` | Legacy. Existing. |
+| SBUS | Serial (inverted) | `USE_SBUS_RECEIVER` | Current default. Done. |
+| iBUS | Serial (115200) | `USE_IBUS_RECEIVER` | FlySky recommended. Done. |
+| DSM/DSMX | Serial | `USE_DSM_RECEIVER` | Spektrum. Done. |
+| PPM | Single GPIO | `USE_PPM_RECEIVER` | Legacy. Done. |
+| PWM | 6 GPIOs | `USE_PWM_RECEIVER` | Legacy. Done. |
 | Serial commands | UART | `USE_SERIAL_COMMANDS` | Done. Binary protocol, 15-byte frames. |
-| I2C commands | I2C slave | `USE_I2C_COMMANDS` | Flight computer sends commands over I2C bus |
+| I2C commands | I2C slave | `USE_I2C_COMMANDS` | Done. FC as slave on Wire1, 12-byte frames. |
 | WiFi API | HTTP/WebSocket | `USE_WEB_SERVER` | Done. POST /api/commands + WebSocket. |
 
 - [x] Serial command input (`USE_SERIAL_COMMANDS`)
@@ -353,10 +349,10 @@ Files: `ota.h`, `ota.cpp`.
   - Pattern: Same `getCommands()` function, inline parser matching iBUS pattern.
   - Pin: Configurable in config.h (defaults in pin_definitions.h). Serial3 (Teensy), Serial1 (ESP32).
 
-- [ ] I2C command input (`USE_I2C_COMMANDS`)
-  - Description: Accept channel values over I2C with the FC as I2C slave. Flight computer (I2C master) writes channel data. Useful for companion computers (Raspberry Pi, etc.) physically connected to the FC.
-  - Pattern: I2C slave ISR writes to a buffer, `getCommands()` copies buffer to `channel_X_pwm`.
-  - Pin: Configurable in config.h (defaults in pin_definitions.h). Must use different I2C bus than IMU.
+- [x] I2C command input (`USE_I2C_COMMANDS`)
+  - Completed: 2026-02-10
+  - Description: Accept channel values over I2C with the FC as I2C slave (address 0x42) on Wire1. Flight computer (I2C master) writes 12 bytes: 6× uint16_t LE, 1000-2000us. ISR-based receive, noInterrupts/interrupts for getCommands() read.
+  - Pin: Configurable in config.h (defaults: Teensy Wire1 SDA=17/SCL=16, ESP32 SDA=25/SCL=26, ESP32-S3 SDA=41/SCL=42). Must use different I2C bus than IMU.
 
 - [x] WiFi API command routing
   - Completed: 2026-02-10
@@ -366,7 +362,8 @@ Files: `ota.h`, `ota.cpp`.
 
 - [ ] Command source arbitration
   - Description: When multiple command sources are active, RadioComm needs priority logic. RC receiver = primary (real-time hardware). Serial/I2C/WiFi = override sources (flight computer). If override source is active and sending, it takes priority. If it goes silent (timeout), RC receiver resumes. Failsafe applies across ALL sources.
-  - Notes: Simple timeout-based arbitration. No complex state machine needed.
+  - Design doc: [findings/command-arbitration-design.md](findings/command-arbitration-design.md) — `USE_COMMAND_ARBITRATION` flag, CommandBuffer struct, priority: serial > I2C > WiFi, 8-step implementation plan.
+  - Notes: All command sources now implemented. Arbitration is the last piece for multi-source builds.
 
 ---
 
@@ -492,19 +489,24 @@ Files: `ota.h`, `ota.cpp`.
 - **Feature ceiling**: The FC has ~90% of target features. Resist adding more. See [findings/bare-bones-fc-research.md](findings/bare-bones-fc-research.md)
 - **Compile-time architecture**: See [features/compile-time-architecture.md](features/compile-time-architecture.md) for details on the #ifdef feature gating and dual-core vs single-core architecture.
 
-### External Controller App (Planned — Separate Project)
+### External Controller App (Built — `swarm_api/`)
 
 > A standalone Python application outside `flight_controller/` for controlling ESP32 drones over WiFi. This is NOT part of the flight controller firmware — it's a separate project that talks to the FC via its WiFi API.
 
-- [ ] Web dashboard for basic drone controls
-  - Description: Browser-based UI for throttle, roll, pitch, yaw. Sends commands via HTTP POST or WebSocket to ESP32 drones.
-  - Notes: Python web server (Flask/FastAPI) serving a simple HTML dashboard. Platform independent (Linux + Windows).
+- [x] Web dashboard for basic drone controls
+  - Completed: 2026-02-10
+  - Description: Browser-based UI with fleet panel, throttle/roll/pitch/yaw sliders, real-time telemetry. Sends commands via WebSocket (primary, 10Hz) with HTTP POST `/api/commands` fallback.
+  - Stack: Python 3.10+, FastAPI, uvicorn, httpx, websockets, zeroconf
 
-- [ ] Config file with drone registry
-  - Description: `config.json` with ESP32 MAC addresses and network settings. Direct connection to known drones (no network scanning). Resolves IP from MAC or mDNS hostname.
+- [x] Config file with drone registry
+  - Completed: 2026-02-10
+  - Description: `config.json` with ESP32 MAC addresses, mDNS hostnames, network settings. mDNS discovery (floppi-XXXX.local) + IP fallback.
 
 - [ ] Computation offloading
   - Description: ESP32 Core 1 can request computation from the host (e.g., path planning, sensor fusion). Host returns results over WiFi. Keeps ESP32 firmware lean.
+  - Notes: Future enhancement. Current swarm_api sends commands only.
+
+**Run**: `cd swarm_api && pip install -r requirements.txt && python3 -m uvicorn src.main:app --host 0.0.0.0 --port 8080`
 
 **Progression path**: Teensy+FS-iA6B (manual RC) → ESP32+FS-iA6B (RC + WiFi telemetry) → ESP32+Web API (WiFi-only control)
 
@@ -578,6 +580,8 @@ Files: `ota.h`, `ota.cpp`.
 - [x] Hardware architecture vision documented (modular base system, progression path) — 2026-02-10
 - [x] Serial command input (`USE_SERIAL_COMMANDS`) — binary protocol from external flight computer — 2026-02-10
 - [x] WiFi API command routing — POST /api/commands + WebSocket, spinlock cross-core buffer — 2026-02-10
+- [x] I2C command input (`USE_I2C_COMMANDS`) — FC as I2C slave on Wire1, 12-byte frames — 2026-02-10
+- [x] Command source arbitration design doc — [findings/command-arbitration-design.md](findings/command-arbitration-design.md) — 2026-02-10
 
 ---
 

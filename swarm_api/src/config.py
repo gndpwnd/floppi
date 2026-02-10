@@ -21,6 +21,8 @@ class DroneEntry(BaseModel):
     last_ip: Optional[str] = None
     mdns_hostname: Optional[str] = None
     last_seen: Optional[str] = None
+    group: Optional[str] = None
+    tags: list[str] = []
 
 
 class NetworkConfig(BaseModel):

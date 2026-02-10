@@ -48,6 +48,36 @@
     static uint8_t scmdIndex = 0;
 #endif
 
+#ifdef USE_I2C_COMMANDS
+    // I2C command buffer — written by ISR (onI2CReceive), read by getCommands()
+    // FC is I2C SLAVE at I2C_CMD_ADDRESS on Wire1 (separate from IMU on Wire).
+    // Master (Raspberry Pi etc.) writes 12 bytes: 6x uint16_t LE, 1000-2000us.
+    static volatile uint16_t i2cCmdChannels[6] = {1500, 1500, 1000, 1500, 1000, 1000};
+    static volatile uint32_t i2cCmdTimestamp = 0;
+    static volatile bool i2cCmdReady = false;
+
+    // I2C receive callback — called from ISR context
+    void onI2CReceive(int numBytes) {
+        if (numBytes == 12) {
+            uint8_t buf[12];
+            for (int i = 0; i < 12; i++) {
+                buf[i] = Wire1.read();
+            }
+            i2cCmdChannels[0] = buf[0]  | (buf[1]  << 8);
+            i2cCmdChannels[1] = buf[2]  | (buf[3]  << 8);
+            i2cCmdChannels[2] = buf[4]  | (buf[5]  << 8);
+            i2cCmdChannels[3] = buf[6]  | (buf[7]  << 8);
+            i2cCmdChannels[4] = buf[8]  | (buf[9]  << 8);
+            i2cCmdChannels[5] = buf[10] | (buf[11] << 8);
+            i2cCmdTimestamp = millis();
+            i2cCmdReady = true;
+        } else {
+            // Flush unexpected data
+            while (Wire1.available()) Wire1.read();
+        }
+    }
+#endif
+
 #if defined(USE_ESP32) && defined(USE_WEB_SERVER)
     // WiFi API command buffer — written by Core 1 (web server), read by Core 0 (flight control)
     // Protected by spinlock for thread-safe cross-core access.
@@ -266,6 +296,18 @@ void radioSetup() {
         Serial.println("  Protocol: Binary (15-byte frames)");
         Serial.println("  Frame: [AA 55] [ch1..ch6 LE uint16] [XOR checksum]");
 
+    #elif defined(USE_I2C_COMMANDS)
+        #ifdef USE_ESP32
+            Wire1.begin(I2C_CMD_ADDRESS, I2C_CMD_SDA_PIN, I2C_CMD_SCL_PIN, 400000);
+        #else
+            Wire1.begin(I2C_CMD_ADDRESS);
+        #endif
+        Wire1.onReceive(onI2CReceive);
+        Serial.println("I2C command source initialized");
+        Serial.printf("  Address: 0x%02X on Wire1\n", I2C_CMD_ADDRESS);
+        Serial.println("  Protocol: 12 bytes (6x uint16 LE), 1000-2000us");
+        Serial.println("  Failsafe timeout: 500ms");
+
     #elif defined(USE_PPM_RECEIVER)
         // PPM setup
         pinMode(PPM_PIN, INPUT_PULLUP);
@@ -402,6 +444,22 @@ void getCommands() {
             }
         }
 
+    //========== I2C COMMANDS (external flight computer) ==========//
+    #elif defined(USE_I2C_COMMANDS)
+        if (i2cCmdReady) {
+            noInterrupts();
+            channel_1_pwm = i2cCmdChannels[0];  // Roll
+            channel_2_pwm = i2cCmdChannels[1];  // Pitch
+            channel_3_pwm = i2cCmdChannels[2];  // Throttle
+            channel_4_pwm = i2cCmdChannels[3];  // Yaw
+            channel_5_pwm = i2cCmdChannels[4];  // Aux1
+            channel_6_pwm = i2cCmdChannels[5];  // Aux2
+            uint32_t ts = i2cCmdTimestamp;
+            i2cCmdReady = false;
+            interrupts();
+            lastFrameTime = ts;
+        }
+
     //========== DSM RECEIVER ==========//
     #elif defined(USE_DSM_RECEIVER)
         if (!DSM.timedOut()) {
@@ -519,6 +577,12 @@ void failSafe() {
             signalLost = true;
         }
 
+    #elif defined(USE_I2C_COMMANDS)
+        // I2C commands: timeout-based signal loss detection
+        if (millis() - lastFrameTime > 500) {
+            signalLost = true;
+        }
+
     #elif defined(USE_DSM_RECEIVER)
         // DSM has built-in timeout detection
         signalLost = DSM.timedOut();
@@ -566,6 +630,9 @@ bool isReceiverConnected() {
         return (millis() - lastFrameTime < 500);
 
     #elif defined(USE_SERIAL_COMMANDS)
+        return (millis() - lastFrameTime < 500);
+
+    #elif defined(USE_I2C_COMMANDS)
         return (millis() - lastFrameTime < 500);
 
     #elif defined(USE_DSM_RECEIVER)

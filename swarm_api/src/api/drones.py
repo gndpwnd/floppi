@@ -24,6 +24,14 @@ class AddDronePayload(BaseModel):
     mac: str
     name: str
     mdns_hostname: Optional[str] = None
+    group: Optional[str] = None
+    tags: list[str] = []
+
+
+class UpdateDronePayload(BaseModel):
+    name: Optional[str] = None
+    group: Optional[str] = None
+    tags: Optional[list[str]] = None
 
 
 @router.get("/drones")
@@ -69,6 +77,22 @@ async def send_command(mac: str, cmd: CommandPayload, request: Request):
     return {"ok": True}
 
 
+@router.put("/drones/{mac}")
+async def update_drone(mac: str, payload: UpdateDronePayload, request: Request):
+    """Update drone metadata (name, group, tags). Only sends fields present in body."""
+    manager = request.app.state.manager
+    drone = manager.get_drone(mac)
+    if not drone:
+        raise HTTPException(status_code=404, detail=f"Drone {mac} not found")
+
+    updates = payload.model_dump(exclude_unset=True)
+    if not updates:
+        return drone.summary()
+
+    await manager.update_drone_metadata(mac, updates)
+    return drone.summary()
+
+
 @router.post("/drones")
 async def add_drone(payload: AddDronePayload, request: Request):
     """Register a new drone."""
@@ -77,7 +101,8 @@ async def add_drone(payload: AddDronePayload, request: Request):
         raise HTTPException(status_code=409, detail=f"Drone {payload.mac} already registered")
 
     client = await manager.add_drone(
-        mac=payload.mac, name=payload.name, mdns_hostname=payload.mdns_hostname
+        mac=payload.mac, name=payload.name, mdns_hostname=payload.mdns_hostname,
+        group=payload.group, tags=payload.tags,
     )
     return client.summary()
 

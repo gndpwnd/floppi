@@ -51,6 +51,13 @@
     #endif
 #endif
 
+#ifdef USE_I2C_COMMANDS
+    // I2C commands use Wire1 (separate from IMU on Wire)
+    // ESP32: configurable pins via I2C_CMD_SDA_PIN / I2C_CMD_SCL_PIN
+    // Teensy: Wire1 on pins 16 (SCL) / 17 (SDA)
+    #include <Wire.h>
+#endif
+
 // Initialize receiver hardware
 void radioSetup();
 

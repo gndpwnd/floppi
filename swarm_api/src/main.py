@@ -8,13 +8,15 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from .config import load_config
 from .manager import DroneManager
 from .api.drones import router as drones_router
+from .api.fleet import router as fleet_router
+from .api.system import router as system_router
 from .api.ws import router as ws_router, broadcast_telemetry
 
 logging.basicConfig(
@@ -65,6 +67,8 @@ app = FastAPI(
 
 # Include API routes
 app.include_router(drones_router)
+app.include_router(fleet_router)
+app.include_router(system_router)
 app.include_router(ws_router)
 
 # Serve static files (CSS, JS, etc.)
@@ -83,6 +87,13 @@ async def root():
 
 
 @app.get("/health")
-async def health():
-    """Health check."""
-    return {"status": "ok"}
+async def health(request: Request):
+    """Health check with fleet summary."""
+    manager = request.app.state.manager
+    fleet = manager.fleet_status()
+    return {
+        "status": "ok",
+        "version": "0.1.0",
+        "drones_total": fleet["total"],
+        "drones_online": fleet["online"],
+    }

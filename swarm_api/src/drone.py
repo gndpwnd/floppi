@@ -36,12 +36,15 @@ class DroneClient:
     """Client for communicating with a single ESP32 drone."""
 
     def __init__(self, mac: str, name: str, ip: Optional[str] = None,
-                 mdns_hostname: Optional[str] = None, timeout_s: float = 2.0):
+                 mdns_hostname: Optional[str] = None, timeout_s: float = 2.0,
+                 group: Optional[str] = None, tags: Optional[list[str]] = None):
         self.mac = mac
         self.name = name
         self.ip = ip
         self.mdns_hostname = mdns_hostname
         self.timeout_s = timeout_s
+        self.group = group
+        self.tags = tags or []
         self.state = DroneState(ip=ip)
 
         self._ws: Optional[websockets.WebSocketClientProtocol] = None
@@ -181,14 +184,21 @@ class DroneClient:
 
     def summary(self) -> dict[str, Any]:
         """Return drone status summary for the dashboard."""
+        net = self.state.last_telemetry.get("net", {})
         return {
             "mac": self.mac,
             "name": self.name,
+            "group": self.group,
+            "tags": self.tags,
             "ip": self.state.ip,
+            "mdns_hostname": self.mdns_hostname,
             "online": self.state.online,
             "ws_connected": self.state.ws_connected,
             "last_seen": self.state.last_seen,
             "latency_ms": round(self.state.latency_ms, 1),
             "armed": self.state.last_telemetry.get("armed", False),
+            "rssi": net.get("rssi"),
+            "hostname": net.get("hostname"),
+            "uptime_ms": self.state.last_telemetry.get("uptime_ms"),
             "telemetry": self.state.last_telemetry,
         }

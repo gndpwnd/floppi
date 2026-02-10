@@ -199,6 +199,25 @@
     #endif
 #endif
 
+// I2C Commands (external flight computer, Wire1 — separate from IMU on Wire)
+#ifndef I2C_CMD_SDA_PIN
+    #ifdef USE_ESP32S3
+        #define I2C_CMD_SDA_PIN 41  // Wire1 SDA on S3
+    #else
+        #define I2C_CMD_SDA_PIN 25  // Wire1 SDA
+    #endif
+#endif
+#ifndef I2C_CMD_SCL_PIN
+    #ifdef USE_ESP32S3
+        #define I2C_CMD_SCL_PIN 42  // Wire1 SCL on S3
+    #else
+        #define I2C_CMD_SCL_PIN 26  // Wire1 SCL
+    #endif
+#endif
+#ifndef I2C_CMD_ADDRESS
+    #define I2C_CMD_ADDRESS 0x42  // I2C slave address
+#endif
+
 // PPM
 #ifndef PPM_PIN
     #ifdef USE_ESP32S3

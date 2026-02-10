@@ -125,6 +125,17 @@
     #define SERIAL_CMD_TX_PIN 14  // TX3 pin (future: acknowledgments)
 #endif
 
+// I2C Commands (external flight computer, Wire1 — separate from IMU on Wire)
+#ifndef I2C_CMD_SDA_PIN
+    #define I2C_CMD_SDA_PIN 17  // Wire1 SDA (pin 17)
+#endif
+#ifndef I2C_CMD_SCL_PIN
+    #define I2C_CMD_SCL_PIN 16  // Wire1 SCL (pin 16)
+#endif
+#ifndef I2C_CMD_ADDRESS
+    #define I2C_CMD_ADDRESS 0x42  // I2C slave address
+#endif
+
 // PPM
 #ifndef PPM_PIN
     #define PPM_PIN      23  // Single PPM input

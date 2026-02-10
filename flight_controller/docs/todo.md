@@ -10,9 +10,7 @@ _No tasks in progress_
 
 _Priority queue for immediate work_
 
-- [ ] RadioComm universal command layer — I2C commands (`USE_I2C_COMMANDS`) remaining
-- [ ] Command source arbitration — priority logic when multiple command sources are active (RC = primary, serial/I2C/WiFi = override)
-- [ ] OLED-guided calibration — show calibration prompts and progress on display
+- [ ] Command source arbitration — priority logic when multiple command sources are active (RC = primary, serial/I2C/WiFi = override). Design doc: [findings/command-arbitration-design.md](findings/command-arbitration-design.md)
 - [ ] Hardware testing when hardware is available — follow [calibration-guide.md](features/calibration-guide.md) stages
 - [ ] fc_tool WebSocket integration (connect to floppi.local/ws) — **deferred**, fc_tool still in development
 
@@ -36,6 +34,16 @@ _Tasks waiting on something (include reason)_
 
 _For context; clear periodically_
 
+- [x] I2C command input (`USE_I2C_COMMANDS`) — 2026-02-10
+  - FC as I2C slave on Wire1 (0x42), master writes 12 bytes (6x uint16 LE)
+  - Separate from IMU bus (Wire). ISR-based receive, noInterrupts for read.
+- [x] OLED-guided calibration — 2026-02-10
+  - Calibration step name, status, progress bar, pass/fail on OLED display
+  - All routines instrumented (IMU, radio, failsafe, ESC, magnetometer, sequential)
+  - Serial output unchanged (OLED is additive summary)
+- [x] Command source arbitration design doc — 2026-02-10
+  - Design doc: [findings/command-arbitration-design.md](findings/command-arbitration-design.md)
+  - USE_COMMAND_ARBITRATION flag, CommandBuffer struct, priority logic
 - [x] WiFi API command routing — 2026-02-10
   - POST /api/commands + WebSocket /ws on ESP32 web server
   - Spinlock-protected cross-core buffer (Core 1 web server → Core 0 flight control)
@@ -129,7 +137,7 @@ _For context; clear periodically_
 ## Notes
 
 - **Calibration automation complete** — all config.h hardware-dependent values now have auto-calibration routines
-- **RadioComm universal command layer** — serial commands and WiFi API routing done. Remaining: I2C commands, command source arbitration. See roadmap for details.
+- **RadioComm universal command layer** — all command sources implemented (SBUS, iBUS, DSM, PPM, PWM, serial, I2C, WiFi). Remaining: command source arbitration (design doc done, implementation pending). See [findings/command-arbitration-design.md](findings/command-arbitration-design.md).
 - **Hardware testing is the critical path** — firmware is ready, need physical drone to validate
 - **fc_tool will help** — visual diagnostics during calibration (separate project at /fc_tool/)
 - **Modular architecture** — code split into imu, control, motors, debug modules + feature flags
