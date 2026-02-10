@@ -19,6 +19,7 @@ Calibration values reset:
     - Failsafe values → safe defaults (1000/1500/2000)
     - Filter coefficients → conservative defaults
     - PID gains → conservative defaults
+    - CALIBRATED_* status markers → re-commented (uncalibrated)
 
 NOT reset (preserved):
     - Feature flags (USE_OPTIMIZATION, USE_RACING, etc.)
@@ -104,6 +105,18 @@ CALIBRATION_DEFAULTS = [
     ("MAX_YAW_RATE", "160.0f", "Max yaw rate (deg/s)"),
 ]
 
+# Calibration status markers — these get re-commented (disabled) on reset
+CALIBRATION_MARKERS = [
+    "CALIBRATED_IMU",
+    "CALIBRATED_IMU_ORIENT",
+    "CALIBRATED_RADIO",
+    "CALIBRATED_FAILSAFE",
+    "CALIBRATED_ESC",
+    "CALIBRATED_PID",
+    "CALIBRATED_FILTERS",
+    "CALIBRATED_MAG",
+]
+
 
 def find_config_h():
     """Find config.h relative to this script's location."""
@@ -114,14 +127,27 @@ def find_config_h():
 
 
 def reset_defines(content, dry_run=False):
-    """Replace calibration #define values with defaults. Returns (new_content, changes)."""
+    """Replace calibration #define values with defaults and re-comment markers.
+    Returns (new_content, changes, markers_reset)."""
     changes = []
+    markers_reset = []
     lines = content.split('\n')
     new_lines = []
 
     defaults_map = {name: (value, comment) for name, value, comment in CALIBRATION_DEFAULTS}
 
     for line in lines:
+        # Check for uncommented CALIBRATED_* markers — re-comment them
+        marker_match = re.match(r'^(\s*)#define\s+(CALIBRATED_\w+)(.*)', line)
+        if marker_match:
+            indent = marker_match.group(1)
+            marker_name = marker_match.group(2)
+            trailing = marker_match.group(3)
+            if marker_name in CALIBRATION_MARKERS:
+                markers_reset.append(marker_name)
+                new_lines.append(f"{indent}//#define {marker_name}{trailing}")
+                continue
+
         # Match #define NAME VALUE pattern (with optional trailing comment)
         match = re.match(r'^(\s*#define\s+)(\w+)\s+(\S+)(.*)', line)
         if match:
@@ -139,7 +165,7 @@ def reset_defines(content, dry_run=False):
 
         new_lines.append(line)
 
-    return '\n'.join(new_lines), changes
+    return '\n'.join(new_lines), changes, markers_reset
 
 
 def main():
@@ -176,18 +202,26 @@ def main():
         content = f.read()
 
     # Calculate changes
-    new_content, changes = reset_defines(content)
+    new_content, changes, markers_reset = reset_defines(content)
 
-    if not changes:
+    total = len(changes) + len(markers_reset)
+    if total == 0:
         print("\nAll calibration values are already at defaults. Nothing to reset.")
         return
 
-    # Show changes
-    print(f"\n{len(changes)} value(s) will be reset:\n")
-    print(f"  {'Parameter':<25} {'Current':<15} {'Default':<15}")
-    print(f"  {'-'*25} {'-'*15} {'-'*15}")
-    for name, old_val, new_val in changes:
-        print(f"  {name:<25} {old_val:<15} {new_val:<15}")
+    # Show value changes
+    if changes:
+        print(f"\n{len(changes)} value(s) will be reset:\n")
+        print(f"  {'Parameter':<25} {'Current':<15} {'Default':<15}")
+        print(f"  {'-'*25} {'-'*15} {'-'*15}")
+        for name, old_val, new_val in changes:
+            print(f"  {name:<25} {old_val:<15} {new_val:<15}")
+
+    # Show marker changes
+    if markers_reset:
+        print(f"\n{len(markers_reset)} status marker(s) will be re-commented:")
+        for marker in markers_reset:
+            print(f"  #define {marker} → //#define {marker}")
 
     if args.dry_run:
         print("\n[Dry run] No changes made.")
@@ -195,7 +229,7 @@ def main():
 
     # Confirm
     if not args.yes:
-        response = input(f"\nReset {len(changes)} calibration value(s)? [y/N] ")
+        response = input(f"\nReset {total} item(s)? [y/N] ")
         if response.lower() not in ('y', 'yes'):
             print("Cancelled.")
             return
@@ -204,11 +238,11 @@ def main():
     with open(config_path, 'w') as f:
         f.write(new_content)
 
-    print(f"\nReset {len(changes)} calibration value(s) to defaults.")
+    print(f"\nReset {len(changes)} calibration value(s) and {len(markers_reset)} status marker(s).")
     print("Next steps:")
     print("  1. Flash calibration build: pio run -e <board>_calibration --target upload")
-    print("  2. Run calibrations in order: i/m → o → r → f → e → g → p")
-    print("  3. Copy output values to config.h")
+    print("  2. Run 'a' for sequential calibration, or individual commands")
+    print("  3. Copy output values to config.h, uncomment CALIBRATED_* markers")
     print("  4. Flash live build: pio run -e <board> --target upload")
     print("\nSee docs/features/calibration-guide.md for the full setup guide.")
 

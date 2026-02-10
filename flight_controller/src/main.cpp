@@ -328,6 +328,8 @@ void setup() {
     #ifdef CALIBRATION_MODE
     Serial.println(F("=== CALIBRATION MODE ==="));
     Serial.println(F("Serial commands (type in monitor):"));
+    Serial.println(F("  a - Sequential calibration (guided, start here!)"));
+    Serial.println(F("  c - Calibration status (what's done/pending)"));
     Serial.println(F("  r - Radio calibration"));
     Serial.println(F("  i - IMU cal (single-pos)"));
     Serial.println(F("  m - IMU cal (6-pos, more accurate)"));
@@ -464,6 +466,221 @@ void loop() {
 
 #ifdef CALIBRATION_MODE
 
+// Calibration status helpers — check compile-time markers from config.h
+static void printCalibrationStatus() {
+    Serial.println(F("\n=== CALIBRATION STATUS ==="));
+    Serial.println(F("Stages marked [x] are calibrated (uncommented in config.h)."));
+    Serial.println(F("Stages marked [ ] still need calibration.\n"));
+
+    Serial.println(F("--- Stage 1: MCU + IMU ---"));
+    #ifdef CALIBRATED_IMU
+    Serial.println(F("  [x] IMU offsets (i/m)"));
+    #else
+    Serial.println(F("  [ ] IMU offsets (i/m) — place board flat, run 'i' or 'm'"));
+    #endif
+
+    #ifdef CALIBRATED_IMU_ORIENT
+    Serial.println(F("  [x] IMU orientation (o)"));
+    #else
+    Serial.println(F("  [ ] IMU orientation (o) — only if non-standard mounting"));
+    #endif
+
+    #ifdef USE_MPU9250
+    #ifdef CALIBRATED_MAG
+    Serial.println(F("  [x] Magnetometer"));
+    #else
+    Serial.println(F("  [ ] Magnetometer — rotate in all orientations"));
+    #endif
+    #endif
+
+    Serial.println(F("\n--- Stage 2: + Command Source ---"));
+    #ifdef CALIBRATED_RADIO
+    Serial.println(F("  [x] Radio channel mapping (r)"));
+    #else
+    Serial.println(F("  [ ] Radio channel mapping (r) — move sticks when prompted"));
+    #endif
+
+    #ifdef CALIBRATED_FAILSAFE
+    Serial.println(F("  [x] Failsafe values (f)"));
+    #else
+    Serial.println(F("  [ ] Failsafe values (f) — power off transmitter when prompted"));
+    #endif
+
+    Serial.println(F("\n--- Stage 3: + ESCs/Motors (NO PROPS!) ---"));
+    #ifdef CALIBRATED_ESC
+    Serial.println(F("  [x] ESC endpoints (e)"));
+    #else
+    Serial.println(F("  [ ] ESC endpoints (e) — REMOVE PROPS, follow power cycle"));
+    #endif
+
+    Serial.println(F("\n--- Stage 4: Full Drone (tethered) ---"));
+    #ifdef CALIBRATED_PID
+    Serial.println(F("  [x] PID gains (g)"));
+    #else
+    Serial.println(F("  [ ] PID gains (g) — hover tethered, adjust via serial"));
+    #endif
+
+    #ifdef CALIBRATED_FILTERS
+    Serial.println(F("  [x] Filters/limits (p)"));
+    #else
+    Serial.println(F("  [ ] Filters/limits (p) — tune if defaults don't work"));
+    #endif
+
+    Serial.println();
+}
+
+// Sequential calibration workflow — guides user through all stages
+static void calibrateSequential() {
+    Serial.println(F("\n========================================"));
+    Serial.println(F("  SEQUENTIAL CALIBRATION WORKFLOW"));
+    Serial.println(F("========================================"));
+    Serial.println(F("This guides you through all calibration stages."));
+    Serial.println(F("Skip any stage by pressing 'n' when prompted."));
+    Serial.println(F("After each stage, copy values to config.h and"));
+    Serial.println(F("uncomment the matching CALIBRATED_* marker.\n"));
+
+    printCalibrationStatus();
+
+    // --- Stage 1: IMU ---
+    Serial.println(F("========================================"));
+    Serial.println(F("  STAGE 1: IMU Calibration"));
+    Serial.println(F("========================================"));
+    Serial.println(F("Hardware needed: MCU + IMU only"));
+
+    #ifdef CALIBRATED_IMU
+    Serial.println(F("\n[DONE] IMU offsets already calibrated. Skipping."));
+    #else
+    Serial.println(F("\nStep 1a: IMU Offset Calibration"));
+    Serial.println(F("Run 6-position calibration for best accuracy? (y/n)"));
+    if (waitForConfirmation(30)) {
+        Serial.println(F("\n--- Running 6-Position IMU Calibration ---"));
+        calibrateIMU6Position();
+    } else {
+        Serial.println(F("\nRun single-position instead? (y/n)"));
+        if (waitForConfirmation(15)) {
+            Serial.println(F("\n--- Running Single-Position IMU Calibration ---"));
+            calibrateIMU();
+        } else {
+            Serial.println(F("Skipping IMU calibration."));
+        }
+    }
+    #endif
+
+    #ifndef CALIBRATED_IMU_ORIENT
+    Serial.println(F("\nStep 1b: IMU Orientation Detection"));
+    Serial.println(F("Only needed if IMU is NOT flat with chip up, X forward."));
+    Serial.println(F("Run orientation detection? (y/n)"));
+    if (waitForConfirmation(15)) {
+        Serial.println(F("\n--- Running IMU + Orientation Detection ---"));
+        calibrateIMUWithOrientation();
+    } else {
+        Serial.println(F("Skipping orientation detection (standard mounting assumed)."));
+    }
+    #else
+    Serial.println(F("\n[DONE] IMU orientation already calibrated. Skipping."));
+    #endif
+
+    #ifdef USE_MPU9250
+    #ifndef CALIBRATED_MAG
+    Serial.println(F("\nStep 1c: Magnetometer Calibration (MPU9250)"));
+    Serial.println(F("Run magnetometer calibration? (y/n)"));
+    if (waitForConfirmation(15)) {
+        Serial.println(F("\n--- Running Magnetometer Calibration ---"));
+        calibrateMagnetometer();
+    } else {
+        Serial.println(F("Skipping magnetometer calibration."));
+    }
+    #else
+    Serial.println(F("\n[DONE] Magnetometer already calibrated. Skipping."));
+    #endif
+    #endif
+
+    // --- Stage 2: Command Source ---
+    Serial.println(F("\n========================================"));
+    Serial.println(F("  STAGE 2: Command Source"));
+    Serial.println(F("========================================"));
+    Serial.println(F("Hardware needed: MCU + IMU + receiver/transmitter"));
+    Serial.println(F("(Skip if using serial/I2C/WiFi commands)"));
+
+    #ifdef CALIBRATED_RADIO
+    Serial.println(F("\n[DONE] Radio channels already calibrated. Skipping."));
+    #else
+    Serial.println(F("\nStep 2a: Radio Channel Mapping"));
+    Serial.println(F("Is your receiver + transmitter connected and powered? (y/n)"));
+    if (waitForConfirmation(30)) {
+        Serial.println(F("\n--- Running Radio Calibration ---"));
+        calibrateRadio();
+    } else {
+        Serial.println(F("Skipping radio calibration."));
+    }
+    #endif
+
+    #ifdef CALIBRATED_FAILSAFE
+    Serial.println(F("\n[DONE] Failsafe values already calibrated. Skipping."));
+    #else
+    Serial.println(F("\nStep 2b: Failsafe Auto-Detection"));
+    Serial.println(F("Is your receiver connected? (y/n)"));
+    if (waitForConfirmation(15)) {
+        Serial.println(F("\n--- Running Failsafe Detection ---"));
+        calibrateFailsafe();
+    } else {
+        Serial.println(F("Skipping failsafe detection."));
+    }
+    #endif
+
+    // --- Stage 3: ESCs ---
+    Serial.println(F("\n========================================"));
+    Serial.println(F("  STAGE 3: ESC Calibration"));
+    Serial.println(F("========================================"));
+    Serial.println(F("Hardware needed: MCU + IMU + receiver + ESCs + motors"));
+    Serial.println(F("*** REMOVE ALL PROPELLERS! ***"));
+
+    #ifdef CALIBRATED_ESC
+    Serial.println(F("\n[DONE] ESC endpoints already calibrated. Skipping."));
+    #else
+    Serial.println(F("\nStep 3a: ESC Endpoint Calibration"));
+    Serial.println(F("Are ESCs connected and propellers REMOVED? (y/n)"));
+    if (waitForConfirmation(30)) {
+        Serial.println(F("\n--- Running ESC Calibration ---"));
+        calibrateESC();
+    } else {
+        Serial.println(F("Skipping ESC calibration."));
+    }
+    #endif
+
+    // --- Stage 4: PID/Filters ---
+    Serial.println(F("\n========================================"));
+    Serial.println(F("  STAGE 4: PID & Filter Tuning"));
+    Serial.println(F("========================================"));
+    Serial.println(F("Hardware needed: Full drone with props, TETHERED"));
+    Serial.println(F("PID tuning requires flying — use 'g' and 'p' commands"));
+    Serial.println(F("individually during tethered hover."));
+
+    #ifdef CALIBRATED_PID
+    Serial.println(F("[DONE] PID gains already tuned."));
+    #else
+    Serial.println(F("[ ] PID gains — use 'g' command during tethered flight"));
+    #endif
+
+    #ifdef CALIBRATED_FILTERS
+    Serial.println(F("[DONE] Filters/limits already tuned."));
+    #else
+    Serial.println(F("[ ] Filters/limits — use 'p' command if defaults aren't good"));
+    #endif
+
+    // --- Summary ---
+    Serial.println(F("\n========================================"));
+    Serial.println(F("  CALIBRATION WORKFLOW COMPLETE"));
+    Serial.println(F("========================================"));
+    Serial.println(F("Next steps:"));
+    Serial.println(F("  1. Copy all output values to config.h"));
+    Serial.println(F("  2. Uncomment CALIBRATED_* markers for completed stages"));
+    Serial.println(F("  3. Flash calibration build to verify"));
+    Serial.println(F("  4. When all stages done, flash LIVE build and fly!"));
+    Serial.println(F("\nRe-run any individual calibration with its command letter."));
+    Serial.println(F("Run 'a' again to see status and continue where you left off.\n"));
+}
+
 void runCalibrationIfRequested() {
     if (calibration_mode != CALIB_NONE && !calibration_in_progress) {
         calibration_in_progress = true;
@@ -508,6 +725,10 @@ void runCalibrationIfRequested() {
                 calibrateMagnetometer();
                 break;
             #endif
+
+            case CALIB_SEQUENTIAL:
+                calibrateSequential();
+                break;
 
             default:
                 break;
@@ -687,6 +908,13 @@ static void processSerialLine(char* line) {
                 Serial.println(F("\n>>> ESC Calibration requested via serial"));
                 calibration_mode = CALIB_ESC;
                 return;
+            case 'a': case 'A':
+                Serial.println(F("\n>>> Sequential Calibration requested via serial"));
+                calibration_mode = CALIB_SEQUENTIAL;
+                return;
+            case 'c': case 'C':
+                printCalibrationStatus();
+                return;
             case 'g': case 'G':
                 printGains();
                 return;
@@ -695,6 +923,8 @@ static void processSerialLine(char* line) {
                 return;
             case 'h': case 'H': case '?':
                 Serial.println(F("\n=== CALIBRATION COMMANDS ==="));
+                Serial.println(F("  a - Sequential calibration (guided workflow)"));
+                Serial.println(F("  c - Calibration status (what's done/pending)"));
                 Serial.println(F("  r - Radio calibration (channel mapping)"));
                 Serial.println(F("  i - IMU calibration (single-position, offsets only)"));
                 Serial.println(F("  m - IMU calibration (6-position, offsets + scale)"));

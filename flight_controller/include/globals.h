@@ -101,7 +101,8 @@ enum CalibrationMode {
     CALIB_RADIO,           // Radio channel mapping
     CALIB_FAILSAFE,        // Failsafe auto-detection
     CALIB_ESC,             // ESC endpoint calibration
-    CALIB_MAG              // Magnetometer sphere calibration (MPU9250 only)
+    CALIB_MAG,             // Magnetometer sphere calibration (MPU9250 only)
+    CALIB_SEQUENTIAL       // Sequential guided workflow ('a' command)
 };
 extern CalibrationMode calibration_mode;
 extern bool calibration_in_progress;

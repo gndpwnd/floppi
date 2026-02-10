@@ -33,6 +33,8 @@ You do NOT need an OLED to calibrate — serial is sufficient. The OLED is a con
 
 | Command | Routine | Hardware Required | Feature Tier | Output Values |
 |---------|---------|-------------------|--------------|---------------|
+| `a` | **Sequential workflow** | Depends on stage | All | Guides through all stages |
+| `c` | **Calibration status** | None | All | Shows calibrated/pending checklist |
 | `i` | IMU offset calibration | MCU + IMU | Base (always) | `IMU_ACC_ERROR_X/Y/Z`, `IMU_GYRO_ERROR_X/Y/Z` |
 | `m` | 6-position IMU calibration | MCU + IMU | Base (always) | `IMU_ACC_ERROR_X/Y/Z`, `IMU_ACC_SCALE_X/Y/Z`, `IMU_GYRO_ERROR_X/Y/Z` |
 | `o` | IMU orientation detection | MCU + IMU | Base (always) | Axis transformation code |
@@ -273,6 +275,40 @@ This resets all calibration `#define` values in config.h back to factory default
 - Replacing receiver
 - Starting from scratch after a bad calibration
 - Sharing your config.h with someone else (strip your hardware-specific values)
+
+---
+
+## Sequential Calibration Workflow (`a` command)
+
+The `a` command runs a **guided sequential workflow** that walks you through all calibration stages in order. It checks which stages are already calibrated (via `CALIBRATED_*` markers in config.h) and skips completed stages automatically.
+
+**How it works:**
+
+1. Type `a` in the serial monitor
+2. The workflow shows your current calibration status
+3. For each uncalibrated stage, it asks if you're ready (hardware connected?)
+4. If you press `y`, the calibration runs. If `n`, it skips to the next stage.
+5. After each stage, copy the output values to config.h
+6. Uncomment the matching `CALIBRATED_*` marker in config.h
+7. Re-flash and run `a` again — it resumes where you left off
+
+**Calibration status markers** (in config.h):
+
+```c
+//#define CALIBRATED_IMU          // Stage 1: IMU offsets calibrated ('i' or 'm')
+//#define CALIBRATED_IMU_ORIENT   // Stage 1: IMU orientation detected ('o')
+//#define CALIBRATED_RADIO        // Stage 2: Radio channels mapped ('r')
+//#define CALIBRATED_FAILSAFE     // Stage 2: Failsafe values measured ('f')
+//#define CALIBRATED_ESC          // Stage 3: ESC endpoints calibrated ('e')
+//#define CALIBRATED_PID          // Stage 4: PID gains tuned ('g')
+//#define CALIBRATED_FILTERS      // Stage 4: Filters/limits tuned ('p')
+```
+
+Uncomment each marker after completing that stage. The reset tool (`python3 tools/calibration_reset.py`) re-comments all markers when starting fresh.
+
+**You can also run any individual calibration** at any time by typing its letter (`i`, `m`, `r`, `f`, `e`, `g`, `p`). The sequential workflow is for first-time setup; individual commands are for iterating on specific hardware.
+
+**Check status** with the `c` command — shows a checklist of what's calibrated and what's pending.
 
 ---
 

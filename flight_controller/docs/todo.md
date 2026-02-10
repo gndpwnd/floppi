@@ -13,7 +13,6 @@ _Priority queue for immediate work_
 - [ ] RadioComm universal command layer — serial commands (`USE_SERIAL_COMMANDS`), I2C commands (`USE_I2C_COMMANDS`), WiFi API command routing through RadioComm
 - [ ] Command source arbitration — priority logic when multiple command sources are active (RC = primary, serial/I2C/WiFi = override)
 - [ ] OLED-guided calibration — show calibration prompts and progress on display
-- [ ] Sequential calibration workflow (`a` command) — run all calibration routines in one guided session
 - [ ] Hardware testing when hardware is available — follow [calibration-guide.md](features/calibration-guide.md) stages
 - [ ] fc_tool WebSocket integration (connect to floppi.local/ws) — **deferred**, fc_tool still in development
 
@@ -47,7 +46,13 @@ _For context; clear periodically_
 - [x] Calibration reset tool — 2026-02-10
   - `python3 tools/calibration_reset.py` resets all calibration values to defaults
   - Dry-run, confirmation, custom config path options
+- [x] Sequential calibration workflow (`a` command) — 2026-02-10
+  - Guided stage-by-stage workflow, skips already-calibrated stages
+  - `c` command shows calibration status checklist
+  - CALIBRATED_* markers in config.h track completion per stage
+  - Reset tool re-comments markers on reset
 - [x] Config.h calibration status markers — 2026-02-10
+  - CALIBRATED_* #define markers (uncomment after each stage)
   - STATUS: UNCALIBRATED comments with stage references and serial commands
 - [x] Failsafe auto-detection (`f` command) — 2026-02-09
   - Measures receiver failsafe PWM outputs (TX off), outputs FAILSAFE_* defines
