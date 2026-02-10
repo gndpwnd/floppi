@@ -12,6 +12,8 @@ flowchart LR
         T18[Pin 18]
         T19[Pin 19]
         T21[Pin 21]
+        T16[Pin 16]
+        T17[Pin 17]
         T0[Pin 0]
         T1[Pin 1]
         T2[Pin 2]
@@ -34,6 +36,13 @@ flowchart LR
         RGND[GND]
     end
 
+    subgraph OLED["OLED Display"]
+        OSDA[SDA]
+        OSCL[SCL]
+        OVCC[VCC]
+        OGND[GND]
+    end
+
     subgraph Motors["ESCs"]
         M1[ESC 1 Signal]
         M2[ESC 2 Signal]
@@ -49,6 +58,11 @@ flowchart LR
     T21 --- RSBUS
     TVIN --- RVCC
     TGND --- RGND
+
+    T16 --- OSDA
+    T17 --- OSCL
+    TV33 --- OVCC
+    TGND --- OGND
 
     T0 --- M1
     T1 --- M2
@@ -71,6 +85,10 @@ flowchart LR
 | SBUS Receiver | SBUS | 21 | Serial5 RX |
 | SBUS Receiver | VCC | VIN | 5V power |
 | SBUS Receiver | GND | GND | Common ground |
+| OLED Display | SDA | 16 | Software I2C (separate from IMU) |
+| OLED Display | SCL | 17 | Software I2C (separate from IMU) |
+| OLED Display | VCC | 3.3V | 3.3V power |
+| OLED Display | GND | GND | Common ground |
 | Status LED | - | 13 | Built-in |
 
 ### Motors (PWM Output)
@@ -166,8 +184,16 @@ flowchart LR
 - [ ] Receiver SBUS → Pin 21
 - [ ] Receiver VCC → VIN (5V)
 - [ ] Receiver GND → GND
+- [ ] OLED SDA → Pin 16 (optional, software I2C)
+- [ ] OLED SCL → Pin 17 (optional, software I2C)
+- [ ] OLED VCC → 3.3V
+- [ ] OLED GND → GND
 - [ ] ESC 1 Signal → Pin 0
 - [ ] ESC 2 Signal → Pin 1
 - [ ] ESC 3 Signal → Pin 2
 - [ ] ESC 4 Signal → Pin 3
 - [ ] All ESC grounds → GND
+
+**Supported OLED displays:** DSD TECH 0.91" (SSD1306 128x32), Generic 0.96" (SSD1306 128x64), HiLetGo 1.3" (SH1106 128x64). Select in config.h.
+
+**Note:** OLED pins 16/17 overlap with PWM receiver CH5/CH6. If using PWM receiver, choose different OLED pins in pin_definitions.h.

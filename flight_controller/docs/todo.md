@@ -10,10 +10,9 @@ _No tasks in progress_
 
 _Priority queue for immediate work_
 
-- [ ] Failsafe auto-detection (`f` command) — measure receiver failsafe PWM outputs
-- [ ] Runtime filter/limits tuning (`p` command) — serial tuning for B_ACCEL, B_GYRO, B_DTERM, MADGWICK_BETA, max rates/angles
-- [ ] ESC endpoint calibration (`e` command) — guided min/max PWM routine
-- [ ] Magnetometer calibration (MPU9250 sphere calibration routine)
+- [ ] Configurable pin definitions from config.h — move pin overrides so users configure everything in one file
+- [ ] OLED-guided calibration — show calibration prompts and progress on display
+- [ ] Sequential calibration workflow (`a` command) — run all calibration routines in one guided session
 - [ ] Hardware testing when hardware is available
 - [ ] fc_tool WebSocket integration (connect to floppi.local/ws) — **deferred**, fc_tool still in development
 
@@ -37,6 +36,16 @@ _Tasks waiting on something (include reason)_
 
 _For context; clear periodically_
 
+- [x] Failsafe auto-detection (`f` command) — 2026-02-09
+  - Measures receiver failsafe PWM outputs (TX off), outputs FAILSAFE_* defines
+- [x] ESC endpoint calibration (`e` command) — 2026-02-09
+  - Guided min/max PWM routine for ESC range calibration
+- [x] Runtime filter/limits tuning (`p` command) — 2026-02-09
+  - Serial tuning for B_ACCEL, B_GYRO, B_DTERM, MADGWICK_BETA, max rates/angles
+- [x] Magnetometer calibration (MPU9250, sphere calibration) — 2026-02-09
+  - 30s rotation sampling, hard-iron offsets + soft-iron scale factors
+- [x] Wiring diagrams updated with OLED display connections — 2026-02-09
+  - Both Teensy and ESP32 wiring docs now include OLED display in mermaid diagrams and checklists
 - [x] Serial PID tuning in calibration mode — 2026-02-09
   - Runtime-tunable PID gains (9 variables: kp/ki/kd × roll/pitch/yaw)
   - Non-blocking line-buffered serial parser (no flight loop impact)

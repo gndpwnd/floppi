@@ -98,7 +98,10 @@ enum CalibrationMode {
     CALIB_ACCEL_GYRO,      // Single-position IMU calibration (offsets only)
     CALIB_6POSITION,       // 6-position accelerometer calibration (offsets + scale)
     CALIB_ATTITUDE,        // IMU + orientation detection
-    CALIB_RADIO            // Radio channel mapping
+    CALIB_RADIO,           // Radio channel mapping
+    CALIB_FAILSAFE,        // Failsafe auto-detection
+    CALIB_ESC,             // ESC endpoint calibration
+    CALIB_MAG              // Magnetometer sphere calibration (MPU9250 only)
 };
 extern CalibrationMode calibration_mode;
 extern bool calibration_in_progress;
@@ -112,6 +115,10 @@ extern int telemetry_mode;
 extern float tune_kp_roll, tune_ki_roll, tune_kd_roll;
 extern float tune_kp_pitch, tune_ki_pitch, tune_kd_pitch;
 extern float tune_kp_yaw, tune_ki_yaw, tune_kd_yaw;
+
+// Runtime-tunable filter coefficients and limits (adjust via serial 'p' command)
+extern float tune_b_accel, tune_b_gyro, tune_b_dterm, tune_madgwick_beta;
+extern float tune_max_roll, tune_max_pitch, tune_max_yaw;
 #endif
 
 #endif // GLOBALS_H

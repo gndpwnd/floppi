@@ -7,6 +7,7 @@
 #define CALIBRATION_H
 
 #include <Arduino.h>
+#include "config.h"
 
 // Forward declarations of functions defined elsewhere (C++ linkage)
 void getIMUdata();
@@ -140,5 +141,44 @@ void calibrateIMUWithOrientation();
 void printIMUOrientationResults(char forwardAxis, bool forwardInverted,
                                 char rightAxis, bool rightInverted,
                                 char upAxis, bool upInverted);
+
+// ======================================================================
+// FAILSAFE AUTO-DETECTION
+// ======================================================================
+
+/**
+ * Auto-detect receiver failsafe PWM values.
+ * Guides user to power off transmitter, then measures what the
+ * receiver outputs when signal is lost. Outputs FAILSAFE_* defines.
+ */
+void calibrateFailsafe();
+
+// ======================================================================
+// ESC ENDPOINT CALIBRATION
+// ======================================================================
+
+/**
+ * ESC endpoint calibration routine.
+ * Sends min/max PWM to all motor outputs for ESC range calibration.
+ * Standard procedure: max PWM → power ESCs → ESCs beep → min PWM → confirm.
+ */
+void calibrateESC();
+
+// External motor functions (from motors.cpp / globals.h)
+void commandMotors();
+
+// ======================================================================
+// MAGNETOMETER CALIBRATION (MPU9250 only)
+// ======================================================================
+
+#ifdef USE_MPU9250
+/**
+ * Magnetometer sphere calibration routine.
+ * User rotates aircraft in all orientations while firmware records
+ * min/max per axis. Calculates hard-iron offsets and soft-iron scales.
+ * Outputs MAG_ERROR_X/Y/Z, MAG_SCALE_X/Y/Z defines.
+ */
+void calibrateMagnetometer();
+#endif
 
 #endif // CALIBRATION_H

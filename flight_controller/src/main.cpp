@@ -134,6 +134,20 @@ float tune_kd_pitch = KD_PITCH_ANGLE;
 float tune_kp_yaw = KP_YAW_RATE;
 float tune_ki_yaw = KI_YAW_RATE;
 float tune_kd_yaw = KD_YAW_RATE;
+
+// Runtime-tunable filter coefficients and control limits
+float tune_b_accel = B_ACCEL;
+float tune_b_gyro = B_GYRO;
+float tune_b_dterm = B_DTERM;
+float tune_madgwick_beta = MADGWICK_BETA;
+#ifdef USE_RATE_CONTROLLER
+float tune_max_roll = MAX_ROLL_RATE;
+float tune_max_pitch = MAX_PITCH_RATE;
+#else
+float tune_max_roll = MAX_ROLL_ANGLE;
+float tune_max_pitch = MAX_PITCH_ANGLE;
+#endif
+float tune_max_yaw = MAX_YAW_RATE;
 #endif
 
 //========================================================================================================================//
@@ -318,8 +332,11 @@ void setup() {
     Serial.println(F("  i - IMU cal (single-pos)"));
     Serial.println(F("  m - IMU cal (6-pos, more accurate)"));
     Serial.println(F("  o - IMU + Orientation"));
+    Serial.println(F("  f - Failsafe auto-detection"));
+    Serial.println(F("  e - ESC endpoint calibration"));
     Serial.println(F("  s - Status"));
     Serial.println(F("  g - PID gains (show/set)"));
+    Serial.println(F("  p - Filter & limits (show/set)"));
     Serial.println(F("  t - Toggle telemetry"));
     Serial.println(F("  h - Help"));
     Serial.println(F("\nCH6 switch (hold 3s):"));
@@ -475,6 +492,23 @@ void runCalibrationIfRequested() {
                 calibrateRadio();
                 break;
 
+            case CALIB_FAILSAFE:
+                Serial.println(F("Running Failsafe Auto-Detection"));
+                calibrateFailsafe();
+                break;
+
+            case CALIB_ESC:
+                Serial.println(F("Running ESC Endpoint Calibration"));
+                calibrateESC();
+                break;
+
+            #ifdef USE_MPU9250
+            case CALIB_MAG:
+                Serial.println(F("Running Magnetometer Calibration"));
+                calibrateMagnetometer();
+                break;
+            #endif
+
             default:
                 break;
         }
@@ -569,6 +603,35 @@ static void printGains() {
     Serial.println(F("Set: g <name> <value>  (e.g. g kp_roll 0.2)"));
 }
 
+// Helper: match a parameter name and return pointer to it, or NULL
+static float* findParam(const char* name) {
+    if (strcmp(name, "b_accel") == 0)  return &tune_b_accel;
+    if (strcmp(name, "b_gyro") == 0)   return &tune_b_gyro;
+    if (strcmp(name, "b_dterm") == 0)   return &tune_b_dterm;
+    if (strcmp(name, "beta") == 0)      return &tune_madgwick_beta;
+    if (strcmp(name, "max_roll") == 0)  return &tune_max_roll;
+    if (strcmp(name, "max_pitch") == 0) return &tune_max_pitch;
+    if (strcmp(name, "max_yaw") == 0)   return &tune_max_yaw;
+    return NULL;
+}
+
+static void printParams() {
+    Serial.println(F("\n=== FILTER & LIMITS ==="));
+    Serial.print(F("  b_accel="));    Serial.println(tune_b_accel, 4);
+    Serial.print(F("  b_gyro="));     Serial.println(tune_b_gyro, 4);
+    Serial.print(F("  b_dterm="));    Serial.println(tune_b_dterm, 4);
+    Serial.print(F("  beta="));       Serial.println(tune_madgwick_beta, 4);
+    #ifdef USE_RATE_CONTROLLER
+    Serial.println(F("Mode: RATE (deg/s)"));
+    #else
+    Serial.println(F("Mode: ANGLE (deg)"));
+    #endif
+    Serial.print(F("  max_roll="));   Serial.println(tune_max_roll, 1);
+    Serial.print(F("  max_pitch="));  Serial.println(tune_max_pitch, 1);
+    Serial.print(F("  max_yaw="));    Serial.println(tune_max_yaw, 1);
+    Serial.println(F("Set: p <name> <value>  (e.g. p b_accel 0.10)"));
+}
+
 static void processSerialLine(char* line) {
     // Trim leading whitespace
     while (*line == ' ' || *line == '\t') line++;
@@ -616,8 +679,19 @@ static void processSerialLine(char* line) {
                     Serial.println(F("    Format: ax ay az gx gy gz roll pitch yaw m1 m2 m3 m4"));
                 }
                 return;
+            case 'f': case 'F':
+                Serial.println(F("\n>>> Failsafe Auto-Detection requested via serial"));
+                calibration_mode = CALIB_FAILSAFE;
+                return;
+            case 'e': case 'E':
+                Serial.println(F("\n>>> ESC Calibration requested via serial"));
+                calibration_mode = CALIB_ESC;
+                return;
             case 'g': case 'G':
                 printGains();
+                return;
+            case 'p': case 'P':
+                printParams();
                 return;
             case 'h': case 'H': case '?':
                 Serial.println(F("\n=== CALIBRATION COMMANDS ==="));
@@ -625,9 +699,12 @@ static void processSerialLine(char* line) {
                 Serial.println(F("  i - IMU calibration (single-position, offsets only)"));
                 Serial.println(F("  m - IMU calibration (6-position, offsets + scale)"));
                 Serial.println(F("  o - IMU + Orientation detection"));
+                Serial.println(F("  f - Failsafe auto-detection (measures receiver failsafe)"));
+                Serial.println(F("  e - ESC endpoint calibration (min/max PWM)"));
                 Serial.println(F("  s - Status (show channel values)"));
                 Serial.println(F("  t - Toggle telemetry (off/IMU/full) for fc_tool"));
-                Serial.println(F("  g - Show PID gains / set gain (g <name> <value>)"));
+                Serial.println(F("  g - Show/set PID gains (g <name> <value>)"));
+                Serial.println(F("  p - Show/set filter & limits (p <name> <value>)"));
                 Serial.println(F("  h - Help (this menu)"));
                 Serial.println(F("\nOr use CH6 switch:"));
                 Serial.println(F("  Mid position (3s hold): IMU calibration"));
@@ -673,6 +750,44 @@ static void processSerialLine(char* line) {
         Serial.print(name);
         Serial.print(F(" = "));
         Serial.println(val, 6);
+        return;
+    }
+
+    // Multi-word commands: "p <name> <value>"
+    if (line[0] == 'p' && line[1] == ' ') {
+        char* name = line + 2;
+        while (*name == ' ') name++;
+        char* space = strchr(name, ' ');
+        if (space == NULL) {
+            float* param = findParam(name);
+            if (param) {
+                Serial.print(F("  "));
+                Serial.print(name);
+                Serial.print(F(" = "));
+                Serial.println(*param, 4);
+            } else {
+                Serial.print(F("Unknown param: "));
+                Serial.println(name);
+            }
+            return;
+        }
+        *space = '\0';
+        char* val_str = space + 1;
+        while (*val_str == ' ') val_str++;
+
+        float* param = findParam(name);
+        if (!param) {
+            Serial.print(F("Unknown param: "));
+            Serial.println(name);
+            return;
+        }
+        float val = atof(val_str);
+        *param = val;
+        Serial.print(F("  "));
+        Serial.print(name);
+        Serial.print(F(" = "));
+        Serial.println(val, 4);
+        return;
     }
 }
 

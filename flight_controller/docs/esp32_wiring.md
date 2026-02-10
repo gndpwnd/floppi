@@ -12,6 +12,8 @@ flowchart LR
         G21[GPIO 21]
         G22[GPIO 22]
         G16[GPIO 16]
+        G23[GPIO 23]
+        G19[GPIO 19]
         G25[GPIO 25]
         G26[GPIO 26]
         G27[GPIO 27]
@@ -34,6 +36,13 @@ flowchart LR
         RGND[GND]
     end
 
+    subgraph OLED["OLED Display"]
+        OSDA[SDA]
+        OSCL[SCL]
+        OVCC[VCC]
+        OGND[GND]
+    end
+
     subgraph Motors["ESCs"]
         M1[ESC 1 Signal]
         M2[ESC 2 Signal]
@@ -49,6 +58,11 @@ flowchart LR
     G16 --- RSBUS
     EVIN --- RVCC
     EGND --- RGND
+
+    G23 --- OSDA
+    G19 --- OSCL
+    EV33 --- OVCC
+    EGND --- OGND
 
     G25 --- M1
     G26 --- M2
@@ -71,6 +85,10 @@ flowchart LR
 | SBUS Receiver | SBUS | 16 | Serial2 RX |
 | SBUS Receiver | VCC | VIN | 5V power |
 | SBUS Receiver | GND | GND | Common ground |
+| OLED Display | SDA | 23 | Software I2C (separate from IMU) |
+| OLED Display | SCL | 19 | Software I2C (separate from IMU) |
+| OLED Display | VCC | 3.3V | 3.3V power |
+| OLED Display | GND | GND | Common ground |
 | Status LED | - | 2 | Built-in |
 
 ### Motors (LEDC PWM)
@@ -118,6 +136,10 @@ The ESP32-S3 uses different GPIO assignments:
 | MPU6050 | SDA | 8 | I2C data |
 | MPU6050 | SCL | 9 | I2C clock |
 | SBUS Receiver | SBUS | 18 | Serial RX |
+| OLED Display | SDA | 3 | Software I2C (separate from IMU) |
+| OLED Display | SCL | 46 | Software I2C (separate from IMU) |
+| OLED Display | VCC | 3.3V | 3.3V power |
+| OLED Display | GND | GND | Common ground |
 | Status LED | - | 48 | RGB LED |
 
 ### Motors (S3)
@@ -220,8 +242,14 @@ No external inverter circuit needed (unlike some other MCUs).
 - [ ] Receiver SBUS → GPIO 16
 - [ ] Receiver VCC → VIN (5V)
 - [ ] Receiver GND → GND
+- [ ] OLED SDA → GPIO 23 (optional, software I2C)
+- [ ] OLED SCL → GPIO 19 (optional, software I2C)
+- [ ] OLED VCC → 3.3V
+- [ ] OLED GND → GND
 - [ ] ESC 1 Signal → GPIO 25
 - [ ] ESC 2 Signal → GPIO 26
 - [ ] ESC 3 Signal → GPIO 27
 - [ ] ESC 4 Signal → GPIO 14
 - [ ] All ESC grounds → GND
+
+**Supported OLED displays:** DSD TECH 0.91" (SSD1306 128x32), Generic 0.96" (SSD1306 128x64), HiLetGo 1.3" (SH1106 128x64). Select in config.h.

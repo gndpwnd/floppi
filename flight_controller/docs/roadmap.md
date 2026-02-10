@@ -288,6 +288,30 @@ Files: `ota.h`, `ota.cpp`.
 
 ---
 
+## Hardware Usability (Medium Priority)
+
+> Features that make the firmware easier to use with real hardware. Important for the "flash, calibrate, fly" experience.
+
+- [ ] Configurable pin definitions from config.h
+  - Description: Move pin assignments from pin_definitions.h into config.h so users configure everything in one file. Currently pin_definitions.h has platform-specific defaults — keep those as fallbacks, but let config.h overrides take priority.
+  - Rationale: Easier for users with different board layouts or custom wiring. Makes the firmware more portable across MCU variants.
+  - Pattern: `#ifndef MOTOR_PIN_1` / `#define MOTOR_PIN_1 0` in pin_definitions.h, `#define MOTOR_PIN_1 25` in config.h to override.
+
+- [ ] OLED-guided calibration workflow
+  - Description: Show calibration instructions and progress on the OLED display during calibration mode. Currently, all calibration guidance is via serial only. Users without a connected laptop should still be able to calibrate using just the OLED + switches.
+  - Design: Display prompts ("Calibrating IMU...", "Keep still!", "Done!"), progress bars during sample collection, and final pass/fail status. Works alongside serial output (display shows summary, serial shows details).
+  - Dependencies: Display module (done), calibration routines (done)
+
+- [ ] Sequential calibration workflow
+  - Description: A guided "full calibration" mode that runs all calibration routines in sequence (e.g., serial command `a` for "all"). User goes through IMU → radio → failsafe → ESC in one session, with clear prompts between each step. Can also run individual tests independently as today.
+  - Notes: Currently each calibration is triggered individually via serial commands or CH6 switch. Both modes (individual and sequential) should coexist.
+
+- [ ] Wiring validation on startup
+  - Description: Basic startup checks — detect if IMU is responding, if receiver is sending data, if OLED is connected. Report status on serial and display. Helps users catch wiring mistakes before attempting calibration.
+  - Dependencies: Hardware testing
+
+---
+
 ## Nice to Have (Lower Priority)
 
 - [ ] PID auto-tuning mode
