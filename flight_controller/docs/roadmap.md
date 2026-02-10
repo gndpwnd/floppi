@@ -309,7 +309,8 @@ Files: `ota.h`, `ota.cpp`.
 
 - [ ] OLED-guided calibration workflow
   - Description: Show calibration instructions and progress on the OLED display during calibration mode. Currently, all calibration guidance is via serial only. Users without a connected laptop should still be able to calibrate using just the OLED + switches.
-  - Design: Display prompts ("Calibrating IMU...", "Keep still!", "Done!"), progress bars during sample collection, and final pass/fail status. Works alongside serial output (display shows summary, serial shows details).
+  - Design: Serial monitor = primary output (full instructions, real-time progress, copy-paste `#define` values). OLED = summary display (current state, key values, pass/fail). Both outputs run in parallel — serial is comprehensive, OLED is glanceable.
+  - Calibration routines should print the full guide text to serial at the start of each routine (what to do, what physical action is needed, what output to expect).
   - Dependencies: Display module (done), calibration routines (done)
 
 - [ ] Sequential calibration workflow

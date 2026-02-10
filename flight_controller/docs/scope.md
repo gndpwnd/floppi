@@ -1,6 +1,6 @@
 # Flight Controller Firmware - Scope
 
-> Last updated: 2026-02-09
+> Last updated: 2026-02-10
 > Status: Active
 
 ---

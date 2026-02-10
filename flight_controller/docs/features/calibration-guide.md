@@ -8,6 +8,26 @@
 - **No guessing**: Every hardware-dependent value in config.h has an auto-calibration routine. Run it, copy the output, flash.
 - **Feature-aware**: Some calibrations only apply when certain feature flags are enabled. The guide tells you which.
 - **Repeatable**: Use `tools/calibration_reset.py` to reset all calibration values back to defaults when starting fresh with new hardware.
+- **Command source agnostic**: "Receiver" in this guide means whatever command source you configured in config.h — RC radio (SBUS/DSM/PPM/PWM), serial from a flight computer (`USE_SERIAL_COMMANDS`), I2C (`USE_I2C_COMMANDS`), or WiFi API (`USE_API_SERVER`). RadioComm handles all sources identically. Radio calibration (Stage 2) only applies to RC receivers — serial/I2C/WiFi sources skip it.
+
+## Calibration Output
+
+All calibration routines output detailed information to the **serial monitor** (USB serial). This is the primary calibration interface — connect via PlatformIO Serial Monitor, Arduino IDE, or any terminal at 115200 baud.
+
+**Serial monitor** shows:
+
+- Step-by-step instructions ("Place board level and hold still...")
+- Real-time progress (sample counts, intermediate values)
+- Quality validation results (pass/fail, retry prompts)
+- Final `#define` values ready to copy-paste into config.h
+
+**OLED display** (if connected) shows:
+
+- Current calibration state ("Calibrating IMU...", "Radio cal...", "Done!")
+- Key summary values (not the full `#define` output)
+- Pass/fail status
+
+You do NOT need an OLED to calibrate — serial is sufficient. The OLED is a convenience for users who don't have a laptop nearby during calibration.
 
 ## Quick Reference — Calibration Commands
 
@@ -89,36 +109,51 @@
 
 ---
 
-### Stage 2: MCU + IMU + Receiver (No Motors)
+### Stage 2: MCU + IMU + Command Source (No Motors)
 
-**Hardware needed**: Add receiver + transmitter to Stage 1 setup.
+**Hardware needed**: Add your command source to Stage 1 setup. This depends on what you configured in config.h:
 
-**Wiring**: Connect receiver to the appropriate pin (SBUS, DSM, PPM, or PWM — see wiring docs).
+| Command Source           | Hardware Needed                    | Config Flag                     |
+| ------------------------ | ---------------------------------- | ------------------------------- |
+| RC radio (SBUS)          | SBUS receiver + transmitter        | `USE_SBUS_RECEIVER`             |
+| RC radio (DSM)           | DSM/DSMX receiver + transmitter    | `USE_DSM_RECEIVER`              |
+| RC radio (PPM)           | PPM receiver + transmitter         | `USE_PPM_RECEIVER`              |
+| RC radio (PWM)           | PWM receiver + transmitter         | `USE_PWM_RECEIVER`              |
+| Serial (flight computer) | UART connection to flight computer | `USE_SERIAL_COMMANDS` (planned) |
+| I2C (flight computer)    | I2C connection to flight computer  | `USE_I2C_COMMANDS` (planned)    |
+| WiFi API (ESP32)         | WiFi network + API server          | `USE_API_SERVER` (planned)      |
+
+**Wiring**: Connect your command source to the appropriate pins (see wiring docs for your platform). All pins are configurable in config.h.
 
 **What you can test**:
-- Receiver is communicating with the MCU
-- All channels respond to transmitter stick movements
+
+- Command source is communicating with the MCU
+- All channels respond to input (stick movements, serial commands, etc.)
 - Channel values are in 1000-2000us range
 
 **Calibrations to run** (in order):
 
-#### 2a. Radio Channel Mapping (`r`)
+#### 2a. Radio Channel Mapping (`r`) — RC receivers only
+
 - **What it does**: Auto-detects which receiver channel maps to which control axis.
 - **Physical action**: Move sticks one at a time when prompted (throttle up, roll right, pitch forward, yaw right, flip AUX switches).
 - **Output**: Copy `THROTTLE_CHANNEL`, `ROLL_CHANNEL`, etc. to config.h.
 - **Note**: Run this even if you think you know the mapping. It validates and avoids surprises.
+- **Skip if**: Using serial, I2C, or WiFi commands — the flight computer already sends channels in the correct order.
 
-#### 2b. Failsafe Auto-Detection (`f`)
+#### 2b. Failsafe Auto-Detection (`f`) — RC receivers only
+
 - **What it does**: Records what the receiver sends when the transmitter is ON vs OFF. Detects failsafe values.
 - **Physical action**: Leave transmitter ON, then turn it OFF when prompted. Wait for measurement.
 - **Output**: Copy `FAILSAFE_THROTTLE/ROLL/PITCH/YAW/AUX1/AUX2` to config.h.
 - **Note**: Critical for safety. Failsafe values are what the FC falls back to when signal is lost.
+- **Skip if**: Using serial, I2C, or WiFi commands — failsafe is handled by command source timeout (RadioComm arbitration).
 
-**After Stage 2**: You have calibrated IMU + radio. The FC can read orientation and control inputs. Ready for motor testing.
+**After Stage 2**: You have calibrated IMU + command source. The FC can read orientation and control inputs. Ready for motor testing.
 
 ---
 
-### Stage 3: MCU + IMU + Receiver + ESCs (NO PROPS!)
+### Stage 3: MCU + IMU + Command Source + ESCs (NO PROPS!)
 
 **Hardware needed**: Add ESCs + motors to Stage 2 setup. **REMOVE ALL PROPELLERS.**
 
@@ -249,8 +284,8 @@ Stage 0: Software setup, config.h basics, verify compilation
 Stage 1: MCU + IMU → calibrate IMU (i/m/o) + magnetometer (MPU9250)
   │                    Hardware: just MCU board + IMU breakout
   │
-Stage 2: + Receiver → calibrate radio (r) + failsafe (f)
-  │                    Hardware: add receiver + transmitter
+Stage 2: + Command source → calibrate radio (r) + failsafe (f) [RC only]
+  │                    Hardware: add receiver/serial/I2C/WiFi (per config.h)
   │
 Stage 3: + ESCs/Motors → calibrate ESCs (e), verify spin direction
   │                    Hardware: add ESCs + motors (NO PROPS!)
