@@ -25,6 +25,50 @@
     DSM1024 DSM;  // Match original naming
 #endif
 
+#ifdef USE_IBUS_RECEIVER
+    // iBUS protocol constants
+    static const uint8_t IBUS_FRAME_LENGTH = 32;
+    static const uint8_t IBUS_HEADER_0 = 0x20;  // Length byte
+    static const uint8_t IBUS_HEADER_1 = 0x40;  // Command: channel data
+    static const uint8_t IBUS_MAX_CHANNELS = 14;
+    static uint8_t ibusBuffer[32];
+    static uint8_t ibusIndex = 0;
+    static uint16_t ibusChannels[14];
+#endif
+
+#ifdef USE_SERIAL_COMMANDS
+    // Serial command protocol constants
+    // Frame: [0xAA] [0x55] [ch1_lo] [ch1_hi] ... [ch6_lo] [ch6_hi] [checksum]
+    // 15 bytes total: 2 header + 12 channel data + 1 XOR checksum
+    // Channel values: uint16_t little-endian, 1000-2000 microseconds
+    static const uint8_t SCMD_FRAME_LENGTH = 15;
+    static const uint8_t SCMD_HEADER_0 = 0xAA;
+    static const uint8_t SCMD_HEADER_1 = 0x55;
+    static uint8_t scmdBuffer[15];
+    static uint8_t scmdIndex = 0;
+#endif
+
+#if defined(USE_ESP32) && defined(USE_WEB_SERVER)
+    // WiFi API command buffer — written by Core 1 (web server), read by Core 0 (flight control)
+    // Protected by spinlock for thread-safe cross-core access.
+    #include <freertos/portmacro.h>
+    static portMUX_TYPE wifiCmdMux = portMUX_INITIALIZER_UNLOCKED;
+    static volatile uint16_t wifiCmdChannels[6] = {1500, 1500, 1000, 1500, 1000, 1000};
+    static volatile uint32_t wifiCmdTimestamp = 0;
+
+    void setWifiCommandChannels(uint16_t ch1, uint16_t ch2, uint16_t ch3, uint16_t ch4, uint16_t ch5, uint16_t ch6) {
+        portENTER_CRITICAL(&wifiCmdMux);
+        wifiCmdChannels[0] = ch1;
+        wifiCmdChannels[1] = ch2;
+        wifiCmdChannels[2] = ch3;
+        wifiCmdChannels[3] = ch4;
+        wifiCmdChannels[4] = ch5;
+        wifiCmdChannels[5] = ch6;
+        wifiCmdTimestamp = millis();
+        portEXIT_CRITICAL(&wifiCmdMux);
+    }
+#endif
+
 //========================================================================================================================//
 //                                              CHANNEL VARIABLES                                                         //
 //========================================================================================================================//
@@ -188,13 +232,40 @@ void radioSetup() {
         Serial.println("  Baud: 100000, 8E2 (inverted)");
         Serial.println("  Channels: 16");
         
+    #elif defined(USE_IBUS_RECEIVER)
+        #ifdef USE_ESP32
+            IBUS_SERIAL_PORT.begin(115200, SERIAL_8N1, IBUS_RX_PIN, IBUS_TX_PIN);
+            Serial.println("iBUS receiver initialized");
+            Serial.print("  Port: Serial1 (ESP32), RX Pin: "); Serial.println(IBUS_RX_PIN);
+        #else
+            IBUS_SERIAL_PORT.begin(115200);
+            Serial.println("iBUS receiver initialized");
+            Serial.println("  Port: Serial3 (RX pin 15)");
+        #endif
+        Serial.println("  Baud: 115200, 8N1 (non-inverted)");
+        Serial.println("  Channels: 14");
+
     #elif defined(USE_DSM_RECEIVER)
         DSM_SERIAL_PORT.begin(115000);  // Match original 115000 baud
         Serial.println("DSM receiver initialized");
         Serial.println("  Port: Serial3 (RX pin 15)");
         Serial.println("  Baud: 115000");
         Serial.println("  Channels: 12");
-        
+
+    #elif defined(USE_SERIAL_COMMANDS)
+        #ifdef USE_ESP32
+            SERIAL_CMD_PORT.begin(115200, SERIAL_8N1, SERIAL_CMD_RX_PIN, SERIAL_CMD_TX_PIN);
+            Serial.println("Serial command input initialized");
+            Serial.print("  Port: Serial1 (ESP32), RX Pin: "); Serial.println(SERIAL_CMD_RX_PIN);
+        #else
+            SERIAL_CMD_PORT.begin(115200);
+            Serial.println("Serial command input initialized");
+            Serial.println("  Port: Serial3 (RX pin 15)");
+        #endif
+        Serial.println("  Baud: 115200, 8N1");
+        Serial.println("  Protocol: Binary (15-byte frames)");
+        Serial.println("  Frame: [AA 55] [ch1..ch6 LE uint16] [XOR checksum]");
+
     #elif defined(USE_PPM_RECEIVER)
         // PPM setup
         pinMode(PPM_PIN, INPUT_PULLUP);
@@ -222,10 +293,17 @@ void radioSetup() {
         Serial.println("PWM receiver initialized");
         Serial.println("  Individual channel pins");
         
+    #elif defined(USE_ESP32) && defined(USE_WEB_SERVER)
+        // WiFi API command source — no hardware initialization needed
+        // Commands arrive via POST /api/commands or WebSocket from external controller
+        Serial.println("WiFi API command source (no physical receiver)");
+        Serial.println("  Commands via: POST /api/commands, WebSocket /ws");
+        Serial.println("  Failsafe timeout: 500ms");
+
     #else
-        #error "No receiver type defined in config.h!"
+        #error "No receiver or command source defined in config.h!"
     #endif
-    
+
     delay(100);
     lastFrameTime = millis();
 }
@@ -251,6 +329,79 @@ void getCommands() {
             lastFrameTime = millis();
         }
     
+    //========== iBUS RECEIVER ==========//
+    #elif defined(USE_IBUS_RECEIVER)
+        // Read all available bytes and parse iBUS frames
+        while (IBUS_SERIAL_PORT.available()) {
+            uint8_t b = IBUS_SERIAL_PORT.read();
+
+            if (ibusIndex == 0 && b != IBUS_HEADER_0) continue;  // Wait for length byte
+            if (ibusIndex == 1 && b != IBUS_HEADER_1) { ibusIndex = 0; continue; }  // Validate command byte
+
+            ibusBuffer[ibusIndex++] = b;
+
+            if (ibusIndex == IBUS_FRAME_LENGTH) {
+                ibusIndex = 0;
+
+                // Verify checksum: 0xFFFF minus sum of bytes 0..29
+                uint16_t checksum = 0xFFFF;
+                for (uint8_t i = 0; i < IBUS_FRAME_LENGTH - 2; i++) {
+                    checksum -= ibusBuffer[i];
+                }
+                uint16_t received = ibusBuffer[30] | (ibusBuffer[31] << 8);
+
+                if (checksum == received) {
+                    // Parse channels (little-endian uint16, already in microseconds)
+                    for (uint8_t ch = 0; ch < IBUS_MAX_CHANNELS; ch++) {
+                        ibusChannels[ch] = ibusBuffer[2 + ch * 2] | (ibusBuffer[3 + ch * 2] << 8);
+                    }
+
+                    channel_1_pwm = ibusChannels[0];  // Roll
+                    channel_2_pwm = ibusChannels[1];  // Pitch
+                    channel_3_pwm = ibusChannels[2];  // Throttle
+                    channel_4_pwm = ibusChannels[3];  // Yaw
+                    channel_5_pwm = ibusChannels[4];  // Aux1
+                    channel_6_pwm = ibusChannels[5];  // Aux2
+
+                    lastFrameTime = millis();
+                }
+            }
+        }
+
+    //========== SERIAL COMMANDS ==========//
+    #elif defined(USE_SERIAL_COMMANDS)
+        // Read all available bytes and parse serial command frames
+        while (SERIAL_CMD_PORT.available()) {
+            uint8_t b = SERIAL_CMD_PORT.read();
+
+            if (scmdIndex == 0 && b != SCMD_HEADER_0) continue;  // Wait for 0xAA
+            if (scmdIndex == 1 && b != SCMD_HEADER_1) { scmdIndex = 0; continue; }  // Validate 0x55
+
+            scmdBuffer[scmdIndex++] = b;
+
+            if (scmdIndex == SCMD_FRAME_LENGTH) {
+                scmdIndex = 0;
+
+                // Verify checksum: XOR of channel data bytes (indices 2..13)
+                uint8_t checksum = 0;
+                for (uint8_t i = 2; i < SCMD_FRAME_LENGTH - 1; i++) {
+                    checksum ^= scmdBuffer[i];
+                }
+
+                if (checksum == scmdBuffer[SCMD_FRAME_LENGTH - 1]) {
+                    // Parse 6 channels (little-endian uint16, already in microseconds)
+                    channel_1_pwm = scmdBuffer[2]  | (scmdBuffer[3]  << 8);  // Roll
+                    channel_2_pwm = scmdBuffer[4]  | (scmdBuffer[5]  << 8);  // Pitch
+                    channel_3_pwm = scmdBuffer[6]  | (scmdBuffer[7]  << 8);  // Throttle
+                    channel_4_pwm = scmdBuffer[8]  | (scmdBuffer[9]  << 8);  // Yaw
+                    channel_5_pwm = scmdBuffer[10] | (scmdBuffer[11] << 8);  // Aux1
+                    channel_6_pwm = scmdBuffer[12] | (scmdBuffer[13] << 8);  // Aux2
+
+                    lastFrameTime = millis();
+                }
+            }
+        }
+
     //========== DSM RECEIVER ==========//
     #elif defined(USE_DSM_RECEIVER)
         if (!DSM.timedOut()) {
@@ -275,12 +426,29 @@ void getCommands() {
         channel_4_pwm = channel_4_raw;
         channel_5_pwm = channel_5_raw;
         channel_6_pwm = channel_6_raw;
-        
+
         // Update last frame time if channels are changing
         if (channel_1_raw != 1500 || channel_2_raw != 1500) {
             lastFrameTime = millis();
         }
-        
+
+    //========== WIFI API COMMANDS (ESP32 only, no physical receiver) ==========//
+    #elif defined(USE_ESP32) && defined(USE_WEB_SERVER)
+        // Read from shared buffer updated by web server on Core 1
+        portENTER_CRITICAL(&wifiCmdMux);
+        channel_1_pwm = wifiCmdChannels[0];  // Roll
+        channel_2_pwm = wifiCmdChannels[1];  // Pitch
+        channel_3_pwm = wifiCmdChannels[2];  // Throttle
+        channel_4_pwm = wifiCmdChannels[3];  // Yaw
+        channel_5_pwm = wifiCmdChannels[4];  // Aux1
+        channel_6_pwm = wifiCmdChannels[5];  // Aux2
+        uint32_t wifiTs = wifiCmdTimestamp;
+        portEXIT_CRITICAL(&wifiCmdMux);
+
+        if (wifiTs > 0) {
+            lastFrameTime = wifiTs;
+        }
+
     #endif
     
     // Constrain all channels to valid range
@@ -339,17 +507,35 @@ void failSafe() {
             signalLost = true;
         }
         
+    #elif defined(USE_IBUS_RECEIVER)
+        // iBUS: timeout-based signal loss detection
+        if (millis() - lastFrameTime > 500) {
+            signalLost = true;
+        }
+
+    #elif defined(USE_SERIAL_COMMANDS)
+        // Serial commands: timeout-based signal loss detection
+        if (millis() - lastFrameTime > 500) {
+            signalLost = true;
+        }
+
     #elif defined(USE_DSM_RECEIVER)
         // DSM has built-in timeout detection
         signalLost = DSM.timedOut();
-        
+
     #elif defined(USE_PPM_RECEIVER) || defined(USE_PWM_RECEIVER)
         // Check for timeout (no updates in 500ms)
         if (millis() - lastFrameTime > 500) {
             signalLost = true;
         }
+
+    #elif defined(USE_ESP32) && defined(USE_WEB_SERVER)
+        // WiFi API commands: timeout-based signal loss detection
+        if (millis() - lastFrameTime > 500) {
+            signalLost = true;
+        }
     #endif
-    
+
     // If signal is lost, use failsafe values
     if (signalLost) {
         channel_1_pwm = FAILSAFE_ROLL;      // Center stick
@@ -376,12 +562,21 @@ bool isReceiverConnected() {
     #ifdef USE_SBUS_RECEIVER
         return !sbusFailSafe && !sbusLostFrame && (millis() - lastFrameTime < 500);
         
+    #elif defined(USE_IBUS_RECEIVER)
+        return (millis() - lastFrameTime < 500);
+
+    #elif defined(USE_SERIAL_COMMANDS)
+        return (millis() - lastFrameTime < 500);
+
     #elif defined(USE_DSM_RECEIVER)
         return !DSM.timedOut();
-        
+
     #elif defined(USE_PPM_RECEIVER) || defined(USE_PWM_RECEIVER)
         return (millis() - lastFrameTime < 500);
-        
+
+    #elif defined(USE_ESP32) && defined(USE_WEB_SERVER)
+        return (millis() - lastFrameTime < 500);
+
     #else
         return false;
     #endif

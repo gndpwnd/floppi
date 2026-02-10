@@ -114,6 +114,7 @@ RadioComm is the **single entry point** for all command/control input to the fli
 
 ```text
 SBUS receiver ─────┐
+iBUS receiver ─────┤
 DSM receiver  ─────┤
 PPM receiver  ─────┤
 PWM receiver  ─────┼──→ RadioComm ──→ channel_X_pwm ──→ Flight Controller
@@ -122,25 +123,90 @@ I2C commands   ────┤
 WiFi API (ESP32) ──┘
 ```
 
-**Current state**: RadioComm handles RC protocols (SBUS, DSM, PPM, PWM) selected at compile time. One protocol active per build. Outputs `channel_1_pwm` through `channel_6_pwm` (1000-2000us range).
+**Current state**: RadioComm handles RC protocols (SBUS, iBUS, DSM, PPM, PWM) and serial commands from external flight computers (`USE_SERIAL_COMMANDS`), selected at compile time. One source active per build. Outputs `channel_1_pwm` through `channel_6_pwm` (1000-2000us range).
 
 **Planned expansion**: Add additional command sources that feed into the same `channel_X_pwm` output format:
 
 | Source | Interface | Config Flag | Priority | Notes |
 |--------|-----------|-------------|----------|-------|
 | SBUS | Serial (inverted) | `USE_SBUS_RECEIVER` | Primary | Current default |
+| iBUS | Serial (115200) | `USE_IBUS_RECEIVER` | Primary | FlySky FS-iA6B recommended |
 | DSM/DSMX | Serial | `USE_DSM_RECEIVER` | Primary | Spektrum |
 | PPM | Single GPIO | `USE_PPM_RECEIVER` | Primary | Legacy |
 | PWM | 6 GPIOs | `USE_PWM_RECEIVER` | Primary | Legacy |
-| Serial commands | UART | `USE_SERIAL_COMMANDS` | Override | Flight computer sends PWM-format commands over serial |
+| Serial commands | UART | `USE_SERIAL_COMMANDS` | Override | Done. Binary protocol, 15-byte frames, 115200 baud |
 | I2C commands | I2C slave | `USE_I2C_COMMANDS` | Override | Flight computer sends commands over I2C bus |
-| WiFi API | HTTP/WebSocket | `USE_API_SERVER` | Override | Commands from web server routed through RadioComm |
+| WiFi API | HTTP/WebSocket | `USE_WEB_SERVER` | Override | Done. POST /api/commands + WebSocket, spinlock cross-core |
 
 **Priority / arbitration**: When multiple sources are active, RadioComm needs an arbitration strategy. RC receiver is the primary (real-time, hardware). Serial/I2C/WiFi are override sources (typically from a flight computer). If an override source is active and sending, it takes priority. If it goes silent, RC receiver resumes. Failsafe applies across all sources.
 
 **Key principle**: The API web server is NOT a separate command path. It feeds INTO RadioComm. The flight controller only ever reads `channel_X_pwm` — it doesn't know or care where the values came from.
 
 **Pin configuration**: All command source pins are configurable in config.h (override defaults from pin_definitions.h).
+
+## Hardware Architecture Vision
+
+The flight controller is a **modular base system** where each component is configurable and swappable:
+
+```text
+┌─────────────────────────────────────────────────────┐
+│                  Base System (always)                │
+│                                                     │
+│  MCU (Teensy/ESP32)  +  IMU (MPU6050/MPU9250)      │
+│       +  Receiver (iBUS/SBUS/DSM/PPM/WiFi API)     │
+│       +  ESCs (PWM signal, any brand)               │
+│                                                     │
+├─────────────────────────────────────────────────────┤
+│           Optional (config.h flags)                  │
+│                                                     │
+│  OLED Display (USE_OLED_DISPLAY → select model)     │
+│  WiFi features (ESP32 only, auto with USE_WIFI)     │
+│  Optimization filters (USE_OPTIMIZATION)            │
+│  Racing features (USE_RACING)                       │
+│  OTA updates (USE_OTA)                              │
+└─────────────────────────────────────────────────────┘
+```
+
+**Key principles:**
+
+- **Each component is configurable**: MCU choice, IMU model, receiver protocol, ESC brand — all selected in config.h. Swap hardware without changing code.
+- **OLED is optional**: Enable with `USE_OLED_DISPLAY`, select display model in config.h. Not required for flight.
+- **Magnetometer is out of scope**: Compass data is flight computer territory, not the base stabilizer. MPU9250 mag calibration exists for users who want it, but it's not part of the core loop.
+- **ESP32 dual-role**: Core 0 = flight controller (real-time PID loop). Core 1 = lightweight flight computer services (WiFi, web server, telemetry, OTA). Core 1 can outsource heavy computation to an external host over WiFi.
+- **Future sensors added modularly**: Additional sensors (barometer, GPS, lidar) would each get their own `USE_*` flag and run on Core 1 (ESP32) or be handled by an external flight computer. The base flight loop on Core 0 is never affected.
+
+### Progression Path
+
+The project supports three hardware configurations, from simple to advanced:
+
+1. **Teensy + FS-iA6B** (starting point)
+   - Simplest wiring, proven dRehmFlight base
+   - Manual RC control only
+   - Best for: learning, PID tuning, initial flight testing
+
+2. **ESP32 + FS-iA6B** (WiFi-enabled)
+   - Same RC control + WiFi calibration/telemetry
+   - Web dashboard at floppi.local, OTA updates
+   - Best for: iterative development, remote diagnostics
+
+3. **ESP32 + Web API** (no physical receiver)
+   - Commands via WiFi from external controller app
+   - ESP32 Core 1 as lightweight flight computer proxy
+   - Best for: swarm coordination, autonomous flight, indoor testing
+
+### External Controller App (Built — `swarm_api/`)
+
+A standalone Python application outside `flight_controller/` for controlling ESP32 drones over WiFi:
+
+- **Web dashboard** with fleet panel, throttle/roll/pitch/yaw sliders, real-time telemetry
+- **Config file** (`config.json`) with ESP32 MAC addresses, mDNS hostnames, network settings
+- **mDNS + IP fallback** discovery (floppi-XXXX.local)
+- **Dual command path**: WebSocket `/ws` (primary, 10Hz) with HTTP POST `/api/commands` fallback
+- **Command format**: `{"ch1":1500,"ch2":1500,"ch3":1000,"ch4":1500,"ch5":1000,"ch6":1000}`
+- **Stack**: Python 3.10+, FastAPI, uvicorn, httpx, websockets, zeroconf
+- **Run**: `cd swarm_api && pip install -r requirements.txt && python3 -m uvicorn src.main:app --host 0.0.0.0 --port 8080`
+
+This is a separate project. The FC firmware just exposes the WiFi API endpoints.
 
 ## Boundaries
 
@@ -186,7 +252,7 @@ WiFi API (ESP32) ──┘
 | Base firmware | dRehmFlight | Proven VTOL flight controller, well-documented, MIT license | Pre-2026 |
 | Build system | PlatformIO | Cross-platform, multi-board, library management | Pre-2026 |
 | Primary IMU | MPU6050 via I2C | Widely available, cheap, well-supported | Pre-2026 |
-| Primary receiver | SBUS (FlySky FS-iA6B) | Clean digital protocol, single wire | Pre-2026 |
+| Primary receiver | iBUS/SBUS (FlySky FS-iA6B) | iBUS recommended (non-inverted, 115200, direct microseconds). SBUS also supported. | 2026-02-10 |
 | Calibration storage | Hard-coded in config.h | No SD cards, no EEPROM in live builds, simple and reliable | 2026-02-05 |
 | Firmware states | Calibration mode vs Live mode | Separate debug/test from production flight | 2026-02-05 |
 | Testing approach | Built into firmware as build targets | Embedded firmware testing is hardware-based, not unit test files | 2026-02-05 |
@@ -201,6 +267,8 @@ WiFi API (ESP32) ──┘
 | Web vs API server | Separate config flags | Web server = calibration/display, API server = remote control/swarm. Independently toggleable. | 2026-02-07 |
 | RadioComm as universal entry point | All command sources → RadioComm → FC | Single abstraction layer for all input: RC protocols (SBUS/DSM/PPM/PWM), serial commands, I2C commands, WiFi API commands. One entry point, one data format (`channel_X_pwm`), one failsafe path. API/web server feeds into RadioComm, not directly to FC. | 2026-02-09 |
 | Configurable pin definitions | config.h overrides pin_definitions.h | Users configure pin assignments in config.h alongside everything else. pin_definitions.h provides platform defaults with `#ifndef` guards. | 2026-02-09 |
+| Modular hardware architecture | Swappable MCU + IMU + receiver + ESCs | Base system components are all configurable in config.h. Optional features (OLED, WiFi, filters) added via flags. Future sensors added modularly without affecting base loop. | 2026-02-10 |
+| Progression path | Teensy+RC → ESP32+RC → ESP32+WiFi API | Three hardware tiers from simple to advanced. Each adds capability without requiring previous tier's hardware. | 2026-02-10 |
 
 ## Integration Points
 
@@ -240,6 +308,7 @@ WiFi API (ESP32) ──┘
 | 2026-02-07 | Added modular feature system (USE_WEB_SERVER, USE_API_SERVER, USE_OPTIMIZATION, USE_RACING). Library vendoring for standalone builds. Updated timing calculator with per-core and feature tier analysis. | LLM + User |
 | 2026-02-09 | Added auto-calibration philosophy: every hardware-dependent value must have an auto-calibration routine. Documented calibration coverage table and planned routines (failsafe, ESC, magnetometer, filter/limits tuning). | LLM + User |
 | 2026-02-09 | Calibration coverage table: all items marked Done. Added RadioComm universal command layer design (all command sources → RadioComm → FC). Added configurable pin definitions as technical decision. | LLM + User |
+| 2026-02-10 | Added hardware architecture vision (modular base system, progression path, external controller app). Added iBUS receiver support. Updated RadioComm to include iBUS. Wiring diagrams reorganized into dedicated folder with specific build guides. | LLM + User |
 
 ---
 

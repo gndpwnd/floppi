@@ -117,6 +117,14 @@
     #define DSM_TX_PIN   14  // TX3 pin (not used)
 #endif
 
+// Serial Commands (external flight computer, Serial3)
+#ifndef SERIAL_CMD_RX_PIN
+    #define SERIAL_CMD_RX_PIN 15  // RX3 pin
+#endif
+#ifndef SERIAL_CMD_TX_PIN
+    #define SERIAL_CMD_TX_PIN 14  // TX3 pin (future: acknowledgments)
+#endif
+
 // PPM
 #ifndef PPM_PIN
     #define PPM_PIN      23  // Single PPM input
@@ -192,12 +200,21 @@
  * ------------------------------------
  * VCC (Red)    → 5V (VIN or USB power)
  * GND (Black)  → GND
- * iBUS (Black) → Pin 15 (RX3)
- * 
+ * iBUS Signal  → Pin 15 (RX3) via VOLTAGE DIVIDER
+ *
+ * VOLTAGE DIVIDER (REQUIRED - Teensy 4.0 is NOT 5V tolerant!):
+ *   iBUS signal → [1k ohm] → Pin 15 (RX3)
+ *                            |
+ *                       [2k ohm]
+ *                            |
+ *                           GND
+ *   Output: 5V * 2k/(1k+2k) = 3.33V (safe for Teensy)
+ *
  * IMPORTANT NOTES:
- * - Use the iBUS port on the receiver
- * - iBUS is standard serial at 115200 baud
- * - 14 channels available
+ * - Use the iBUS port on the receiver (B/VCC header signal pin)
+ * - iBUS is standard serial at 115200 baud, 8N1, non-inverted
+ * - 14 channels available, values in 1000-2000 microseconds
+ * - See docs/wiring_diagrams/ for complete build guides
  * 
  * 
  * MPU6050 WIRING:

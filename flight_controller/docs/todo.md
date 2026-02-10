@@ -10,7 +10,7 @@ _No tasks in progress_
 
 _Priority queue for immediate work_
 
-- [ ] RadioComm universal command layer — serial commands (`USE_SERIAL_COMMANDS`), I2C commands (`USE_I2C_COMMANDS`), WiFi API command routing through RadioComm
+- [ ] RadioComm universal command layer — I2C commands (`USE_I2C_COMMANDS`) remaining
 - [ ] Command source arbitration — priority logic when multiple command sources are active (RC = primary, serial/I2C/WiFi = override)
 - [ ] OLED-guided calibration — show calibration prompts and progress on display
 - [ ] Hardware testing when hardware is available — follow [calibration-guide.md](features/calibration-guide.md) stages
@@ -36,6 +36,19 @@ _Tasks waiting on something (include reason)_
 
 _For context; clear periodically_
 
+- [x] WiFi API command routing — 2026-02-10
+  - POST /api/commands + WebSocket /ws on ESP32 web server
+  - Spinlock-protected cross-core buffer (Core 1 web server → Core 0 flight control)
+  - Works as sole command source when no receiver defined (ESP32 + Web API path)
+- [x] Serial command input (`USE_SERIAL_COMMANDS`) — 2026-02-10
+  - Binary protocol: 15-byte frames (2 header + 12 channel data + 1 XOR checksum)
+  - 115200 baud, 8N1. External flight computer sends channel values over UART.
+- [x] iBUS receiver support (`USE_IBUS_RECEIVER`) — 2026-02-10
+  - Inline parser, 115200 baud, 8N1, 14 channels, checksum validation
+  - Voltage divider required (5V → 3.3V)
+- [x] Wiring diagrams reorganized — 2026-02-10
+  - `docs/wiring_diagrams/` with build-specific guides (teensy/esp32 × receiver × vtol)
+  - Hardware architecture vision documented in scope.md
 - [x] Configurable pin definitions from config.h — 2026-02-10
   - All pins in pin_definitions.h/pin_definitions_esp32.h now use `#ifndef` guards
   - Config.h has PIN OVERRIDES section for user customization
@@ -116,7 +129,7 @@ _For context; clear periodically_
 ## Notes
 
 - **Calibration automation complete** — all config.h hardware-dependent values now have auto-calibration routines
-- **RadioComm universal command layer** — next architectural milestone. All command sources (RC, serial, I2C, WiFi) should flow through RadioComm. See roadmap for details.
+- **RadioComm universal command layer** — serial commands and WiFi API routing done. Remaining: I2C commands, command source arbitration. See roadmap for details.
 - **Hardware testing is the critical path** — firmware is ready, need physical drone to validate
 - **fc_tool will help** — visual diagnostics during calibration (separate project at /fc_tool/)
 - **Modular architecture** — code split into imu, control, motors, debug modules + feature flags

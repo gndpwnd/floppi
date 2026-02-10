@@ -19,6 +19,7 @@
 #if defined(USE_ESP32) && defined(USE_WEB_SERVER)
 
 #include "web_server.h"
+#include "radioComm.h"
 #include <WiFi.h>
 #include <ESPmDNS.h>
 #include <ESPAsyncWebServer.h>
@@ -99,9 +100,23 @@ static void onWsEvent(AsyncWebSocket* server, AsyncWebSocketClient* client,
         case WS_EVT_DISCONNECT:
             Serial.printf("[WS] Client #%u disconnected\n", client->id());
             break;
-        case WS_EVT_DATA:
-            // Future: parse incoming commands from clients
+        case WS_EVT_DATA: {
+            // Parse incoming commands: {"ch1":1500,"ch2":1500,"ch3":1000,"ch4":1500,"ch5":1000,"ch6":1000}
+            AwsFrameInfo* info = (AwsFrameInfo*)arg;
+            if (info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT) {
+                JsonDocument doc;
+                if (!deserializeJson(doc, data, len)) {
+                    uint16_t ch1 = doc["ch1"] | (uint16_t)1500;
+                    uint16_t ch2 = doc["ch2"] | (uint16_t)1500;
+                    uint16_t ch3 = doc["ch3"] | (uint16_t)1000;
+                    uint16_t ch4 = doc["ch4"] | (uint16_t)1500;
+                    uint16_t ch5 = doc["ch5"] | (uint16_t)1000;
+                    uint16_t ch6 = doc["ch6"] | (uint16_t)1000;
+                    setWifiCommandChannels(ch1, ch2, ch3, ch4, ch5, ch6);
+                }
+            }
             break;
+        }
         case WS_EVT_PONG:
         case WS_EVT_ERROR:
             break;
@@ -141,6 +156,33 @@ void setupWebServer() {
         response->setLength();
         request->send(response);
     });
+
+    // POST /api/commands - receive channel values from external controller
+    // JSON body: {"ch1":1500,"ch2":1500,"ch3":1000,"ch4":1500,"ch5":1000,"ch6":1000}
+    // Values: 1000-2000 microseconds (same as RC receiver output)
+    server.on("/api/commands", HTTP_POST,
+        [](AsyncWebServerRequest* request) {},  // Headers callback (unused)
+        NULL,  // Upload handler (unused)
+        [](AsyncWebServerRequest* request, uint8_t* data, size_t len, size_t index, size_t total) {
+            if (index + len != total) return;  // Wait for complete body
+
+            JsonDocument doc;
+            if (deserializeJson(doc, (const char*)data, len)) {
+                request->send(400, "application/json", "{\"error\":\"invalid json\"}");
+                return;
+            }
+
+            uint16_t ch1 = doc["ch1"] | (uint16_t)1500;
+            uint16_t ch2 = doc["ch2"] | (uint16_t)1500;
+            uint16_t ch3 = doc["ch3"] | (uint16_t)1000;
+            uint16_t ch4 = doc["ch4"] | (uint16_t)1500;
+            uint16_t ch5 = doc["ch5"] | (uint16_t)1000;
+            uint16_t ch6 = doc["ch6"] | (uint16_t)1000;
+
+            setWifiCommandChannels(ch1, ch2, ch3, ch4, ch5, ch6);
+            request->send(200, "application/json", "{\"ok\":true}");
+        }
+    );
 
     // GET / - simple text status
     server.on("/", HTTP_GET, [](AsyncWebServerRequest* request) {

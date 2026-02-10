@@ -80,6 +80,16 @@ PLATFORM_ARCH = {
 }
 
 
+# Map platform keys to their primary build environment
+PLATFORM_BUILDS = {
+    "teensy40": "teensy40",
+    "teensy41": "teensy41",
+    "teensy36": "teensy36",
+    "esp32": "esp32",
+    "esp32s3": "esp32s3",
+}
+
+
 def get_cycles(platform_key, fpu=True):
     """Get cycle cost profile for a platform."""
     if not fpu:

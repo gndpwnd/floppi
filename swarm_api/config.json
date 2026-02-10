@@ -1,0 +1,21 @@
+{
+  "drones": [
+    {
+      "mac": "AA:BB:CC:DD:EE:FF",
+      "name": "drone-1",
+      "last_ip": null,
+      "mdns_hostname": "floppi-EEFF",
+      "last_seen": null
+    }
+  ],
+  "network": {
+    "interface": "auto",
+    "command_rate_hz": 10,
+    "telemetry_poll_interval_ms": 500,
+    "connection_timeout_ms": 2000
+  },
+  "server": {
+    "host": "0.0.0.0",
+    "port": 8080
+  }
+}

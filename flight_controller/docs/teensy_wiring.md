@@ -1,6 +1,10 @@
-# Teensy 4.0/4.1 Wiring Guide
+# Teensy 4.0/4.1 Wiring Guide (General Reference)
 
-Complete wiring reference for Teensy 4.0 and 4.1 flight controllers.
+General pin reference for Teensy 4.0 and 4.1 flight controllers.
+
+> **For specific build guides, see [wiring_diagrams/](wiring_diagrams/):**
+>
+> - [Teensy + FS-iA6B + Drone](wiring_diagrams/teensy_wiring_fsia6b_drone.md) — recommended starting point
 
 ---
 

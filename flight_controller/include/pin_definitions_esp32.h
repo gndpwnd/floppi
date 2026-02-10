@@ -183,6 +183,22 @@
     #define DSM_TX_PIN   2   // TX1 pin (not used)
 #endif
 
+// Serial Commands (external flight computer, Serial1)
+#ifndef SERIAL_CMD_RX_PIN
+    #ifdef USE_ESP32S3
+        #define SERIAL_CMD_RX_PIN 16  // RX1 on S3
+    #else
+        #define SERIAL_CMD_RX_PIN 4   // RX1 pin
+    #endif
+#endif
+#ifndef SERIAL_CMD_TX_PIN
+    #ifdef USE_ESP32S3
+        #define SERIAL_CMD_TX_PIN 15  // TX1 on S3
+    #else
+        #define SERIAL_CMD_TX_PIN 2   // TX1 pin (future: acknowledgments)
+    #endif
+#endif
+
 // PPM
 #ifndef PPM_PIN
     #ifdef USE_ESP32S3

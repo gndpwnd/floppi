@@ -30,6 +30,10 @@ This roadmap tracks project-level features and milestones for the flight control
 - [x] SBUS receiver support (FlySky FS-iA6B)
   - Completed: Pre-2026
 
+- [x] iBUS receiver support (FlySky FS-iA6B)
+  - Completed: 2026-02-10
+  - Notes: Inline parser (no external library). 115200 baud, 8N1, non-inverted. 32-byte frames, 14 channels, checksum validation. Voltage divider required (5V → 3.3V). Recommended protocol for FlySky hardware.
+
 - [x] PID control loops (rate mode + angle mode)
   - Completed: Pre-2026
 
@@ -328,34 +332,37 @@ Files: `ota.h`, `ota.cpp`.
 >
 > **Key insight**: The API web server is NOT a separate command path. It feeds INTO RadioComm, which feeds the flight controller. One entry point, one data format, one failsafe path.
 
-**Current state**: RadioComm handles 4 RC protocols (SBUS, DSM, PPM, PWM), compile-time selected. One protocol per build. All produce `channel_1_pwm` through `channel_6_pwm` in 1000-2000us format.
+**Current state**: RadioComm handles 5 RC protocols (SBUS, iBUS, DSM, PPM, PWM) + serial commands from external flight computer, compile-time selected. One source per build. All produce `channel_1_pwm` through `channel_6_pwm` in 1000-2000us format.
 
 **Planned command sources:**
 
 | Source | Interface | Config Flag | Notes |
 | ------ | --------- | ----------- | ----- |
 | SBUS | Serial (inverted) | `USE_SBUS_RECEIVER` | Current default. Existing. |
+| iBUS | Serial (115200) | `USE_IBUS_RECEIVER` | FlySky recommended. Existing. |
 | DSM/DSMX | Serial | `USE_DSM_RECEIVER` | Spektrum. Existing. |
 | PPM | Single GPIO | `USE_PPM_RECEIVER` | Legacy. Existing. |
 | PWM | 6 GPIOs | `USE_PWM_RECEIVER` | Legacy. Existing. |
-| Serial commands | UART | `USE_SERIAL_COMMANDS` | Flight computer sends channel values over serial |
+| Serial commands | UART | `USE_SERIAL_COMMANDS` | Done. Binary protocol, 15-byte frames. |
 | I2C commands | I2C slave | `USE_I2C_COMMANDS` | Flight computer sends commands over I2C bus |
-| WiFi API | HTTP/WebSocket | `USE_API_SERVER` | Web server routes commands through RadioComm |
+| WiFi API | HTTP/WebSocket | `USE_WEB_SERVER` | Done. POST /api/commands + WebSocket. |
 
-- [ ] Serial command input (`USE_SERIAL_COMMANDS`)
-  - Description: Accept channel values over serial UART from an external flight computer. Simple text or binary protocol. Flight computer sends throttle/roll/pitch/yaw values, RadioComm writes them to `channel_X_pwm`.
-  - Pattern: Same `getCommands()` function, new code path guarded by `#ifdef USE_SERIAL_COMMANDS`.
-  - Pin: Configurable in config.h (defaults in pin_definitions.h).
+- [x] Serial command input (`USE_SERIAL_COMMANDS`)
+  - Completed: 2026-02-10
+  - Description: Accept channel values over serial UART from an external flight computer. Binary protocol: 15-byte frames `[0xAA 0x55] [6×uint16 LE channels] [XOR checksum]`. 115200 baud, 8N1. Timeout-based failsafe (500ms).
+  - Pattern: Same `getCommands()` function, inline parser matching iBUS pattern.
+  - Pin: Configurable in config.h (defaults in pin_definitions.h). Serial3 (Teensy), Serial1 (ESP32).
 
 - [ ] I2C command input (`USE_I2C_COMMANDS`)
   - Description: Accept channel values over I2C with the FC as I2C slave. Flight computer (I2C master) writes channel data. Useful for companion computers (Raspberry Pi, etc.) physically connected to the FC.
   - Pattern: I2C slave ISR writes to a buffer, `getCommands()` copies buffer to `channel_X_pwm`.
   - Pin: Configurable in config.h (defaults in pin_definitions.h). Must use different I2C bus than IMU.
 
-- [ ] WiFi API command routing
-  - Description: Route commands received by the ESP32 web server (via HTTP POST or WebSocket) through RadioComm instead of directly to flight control. Web server writes to a shared command buffer, `getCommands()` picks it up.
-  - Dependencies: `USE_API_SERVER` (ESP32 only). Web server already exists on Core 1.
-  - Pattern: Shared volatile struct or queue between Core 1 (web server) and Core 0 (RadioComm/FC).
+- [x] WiFi API command routing
+  - Completed: 2026-02-10
+  - Description: Route commands received by the ESP32 web server (via HTTP POST or WebSocket) through RadioComm. Web server on Core 1 writes to shared command buffer (spinlock-protected), RadioComm on Core 0 reads it in `getCommands()`.
+  - Endpoints: POST `/api/commands` (JSON), WebSocket `/ws` (JSON). Format: `{"ch1":1500,"ch2":1500,"ch3":1000,"ch4":1500,"ch5":1000,"ch6":1000}`.
+  - Works as sole command source when no RC receiver is defined (ESP32 + Web API progression path). Failsafe: 500ms timeout.
 
 - [ ] Command source arbitration
   - Description: When multiple command sources are active, RadioComm needs priority logic. RC receiver = primary (real-time hardware). Serial/I2C/WiFi = override sources (flight computer). If override source is active and sending, it takes priority. If it goes silent (timeout), RC receiver resumes. Failsafe applies across ALL sources.
@@ -485,6 +492,22 @@ Files: `ota.h`, `ota.cpp`.
 - **Feature ceiling**: The FC has ~90% of target features. Resist adding more. See [findings/bare-bones-fc-research.md](findings/bare-bones-fc-research.md)
 - **Compile-time architecture**: See [features/compile-time-architecture.md](features/compile-time-architecture.md) for details on the #ifdef feature gating and dual-core vs single-core architecture.
 
+### External Controller App (Planned — Separate Project)
+
+> A standalone Python application outside `flight_controller/` for controlling ESP32 drones over WiFi. This is NOT part of the flight controller firmware — it's a separate project that talks to the FC via its WiFi API.
+
+- [ ] Web dashboard for basic drone controls
+  - Description: Browser-based UI for throttle, roll, pitch, yaw. Sends commands via HTTP POST or WebSocket to ESP32 drones.
+  - Notes: Python web server (Flask/FastAPI) serving a simple HTML dashboard. Platform independent (Linux + Windows).
+
+- [ ] Config file with drone registry
+  - Description: `config.json` with ESP32 MAC addresses and network settings. Direct connection to known drones (no network scanning). Resolves IP from MAC or mDNS hostname.
+
+- [ ] Computation offloading
+  - Description: ESP32 Core 1 can request computation from the host (e.g., path planning, sensor fusion). Host returns results over WiFi. Keeps ESP32 firmware lean.
+
+**Progression path**: Teensy+FS-iA6B (manual RC) → ESP32+FS-iA6B (RC + WiFi telemetry) → ESP32+Web API (WiFi-only control)
+
 ---
 
 ## Completed
@@ -550,6 +573,11 @@ Files: `ota.h`, `ota.cpp`.
 - [x] Calibration guide with hardware requirements and test sequencing — 2026-02-10
 - [x] Calibration reset tool (`tools/calibration_reset.py`) — 2026-02-10
 - [x] Config.h calibration status indicators (STATUS: UNCALIBRATED markers) — 2026-02-10
+- [x] iBUS receiver support (FlySky FS-iA6B, inline parser, checksum validation) — 2026-02-10
+- [x] Wiring diagrams reorganized into `docs/wiring_diagrams/` with build-specific guides — 2026-02-10
+- [x] Hardware architecture vision documented (modular base system, progression path) — 2026-02-10
+- [x] Serial command input (`USE_SERIAL_COMMANDS`) — binary protocol from external flight computer — 2026-02-10
+- [x] WiFi API command routing — POST /api/commands + WebSocket, spinlock cross-core buffer — 2026-02-10
 
 ---
 

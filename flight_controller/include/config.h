@@ -85,13 +85,20 @@
 //#define USE_MPU9250     // MPU9250 via SPI (has magnetometer)
 
 //=============================================================================
-// RECEIVER PROTOCOL SELECTION
+// RECEIVER / COMMAND SOURCE SELECTION
 //=============================================================================
-// Uncomment ONLY ONE receiver protocol
-//#define USE_PWM_RECEIVER   // Individual PWM channels
-//#define USE_PPM_RECEIVER   // PPM (single wire, 8 channels)
-#define USE_SBUS_RECEIVER    // SBUS (Futaba/FrSky standard)
-//#define USE_DSM_RECEIVER   // DSM/DSM2/DSMX (Spektrum)
+// Uncomment ONLY ONE command source. RC receiver protocols are the primary
+// source for manual flying. Serial commands are for external flight computers.
+//#define USE_PWM_RECEIVER       // Individual PWM channels
+//#define USE_PPM_RECEIVER       // PPM (single wire, 8 channels)
+#define USE_SBUS_RECEIVER        // SBUS (Futaba/FrSky standard)
+//#define USE_IBUS_RECEIVER      // iBUS (FlySky standard, 115200 baud)
+//#define USE_DSM_RECEIVER       // DSM/DSM2/DSMX (Spektrum)
+//#define USE_SERIAL_COMMANDS    // External flight computer over UART (115200, binary)
+//
+// WiFi-only (ESP32): Comment out ALL receiver/command defines above.
+// The web server becomes the sole command source via POST /api/commands
+// and WebSocket /ws. Requires USE_WIFI + USE_WEB_SERVER. See swarm_api/.
 
 #ifdef USE_DSM_RECEIVER
     #define DSM_NUM_CHANNELS 6  // Number of channels from DSM receiver

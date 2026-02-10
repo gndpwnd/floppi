@@ -1,6 +1,11 @@
-# ESP32 Wiring Guide
+# ESP32 Wiring Guide (General Reference)
 
-Complete wiring reference for ESP32 and ESP32-S3 flight controllers.
+General pin reference for ESP32 and ESP32-S3 flight controllers.
+
+> **For specific build guides, see [wiring_diagrams/](wiring_diagrams/):**
+>
+> - [ESP32 + FS-iA6B + Drone](wiring_diagrams/esp32_wiring_fsia6b_drone.md) — recommended starting point
+> - [ESP32 + Web API + Drone](wiring_diagrams/esp32_wiring_web_api_drone.md) — no physical receiver
 
 ---
 
