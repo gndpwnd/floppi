@@ -22,6 +22,10 @@
 //                                         TEENSY PIN DEFINITIONS                                                         //
 //========================================================================================================================//
 // Only compiled for Teensy builds (when USE_ESP32 is not defined)
+//
+// All pins use #ifndef guards — override any pin in config.h before this file
+// is included. Example in config.h:
+//   #define MOTOR_PIN_1 10  // Override default pin 0
 
 #ifndef USE_ESP32
 
@@ -29,58 +33,114 @@
 //                                              IMU PINS (I2C)                                                            //
 //========================================================================================================================//
 
-#define IMU_SDA_PIN 18  // I2C SDA (Wire)
-#define IMU_SCL_PIN 19  // I2C SCL (Wire)
+#ifndef IMU_SDA_PIN
+    #define IMU_SDA_PIN 18  // I2C SDA (Wire)
+#endif
+#ifndef IMU_SCL_PIN
+    #define IMU_SCL_PIN 19  // I2C SCL (Wire)
+#endif
 
 //========================================================================================================================//
 //                                              MOTOR PINS (OneShot125 or PWM)                                            //
 //========================================================================================================================//
 
-#define MOTOR_PIN_1 0   // Motor 1 (Front Left in X config)
-#define MOTOR_PIN_2 1   // Motor 2 (Front Right in X config)
-#define MOTOR_PIN_3 2   // Motor 3 (Back Right in X config)
-#define MOTOR_PIN_4 3   // Motor 4 (Back Left in X config)
-#define MOTOR_PIN_5 4   // Motor 5 (optional)
-#define MOTOR_PIN_6 5   // Motor 6 (optional)
+#ifndef MOTOR_PIN_1
+    #define MOTOR_PIN_1 0   // Motor 1 (Front Left in X config)
+#endif
+#ifndef MOTOR_PIN_2
+    #define MOTOR_PIN_2 1   // Motor 2 (Front Right in X config)
+#endif
+#ifndef MOTOR_PIN_3
+    #define MOTOR_PIN_3 2   // Motor 3 (Back Right in X config)
+#endif
+#ifndef MOTOR_PIN_4
+    #define MOTOR_PIN_4 3   // Motor 4 (Back Left in X config)
+#endif
+#ifndef MOTOR_PIN_5
+    #define MOTOR_PIN_5 4   // Motor 5 (optional)
+#endif
+#ifndef MOTOR_PIN_6
+    #define MOTOR_PIN_6 5   // Motor 6 (optional)
+#endif
 
 //========================================================================================================================//
 //                                              SERVO PINS (50Hz PWM)                                                     //
 //========================================================================================================================//
 
-#define SERVO_PIN_1 6   // Servo 1
-#define SERVO_PIN_2 7   // Servo 2
-#define SERVO_PIN_3 8   // Servo 3
-#define SERVO_PIN_4 9   // Servo 4
-#define SERVO_PIN_5 10  // Servo 5
-#define SERVO_PIN_6 11  // Servo 6
-#define SERVO_PIN_7 12  // Servo 7
+#ifndef SERVO_PIN_1
+    #define SERVO_PIN_1 6   // Servo 1
+#endif
+#ifndef SERVO_PIN_2
+    #define SERVO_PIN_2 7   // Servo 2
+#endif
+#ifndef SERVO_PIN_3
+    #define SERVO_PIN_3 8   // Servo 3
+#endif
+#ifndef SERVO_PIN_4
+    #define SERVO_PIN_4 9   // Servo 4
+#endif
+#ifndef SERVO_PIN_5
+    #define SERVO_PIN_5 10  // Servo 5
+#endif
+#ifndef SERVO_PIN_6
+    #define SERVO_PIN_6 11  // Servo 6
+#endif
+#ifndef SERVO_PIN_7
+    #define SERVO_PIN_7 12  // Servo 7
+#endif
 
 //========================================================================================================================//
 //                                              RECEIVER PINS                                                             //
 //========================================================================================================================//
 
 // SBUS (Serial5)
-#define SBUS_RX_PIN  21  // RX5 pin
-#define SBUS_TX_PIN  20  // TX5 pin (not used)
+#ifndef SBUS_RX_PIN
+    #define SBUS_RX_PIN  21  // RX5 pin
+#endif
+#ifndef SBUS_TX_PIN
+    #define SBUS_TX_PIN  20  // TX5 pin (not used)
+#endif
 
 // iBUS (Serial3)
-#define IBUS_RX_PIN  15  // RX3 pin
-#define IBUS_TX_PIN  14  // TX3 pin (not used)
+#ifndef IBUS_RX_PIN
+    #define IBUS_RX_PIN  15  // RX3 pin
+#endif
+#ifndef IBUS_TX_PIN
+    #define IBUS_TX_PIN  14  // TX3 pin (not used)
+#endif
 
 // DSM (Serial3)
-#define DSM_RX_PIN   15  // RX3 pin
-#define DSM_TX_PIN   14  // TX3 pin (not used)
+#ifndef DSM_RX_PIN
+    #define DSM_RX_PIN   15  // RX3 pin
+#endif
+#ifndef DSM_TX_PIN
+    #define DSM_TX_PIN   14  // TX3 pin (not used)
+#endif
 
 // PPM
-#define PPM_PIN      23  // Single PPM input
+#ifndef PPM_PIN
+    #define PPM_PIN      23  // Single PPM input
+#endif
 
 // PWM (individual channel inputs)
-#define PWM_CH1_PIN  23  // Channel 1 (Roll)
-#define PWM_CH2_PIN  22  // Channel 2 (Pitch)
-#define PWM_CH3_PIN  21  // Channel 3 (Throttle)
-#define PWM_CH4_PIN  20  // Channel 4 (Yaw)
-#define PWM_CH5_PIN  17  // Channel 5 (Aux1)
-#define PWM_CH6_PIN  16  // Channel 6 (Aux2)
+#ifndef PWM_CH1_PIN
+    #define PWM_CH1_PIN  23  // Channel 1 (Roll)
+#endif
+#ifndef PWM_CH2_PIN
+    #define PWM_CH2_PIN  22  // Channel 2 (Pitch)
+#endif
+#ifndef PWM_CH3_PIN
+    #define PWM_CH3_PIN  21  // Channel 3 (Throttle)
+#endif
+#ifndef PWM_CH4_PIN
+    #define PWM_CH4_PIN  20  // Channel 4 (Yaw)
+#endif
+#ifndef PWM_CH5_PIN
+    #define PWM_CH5_PIN  17  // Channel 5 (Aux1)
+#endif
+#ifndef PWM_CH6_PIN
+    #define PWM_CH6_PIN  16  // Channel 6 (Aux2)
+#endif
 
 //========================================================================================================================//
 //                                              OLED DISPLAY (Software I2C)                                              //
@@ -89,14 +149,20 @@
 // Default: pins 16/17 (free when not using PWM receiver).
 // Change these if your receiver uses PWM mode.
 
-#define OLED_SDA_PIN 16  // Software I2C SDA for OLED
-#define OLED_SCL_PIN 17  // Software I2C SCL for OLED
+#ifndef OLED_SDA_PIN
+    #define OLED_SDA_PIN 16  // Software I2C SDA for OLED
+#endif
+#ifndef OLED_SCL_PIN
+    #define OLED_SCL_PIN 17  // Software I2C SCL for OLED
+#endif
 
 //========================================================================================================================//
 //                                              STATUS LED                                                                //
 //========================================================================================================================//
 
-#define LED_PIN 13  // Built-in LED on Teensy 4.0/4.1
+#ifndef LED_PIN
+    #define LED_PIN 13  // Built-in LED on Teensy 4.0/4.1
+#endif
 
 //========================================================================================================================//
 //                                              WIRING NOTES                                                              //

@@ -287,10 +287,25 @@ Files: `ota.h`, `ota.cpp`.
 
 > Features that make the firmware easier to use with real hardware. Important for the "flash, calibrate, fly" experience. Configurable pins is top priority — users should configure everything in config.h.
 
-- [ ] Configurable pin definitions from config.h
-  - Description: Move pin assignments from pin_definitions.h into config.h so users configure everything in one file. Currently pin_definitions.h has platform-specific defaults — keep those as fallbacks, but let config.h overrides take priority.
-  - Rationale: Easier for users with different board layouts or custom wiring. Makes the firmware more portable across MCU variants.
-  - Pattern: `#ifndef MOTOR_PIN_1` / `#define MOTOR_PIN_1 0` in pin_definitions.h, `#define MOTOR_PIN_1 25` in config.h to override.
+- [x] Configurable pin definitions from config.h
+  - Completed: 2026-02-10
+  - Description: All pin definitions in pin_definitions.h and pin_definitions_esp32.h now use `#ifndef` guards. Users override any pin in config.h's "PIN OVERRIDES" section. Platform defaults remain as fallbacks.
+  - Pattern: `#ifndef MOTOR_PIN_1` in pin_definitions.h, `#define MOTOR_PIN_1 25` in config.h to override.
+
+- [x] Calibration guide with hardware requirements and stage-based test sequencing
+  - Completed: 2026-02-10
+  - Description: Step-by-step guide for incremental hardware setup (Stage 0-4). Each stage lists what hardware is needed, what calibrations to run, and what values you get. Feature tier calibration requirements documented (base/optimization/racing).
+  - File: [features/calibration-guide.md](features/calibration-guide.md)
+
+- [x] Calibration reset tool
+  - Completed: 2026-02-10
+  - Description: Python script that resets all calibration `#define` values in config.h to factory defaults. Preserves feature flags and non-calibration settings. Dry-run mode, confirmation prompt, custom config path.
+  - File: `tools/calibration_reset.py`
+  - Usage: `python3 tools/calibration_reset.py` (or `--dry-run` to preview, `--yes` to skip prompt)
+
+- [x] Config.h calibration status indicators
+  - Completed: 2026-02-10
+  - Description: Each calibration section in config.h now has STATUS comments (UNCALIBRATED or defaults-are-safe) with references to the calibration guide stage and serial command. Users can scan config.h and immediately see what needs calibration.
 
 - [ ] OLED-guided calibration workflow
   - Description: Show calibration instructions and progress on the OLED display during calibration mode. Currently, all calibration guidance is via serial only. Users without a connected laptop should still be able to calibrate using just the OLED + switches.
@@ -475,6 +490,7 @@ Files: `ota.h`, `ota.cpp`.
 ## Completed
 
 ### Firmware Foundation
+
 - [x] dRehmFlight port to PlatformIO — Pre-2026
 - [x] Multi-board support (Teensy 4.0/4.1/3.6) — Pre-2026
 - [x] MPU6050 IMU integration — Pre-2026
@@ -528,6 +544,10 @@ Files: `ota.h`, `ota.cpp`.
 - [x] Magnetometer sphere calibration (MPU9250, `m` command) — 2026-02-09
 - [x] Runtime filter/limits tuning (`p` command) — 2026-02-09
 - [x] Wiring diagrams updated with OLED display connections — 2026-02-09
+- [x] Configurable pin definitions (`#ifndef` guards, config.h PIN OVERRIDES section) — 2026-02-10
+- [x] Calibration guide with hardware requirements and test sequencing — 2026-02-10
+- [x] Calibration reset tool (`tools/calibration_reset.py`) — 2026-02-10
+- [x] Config.h calibration status indicators (STATUS: UNCALIBRATED markers) — 2026-02-10
 
 ---
 

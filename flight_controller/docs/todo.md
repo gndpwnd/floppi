@@ -1,6 +1,6 @@
 # Flight Controller Firmware - Todo
 
-> Last updated: 2026-02-09
+> Last updated: 2026-02-10
 
 ## In Progress
 
@@ -10,12 +10,11 @@ _No tasks in progress_
 
 _Priority queue for immediate work_
 
-- [ ] Configurable pin definitions from config.h — move pin overrides so users configure everything in one file (**top priority**)
 - [ ] RadioComm universal command layer — serial commands (`USE_SERIAL_COMMANDS`), I2C commands (`USE_I2C_COMMANDS`), WiFi API command routing through RadioComm
 - [ ] Command source arbitration — priority logic when multiple command sources are active (RC = primary, serial/I2C/WiFi = override)
 - [ ] OLED-guided calibration — show calibration prompts and progress on display
 - [ ] Sequential calibration workflow (`a` command) — run all calibration routines in one guided session
-- [ ] Hardware testing when hardware is available
+- [ ] Hardware testing when hardware is available — follow [calibration-guide.md](features/calibration-guide.md) stages
 - [ ] fc_tool WebSocket integration (connect to floppi.local/ws) — **deferred**, fc_tool still in development
 
 ## Backlog
@@ -38,6 +37,18 @@ _Tasks waiting on something (include reason)_
 
 _For context; clear periodically_
 
+- [x] Configurable pin definitions from config.h — 2026-02-10
+  - All pins in pin_definitions.h/pin_definitions_esp32.h now use `#ifndef` guards
+  - Config.h has PIN OVERRIDES section for user customization
+- [x] Calibration guide with hardware requirements — 2026-02-10
+  - Stage-based setup: MCU-only → +IMU → +receiver → +ESCs → full drone
+  - Feature tier calibration requirements (base/optimization/racing)
+  - See [features/calibration-guide.md](features/calibration-guide.md)
+- [x] Calibration reset tool — 2026-02-10
+  - `python3 tools/calibration_reset.py` resets all calibration values to defaults
+  - Dry-run, confirmation, custom config path options
+- [x] Config.h calibration status markers — 2026-02-10
+  - STATUS: UNCALIBRATED comments with stage references and serial commands
 - [x] Failsafe auto-detection (`f` command) — 2026-02-09
   - Measures receiver failsafe PWM outputs (TX off), outputs FAILSAFE_* defines
 - [x] ESC endpoint calibration (`e` command) — 2026-02-09

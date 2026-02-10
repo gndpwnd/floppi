@@ -4,6 +4,13 @@
  *
  * Note: ESP32 GPIO numbers are used directly (not physical pin numbers).
  * This file is included when USE_ESP32 is defined.
+ *
+ * All pins use #ifndef guards — override any pin in config.h before this
+ * file is included. Example in config.h:
+ *   #define MOTOR_PIN_1 32  // Override default pin 25
+ *
+ * ESP32-S3 overrides only apply when the user hasn't already defined
+ * a pin in config.h (user config.h overrides always win).
  */
 
 #ifndef PIN_DEFINITIONS_ESP32_H
@@ -13,17 +20,19 @@
 //                                              IMU PINS (I2C)                                                            //
 //========================================================================================================================//
 
-// ESP32 default I2C pins (can be remapped)
-#define IMU_SDA_PIN 21  // I2C SDA (GPIO21)
-#define IMU_SCL_PIN 22  // I2C SCL (GPIO22)
-
-// ESP32-S3 can use different pins if needed
-#ifdef USE_ESP32S3
-    // S3 default I2C pins
-    #undef IMU_SDA_PIN
-    #undef IMU_SCL_PIN
-    #define IMU_SDA_PIN 8   // I2C SDA (GPIO8)
-    #define IMU_SCL_PIN 9   // I2C SCL (GPIO9)
+#ifndef IMU_SDA_PIN
+    #ifdef USE_ESP32S3
+        #define IMU_SDA_PIN 8   // I2C SDA (GPIO8) — S3 default
+    #else
+        #define IMU_SDA_PIN 21  // I2C SDA (GPIO21) — ESP32 default
+    #endif
+#endif
+#ifndef IMU_SCL_PIN
+    #ifdef USE_ESP32S3
+        #define IMU_SCL_PIN 9   // I2C SCL (GPIO9) — S3 default
+    #else
+        #define IMU_SCL_PIN 22  // I2C SCL (GPIO22) — ESP32 default
+    #endif
 #endif
 
 //========================================================================================================================//
@@ -32,56 +41,101 @@
 // ESP32 uses LEDC peripheral for PWM output.
 // These pins support PWM output. Avoid strapping pins (0, 2, 12, 15).
 
-#define MOTOR_PIN_1 25  // Motor 1 (Front Left in X config)
-#define MOTOR_PIN_2 26  // Motor 2 (Front Right in X config)
-#define MOTOR_PIN_3 27  // Motor 3 (Back Right in X config)
-#define MOTOR_PIN_4 14  // Motor 4 (Back Left in X config)
-#define MOTOR_PIN_5 12  // Motor 5 (optional) - Note: strapping pin
-#define MOTOR_PIN_6 13  // Motor 6 (optional)
-
-#ifdef USE_ESP32S3
-    // ESP32-S3 different pinout
-    #undef MOTOR_PIN_1
-    #undef MOTOR_PIN_2
-    #undef MOTOR_PIN_3
-    #undef MOTOR_PIN_4
-    #undef MOTOR_PIN_5
-    #undef MOTOR_PIN_6
-    #define MOTOR_PIN_1 35  // Motor 1
-    #define MOTOR_PIN_2 36  // Motor 2
-    #define MOTOR_PIN_3 37  // Motor 3
-    #define MOTOR_PIN_4 38  // Motor 4
-    #define MOTOR_PIN_5 39  // Motor 5
-    #define MOTOR_PIN_6 40  // Motor 6
+#ifndef MOTOR_PIN_1
+    #ifdef USE_ESP32S3
+        #define MOTOR_PIN_1 35
+    #else
+        #define MOTOR_PIN_1 25  // Front Left in X config
+    #endif
+#endif
+#ifndef MOTOR_PIN_2
+    #ifdef USE_ESP32S3
+        #define MOTOR_PIN_2 36
+    #else
+        #define MOTOR_PIN_2 26  // Front Right in X config
+    #endif
+#endif
+#ifndef MOTOR_PIN_3
+    #ifdef USE_ESP32S3
+        #define MOTOR_PIN_3 37
+    #else
+        #define MOTOR_PIN_3 27  // Back Right in X config
+    #endif
+#endif
+#ifndef MOTOR_PIN_4
+    #ifdef USE_ESP32S3
+        #define MOTOR_PIN_4 38
+    #else
+        #define MOTOR_PIN_4 14  // Back Left in X config
+    #endif
+#endif
+#ifndef MOTOR_PIN_5
+    #ifdef USE_ESP32S3
+        #define MOTOR_PIN_5 39
+    #else
+        #define MOTOR_PIN_5 12  // Optional — Note: strapping pin on ESP32
+    #endif
+#endif
+#ifndef MOTOR_PIN_6
+    #ifdef USE_ESP32S3
+        #define MOTOR_PIN_6 40
+    #else
+        #define MOTOR_PIN_6 13  // Optional
+    #endif
 #endif
 
 //========================================================================================================================//
 //                                              SERVO PINS (50Hz PWM via LEDC)                                            //
 //========================================================================================================================//
 
-#define SERVO_PIN_1 32  // Servo 1
-#define SERVO_PIN_2 33  // Servo 2
-#define SERVO_PIN_3 4   // Servo 3
-#define SERVO_PIN_4 16  // Servo 4
-#define SERVO_PIN_5 17  // Servo 5
-#define SERVO_PIN_6 5   // Servo 6
-#define SERVO_PIN_7 18  // Servo 7
-
-#ifdef USE_ESP32S3
-    #undef SERVO_PIN_1
-    #undef SERVO_PIN_2
-    #undef SERVO_PIN_3
-    #undef SERVO_PIN_4
-    #undef SERVO_PIN_5
-    #undef SERVO_PIN_6
-    #undef SERVO_PIN_7
-    #define SERVO_PIN_1 41  // Servo 1
-    #define SERVO_PIN_2 42  // Servo 2
-    #define SERVO_PIN_3 1   // Servo 3
-    #define SERVO_PIN_4 2   // Servo 4
-    #define SERVO_PIN_5 10  // Servo 5
-    #define SERVO_PIN_6 11  // Servo 6
-    #define SERVO_PIN_7 12  // Servo 7
+#ifndef SERVO_PIN_1
+    #ifdef USE_ESP32S3
+        #define SERVO_PIN_1 41
+    #else
+        #define SERVO_PIN_1 32
+    #endif
+#endif
+#ifndef SERVO_PIN_2
+    #ifdef USE_ESP32S3
+        #define SERVO_PIN_2 42
+    #else
+        #define SERVO_PIN_2 33
+    #endif
+#endif
+#ifndef SERVO_PIN_3
+    #ifdef USE_ESP32S3
+        #define SERVO_PIN_3 1
+    #else
+        #define SERVO_PIN_3 4
+    #endif
+#endif
+#ifndef SERVO_PIN_4
+    #ifdef USE_ESP32S3
+        #define SERVO_PIN_4 2
+    #else
+        #define SERVO_PIN_4 16
+    #endif
+#endif
+#ifndef SERVO_PIN_5
+    #ifdef USE_ESP32S3
+        #define SERVO_PIN_5 10
+    #else
+        #define SERVO_PIN_5 17
+    #endif
+#endif
+#ifndef SERVO_PIN_6
+    #ifdef USE_ESP32S3
+        #define SERVO_PIN_6 11
+    #else
+        #define SERVO_PIN_6 5
+    #endif
+#endif
+#ifndef SERVO_PIN_7
+    #ifdef USE_ESP32S3
+        #define SERVO_PIN_7 12
+    #else
+        #define SERVO_PIN_7 18
+    #endif
 #endif
 
 //========================================================================================================================//
@@ -90,50 +144,84 @@
 
 // SBUS (Serial2 on ESP32)
 // Note: SBUS requires inverted serial - ESP32 can do this in software
-#define SBUS_RX_PIN  16  // RX2 pin
-#define SBUS_TX_PIN  17  // TX2 pin (not used)
+#ifndef SBUS_RX_PIN
+    #ifdef USE_ESP32S3
+        #define SBUS_RX_PIN  18  // RX on S3
+    #else
+        #define SBUS_RX_PIN  16  // RX2 pin
+    #endif
+#endif
+#ifndef SBUS_TX_PIN
+    #ifdef USE_ESP32S3
+        #define SBUS_TX_PIN  17  // TX on S3
+    #else
+        #define SBUS_TX_PIN  17  // TX2 pin (not used)
+    #endif
+#endif
 
 // iBUS (Serial1 on ESP32)
-#define IBUS_RX_PIN  4   // RX1 pin
-#define IBUS_TX_PIN  2   // TX1 pin (not used)
+#ifndef IBUS_RX_PIN
+    #ifdef USE_ESP32S3
+        #define IBUS_RX_PIN  16  // RX1 on S3
+    #else
+        #define IBUS_RX_PIN  4   // RX1 pin
+    #endif
+#endif
+#ifndef IBUS_TX_PIN
+    #ifdef USE_ESP32S3
+        #define IBUS_TX_PIN  15  // TX1 on S3
+    #else
+        #define IBUS_TX_PIN  2   // TX1 pin (not used)
+    #endif
+#endif
 
 // DSM (Serial1)
-#define DSM_RX_PIN   4   // RX1 pin
-#define DSM_TX_PIN   2   // TX1 pin (not used)
+#ifndef DSM_RX_PIN
+    #define DSM_RX_PIN   4   // RX1 pin
+#endif
+#ifndef DSM_TX_PIN
+    #define DSM_TX_PIN   2   // TX1 pin (not used)
+#endif
 
 // PPM
-#define PPM_PIN      35  // PPM input (input-only GPIO)
+#ifndef PPM_PIN
+    #ifdef USE_ESP32S3
+        #define PPM_PIN      5   // PPM input on S3
+    #else
+        #define PPM_PIN      35  // PPM input (input-only GPIO)
+    #endif
+#endif
 
 // PWM (individual channel inputs)
-#define PWM_CH1_PIN  35  // Channel 1 (Roll)
-#define PWM_CH2_PIN  34  // Channel 2 (Pitch)
-#define PWM_CH3_PIN  39  // Channel 3 (Throttle) - VN
-#define PWM_CH4_PIN  36  // Channel 4 (Yaw) - VP
-#define PWM_CH5_PIN  23  // Channel 5 (Aux1)
-#define PWM_CH6_PIN  19  // Channel 6 (Aux2)
-
-#ifdef USE_ESP32S3
-    #undef SBUS_RX_PIN
-    #undef SBUS_TX_PIN
-    #undef IBUS_RX_PIN
-    #undef IBUS_TX_PIN
-    #undef PPM_PIN
-    #define SBUS_RX_PIN  18  // RX on S3
-    #define SBUS_TX_PIN  17  // TX on S3
-    #define IBUS_RX_PIN  16  // RX1 on S3
-    #define IBUS_TX_PIN  15  // TX1 on S3
-    #define PPM_PIN      5   // PPM input
+#ifndef PWM_CH1_PIN
+    #define PWM_CH1_PIN  35  // Channel 1 (Roll)
+#endif
+#ifndef PWM_CH2_PIN
+    #define PWM_CH2_PIN  34  // Channel 2 (Pitch)
+#endif
+#ifndef PWM_CH3_PIN
+    #define PWM_CH3_PIN  39  // Channel 3 (Throttle) - VN
+#endif
+#ifndef PWM_CH4_PIN
+    #define PWM_CH4_PIN  36  // Channel 4 (Yaw) - VP
+#endif
+#ifndef PWM_CH5_PIN
+    #define PWM_CH5_PIN  23  // Channel 5 (Aux1)
+#endif
+#ifndef PWM_CH6_PIN
+    #define PWM_CH6_PIN  19  // Channel 6 (Aux2)
 #endif
 
 //========================================================================================================================//
 //                                              STATUS LED                                                                //
 //========================================================================================================================//
 
-#define LED_PIN 2  // Built-in LED on most ESP32 dev boards (GPIO2)
-
-#ifdef USE_ESP32S3
-    #undef LED_PIN
-    #define LED_PIN 48  // RGB LED on ESP32-S3 DevKitC-1 (or use GPIO48)
+#ifndef LED_PIN
+    #ifdef USE_ESP32S3
+        #define LED_PIN 48  // RGB LED on ESP32-S3 DevKitC-1
+    #else
+        #define LED_PIN 2   // Built-in LED on most ESP32 dev boards
+    #endif
 #endif
 
 //========================================================================================================================//
@@ -143,14 +231,19 @@
 // Default: GPIO 23/19 (free when not using PWM receiver, which is the common case).
 // Change these if your receiver uses PWM mode.
 
-#define OLED_SDA_PIN 23  // Software I2C SDA for OLED
-#define OLED_SCL_PIN 19  // Software I2C SCL for OLED
-
-#ifdef USE_ESP32S3
-    #undef OLED_SDA_PIN
-    #undef OLED_SCL_PIN
-    #define OLED_SDA_PIN 3   // S3: Software I2C SDA
-    #define OLED_SCL_PIN 46  // S3: Software I2C SCL
+#ifndef OLED_SDA_PIN
+    #ifdef USE_ESP32S3
+        #define OLED_SDA_PIN 3   // S3: Software I2C SDA
+    #else
+        #define OLED_SDA_PIN 23  // Software I2C SDA for OLED
+    #endif
+#endif
+#ifndef OLED_SCL_PIN
+    #ifdef USE_ESP32S3
+        #define OLED_SCL_PIN 46  // S3: Software I2C SCL
+    #else
+        #define OLED_SCL_PIN 19  // Software I2C SCL for OLED
+    #endif
 #endif
 
 //========================================================================================================================//
