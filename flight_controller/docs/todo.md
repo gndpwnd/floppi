@@ -10,7 +10,9 @@ _No tasks in progress_
 
 _Priority queue for immediate work_
 
-- [ ] Configurable pin definitions from config.h — move pin overrides so users configure everything in one file
+- [ ] Configurable pin definitions from config.h — move pin overrides so users configure everything in one file (**top priority**)
+- [ ] RadioComm universal command layer — serial commands (`USE_SERIAL_COMMANDS`), I2C commands (`USE_I2C_COMMANDS`), WiFi API command routing through RadioComm
+- [ ] Command source arbitration — priority logic when multiple command sources are active (RC = primary, serial/I2C/WiFi = override)
 - [ ] OLED-guided calibration — show calibration prompts and progress on display
 - [ ] Sequential calibration workflow (`a` command) — run all calibration routines in one guided session
 - [ ] Hardware testing when hardware is available
@@ -97,7 +99,8 @@ _For context; clear periodically_
 
 ## Notes
 
-- **Calibration automation is the next milestone** — every config.h value should have an auto-calibration routine
+- **Calibration automation complete** — all config.h hardware-dependent values now have auto-calibration routines
+- **RadioComm universal command layer** — next architectural milestone. All command sources (RC, serial, I2C, WiFi) should flow through RadioComm. See roadmap for details.
 - **Hardware testing is the critical path** — firmware is ready, need physical drone to validate
 - **fc_tool will help** — visual diagnostics during calibration (separate project at /fc_tool/)
 - **Modular architecture** — code split into imu, control, motors, debug modules + feature flags

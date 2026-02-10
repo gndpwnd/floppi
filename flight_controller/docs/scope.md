@@ -37,10 +37,10 @@ The firmware supports a two-mode workflow: **calibration mode** for determining 
 - [x] Radio channel auto-mapping and calibration
 - [x] IMU orientation auto-detection
 - [x] Runtime PID tuning via serial commands (calibration mode)
-- [ ] Failsafe auto-detection (measure receiver failsafe outputs)
-- [ ] ESC endpoint calibration routine
-- [ ] Magnetometer auto-calibration (MPU9250)
-- [ ] Runtime filter/limits tuning via serial commands
+- [x] Failsafe auto-detection (measure receiver failsafe outputs)
+- [x] ESC endpoint calibration routine
+- [x] Magnetometer auto-calibration (MPU9250)
+- [x] Runtime filter/limits tuning via serial commands
 
 ### Technical Requirements
 
@@ -96,15 +96,51 @@ The firmware aims to **automate every calibration process**. Every `#define` val
 | IMU orientation/mounting | axis mapping | 3-position routine (`o`) | Done |
 | Radio channel mapping | 6 channels | Guided stick-move routine (`r`) | Done |
 | PID gains | 9 values | Runtime serial tuning (`g`) | Done |
-| Failsafe values | 6 values | Auto-detect from receiver (`f`) | Planned |
-| ESC endpoints | min/max PWM | ESC calibration routine (`e`) | Planned |
-| Magnetometer (MPU9250) | 6 values | Sphere calibration routine | Planned |
-| Filter coefficients | ~6 values | Runtime serial tuning (`p`) | Planned |
-| Max rates/angles | 3 values | Runtime serial tuning (`p`) | Planned |
+| Failsafe values | 6 values | Auto-detect from receiver (`f`) | Done |
+| ESC endpoints | min/max PWM | ESC calibration routine (`e`) | Done |
+| Magnetometer (MPU9250) | 6 values | Sphere calibration routine | Done |
+| Filter coefficients | ~6 values | Runtime serial tuning (`p`) | Done |
+| Max rates/angles | 3 values | Runtime serial tuning (`p`) | Done |
 
 **Workflow**: Flash calibration build → run auto-calibration routines → firmware outputs `#define` values → copy to config.h → flash live build → fly. Every step is guided with serial prompts and quality validation.
 
 **Testing built-in**: Each calibration routine validates its own results (stability checks, range checks, quality scoring) and offers retry on poor results. The firmware is its own test harness.
+
+## RadioComm — Universal Command Entry Point
+
+RadioComm is the **single entry point** for all command/control input to the flight controller. Every source of commands — whether hardware radio, serial, I2C, or WiFi — flows through RadioComm before reaching flight control logic. This keeps the architecture clean: the flight controller only talks to RadioComm, never directly to individual command sources.
+
+**Architecture:**
+
+```text
+SBUS receiver ─────┐
+DSM receiver  ─────┤
+PPM receiver  ─────┤
+PWM receiver  ─────┼──→ RadioComm ──→ channel_X_pwm ──→ Flight Controller
+Serial commands ───┤     (unified)     (1000-2000us)
+I2C commands   ────┤
+WiFi API (ESP32) ──┘
+```
+
+**Current state**: RadioComm handles RC protocols (SBUS, DSM, PPM, PWM) selected at compile time. One protocol active per build. Outputs `channel_1_pwm` through `channel_6_pwm` (1000-2000us range).
+
+**Planned expansion**: Add additional command sources that feed into the same `channel_X_pwm` output format:
+
+| Source | Interface | Config Flag | Priority | Notes |
+|--------|-----------|-------------|----------|-------|
+| SBUS | Serial (inverted) | `USE_SBUS_RECEIVER` | Primary | Current default |
+| DSM/DSMX | Serial | `USE_DSM_RECEIVER` | Primary | Spektrum |
+| PPM | Single GPIO | `USE_PPM_RECEIVER` | Primary | Legacy |
+| PWM | 6 GPIOs | `USE_PWM_RECEIVER` | Primary | Legacy |
+| Serial commands | UART | `USE_SERIAL_COMMANDS` | Override | Flight computer sends PWM-format commands over serial |
+| I2C commands | I2C slave | `USE_I2C_COMMANDS` | Override | Flight computer sends commands over I2C bus |
+| WiFi API | HTTP/WebSocket | `USE_API_SERVER` | Override | Commands from web server routed through RadioComm |
+
+**Priority / arbitration**: When multiple sources are active, RadioComm needs an arbitration strategy. RC receiver is the primary (real-time, hardware). Serial/I2C/WiFi are override sources (typically from a flight computer). If an override source is active and sending, it takes priority. If it goes silent, RC receiver resumes. Failsafe applies across all sources.
+
+**Key principle**: The API web server is NOT a separate command path. It feeds INTO RadioComm. The flight controller only ever reads `channel_X_pwm` — it doesn't know or care where the values came from.
+
+**Pin configuration**: All command source pins are configurable in config.h (override defaults from pin_definitions.h).
 
 ## Boundaries
 
@@ -123,6 +159,7 @@ The firmware aims to **automate every calibration process**. Every `#define` val
 - ESP32: WiFi STA mode, web status server, API client for swarm coordination
 - ESP32: OLED display on Core 1 (non-real-time)
 - WiFi telemetry (JSON API, WebSocket streaming, mDNS)
+- RadioComm as universal command entry point — all command sources (SBUS, DSM, PPM, PWM, serial, I2C, WiFi API) flow through RadioComm to the flight controller
 - Modular feature system — all features selectable in config.h via #ifdef flags
 - Feature tiers: USE_OPTIMIZATION (noise reduction), USE_RACING (performance)
 - Standalone library vendoring — all dependencies in lib/ and lib_esp32/
@@ -162,6 +199,8 @@ The firmware aims to **automate every calibration process**. Every `#define` val
 | Modular features | config.h flags | USE_WEB_SERVER, USE_API_SERVER, USE_OPTIMIZATION, USE_RACING — users enable what their MCU can handle | 2026-02-07 |
 | Library vendoring | lib/ + lib_esp32/ | All deps vendored for offline/standalone builds. No external downloads needed. | 2026-02-07 |
 | Web vs API server | Separate config flags | Web server = calibration/display, API server = remote control/swarm. Independently toggleable. | 2026-02-07 |
+| RadioComm as universal entry point | All command sources → RadioComm → FC | Single abstraction layer for all input: RC protocols (SBUS/DSM/PPM/PWM), serial commands, I2C commands, WiFi API commands. One entry point, one data format (`channel_X_pwm`), one failsafe path. API/web server feeds into RadioComm, not directly to FC. | 2026-02-09 |
+| Configurable pin definitions | config.h overrides pin_definitions.h | Users configure pin assignments in config.h alongside everything else. pin_definitions.h provides platform defaults with `#ifndef` guards. | 2026-02-09 |
 
 ## Integration Points
 
@@ -200,6 +239,7 @@ The firmware aims to **automate every calibration process**. Every `#define` val
 | 2026-02-07 | ESP32 now in scope (dual-core, WiFi STA, web server, API client). Updated boundaries: flight computer handles complex logic. Added bare-bones philosophy. | LLM + User |
 | 2026-02-07 | Added modular feature system (USE_WEB_SERVER, USE_API_SERVER, USE_OPTIMIZATION, USE_RACING). Library vendoring for standalone builds. Updated timing calculator with per-core and feature tier analysis. | LLM + User |
 | 2026-02-09 | Added auto-calibration philosophy: every hardware-dependent value must have an auto-calibration routine. Documented calibration coverage table and planned routines (failsafe, ESC, magnetometer, filter/limits tuning). | LLM + User |
+| 2026-02-09 | Calibration coverage table: all items marked Done. Added RadioComm universal command layer design (all command sources → RadioComm → FC). Added configurable pin definitions as technical decision. | LLM + User |
 
 ---
 

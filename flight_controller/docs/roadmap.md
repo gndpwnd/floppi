@@ -92,27 +92,22 @@ This roadmap tracks project-level features and milestones for the flight control
   - Completed: Pre-2026
   - Notes: CH6 MID = IMU cal, HIGH = IMU + orientation. Hold 3 seconds to trigger.
 
-#### Planned Calibration Routines
+- [x] Failsafe auto-detection — serial command `f`
+  - Completed: 2026-02-09
+  - Notes: Reads normal receiver values (TX on), then failsafe values (TX off). Outputs `FAILSAFE_THROTTLE/ROLL/PITCH/YAW/AUX1/AUX2` defines.
 
-- [ ] Failsafe auto-detection — serial command `f`
-  - Description: Auto-detect receiver failsafe PWM outputs. Power off transmitter during routine, measure what the receiver sends, output as `FAILSAFE_THROTTLE/ROLL/PITCH/YAW/AUX1/AUX2` defines.
-  - Outputs: 6 failsafe values for config.h
-  - Notes: Currently these are manual guesses (1000/1500/2000). Auto-detection eliminates guesswork and matches actual receiver behavior.
+- [x] ESC endpoint calibration — serial command `e`
+  - Completed: 2026-02-09
+  - Notes: Safety-gated (props-off warning). Sends max PWM → user connects battery → sends min PWM. Standard ESC calibration automated.
 
-- [ ] ESC endpoint calibration — serial command `e`
-  - Description: Send min/max PWM sequence to all ESCs for range calibration. Guided routine: connect battery with throttle high → ESCs beep → send low → ESCs confirm. Standard ESC calibration procedure automated in firmware.
-  - Dependencies: Hardware testing
-  - Notes: Safety-gated (requires explicit confirmation, props-off warning).
-
-- [ ] Magnetometer calibration — MPU9250 only
-  - Description: Sphere calibration routine. User rotates aircraft in all orientations while firmware records min/max per axis. Calculates hard-iron offsets and soft-iron scale factors.
+- [x] Magnetometer calibration — serial command (MPU9250 only)
+  - Completed: 2026-02-09
+  - Notes: 30s sphere calibration. Hard-iron offsets + soft-iron scale factors. Guarded by `#ifdef USE_MPU9250`.
   - Outputs: `MAG_ERROR_X/Y/Z`, `MAG_SCALE_X/Y/Z` (6 values)
-  - Notes: Only relevant for MPU9250 builds. Guarded by `#ifdef USE_MPU9250`.
 
-- [ ] Runtime filter/limits tuning — serial command `p`
-  - Description: Extend the serial tuning interface (like PID `g` command) to cover filter coefficients and control limits. Allows runtime adjustment of `B_ACCEL`, `B_GYRO`, `B_DTERM`, `MADGWICK_BETA`, `MAX_ROLL_ANGLE/RATE`, `MAX_PITCH_ANGLE/RATE`, `MAX_YAW_RATE`, and (when USE_OPTIMIZATION enabled) biquad cutoff frequencies.
-  - Outputs: User copies tuned values back to config.h
-  - Notes: Same pattern as PID tuning — show current values, set individual values, copy back when satisfied.
+- [x] Runtime filter/limits tuning — serial command `p`
+  - Completed: 2026-02-09
+  - Notes: Same pattern as PID `g` command. Covers `B_ACCEL`, `B_GYRO`, `B_DTERM`, `MADGWICK_BETA`, max rates/angles.
 
 ### Firmware State Machine
 
@@ -288,9 +283,9 @@ Files: `ota.h`, `ota.cpp`.
 
 ---
 
-## Hardware Usability (Medium Priority)
+## Hardware Usability (High Priority)
 
-> Features that make the firmware easier to use with real hardware. Important for the "flash, calibrate, fly" experience.
+> Features that make the firmware easier to use with real hardware. Important for the "flash, calibrate, fly" experience. Configurable pins is top priority — users should configure everything in config.h.
 
 - [ ] Configurable pin definitions from config.h
   - Description: Move pin assignments from pin_definitions.h into config.h so users configure everything in one file. Currently pin_definitions.h has platform-specific defaults — keep those as fallbacks, but let config.h overrides take priority.
@@ -309,6 +304,47 @@ Files: `ota.h`, `ota.cpp`.
 - [ ] Wiring validation on startup
   - Description: Basic startup checks — detect if IMU is responding, if receiver is sending data, if OLED is connected. Report status on serial and display. Helps users catch wiring mistakes before attempting calibration.
   - Dependencies: Hardware testing
+
+---
+
+## RadioComm — Universal Command Layer (High Priority)
+
+> **Vision**: RadioComm is the **single entry point** for all command/control input to the flight controller. Every source of commands — RC receiver, serial, I2C, WiFi API — flows through RadioComm. The flight controller only reads `channel_X_pwm` values and never knows or cares where they came from. This keeps the architecture clean and prevents command paths from getting messy.
+>
+> **Key insight**: The API web server is NOT a separate command path. It feeds INTO RadioComm, which feeds the flight controller. One entry point, one data format, one failsafe path.
+
+**Current state**: RadioComm handles 4 RC protocols (SBUS, DSM, PPM, PWM), compile-time selected. One protocol per build. All produce `channel_1_pwm` through `channel_6_pwm` in 1000-2000us format.
+
+**Planned command sources:**
+
+| Source | Interface | Config Flag | Notes |
+| ------ | --------- | ----------- | ----- |
+| SBUS | Serial (inverted) | `USE_SBUS_RECEIVER` | Current default. Existing. |
+| DSM/DSMX | Serial | `USE_DSM_RECEIVER` | Spektrum. Existing. |
+| PPM | Single GPIO | `USE_PPM_RECEIVER` | Legacy. Existing. |
+| PWM | 6 GPIOs | `USE_PWM_RECEIVER` | Legacy. Existing. |
+| Serial commands | UART | `USE_SERIAL_COMMANDS` | Flight computer sends channel values over serial |
+| I2C commands | I2C slave | `USE_I2C_COMMANDS` | Flight computer sends commands over I2C bus |
+| WiFi API | HTTP/WebSocket | `USE_API_SERVER` | Web server routes commands through RadioComm |
+
+- [ ] Serial command input (`USE_SERIAL_COMMANDS`)
+  - Description: Accept channel values over serial UART from an external flight computer. Simple text or binary protocol. Flight computer sends throttle/roll/pitch/yaw values, RadioComm writes them to `channel_X_pwm`.
+  - Pattern: Same `getCommands()` function, new code path guarded by `#ifdef USE_SERIAL_COMMANDS`.
+  - Pin: Configurable in config.h (defaults in pin_definitions.h).
+
+- [ ] I2C command input (`USE_I2C_COMMANDS`)
+  - Description: Accept channel values over I2C with the FC as I2C slave. Flight computer (I2C master) writes channel data. Useful for companion computers (Raspberry Pi, etc.) physically connected to the FC.
+  - Pattern: I2C slave ISR writes to a buffer, `getCommands()` copies buffer to `channel_X_pwm`.
+  - Pin: Configurable in config.h (defaults in pin_definitions.h). Must use different I2C bus than IMU.
+
+- [ ] WiFi API command routing
+  - Description: Route commands received by the ESP32 web server (via HTTP POST or WebSocket) through RadioComm instead of directly to flight control. Web server writes to a shared command buffer, `getCommands()` picks it up.
+  - Dependencies: `USE_API_SERVER` (ESP32 only). Web server already exists on Core 1.
+  - Pattern: Shared volatile struct or queue between Core 1 (web server) and Core 0 (RadioComm/FC).
+
+- [ ] Command source arbitration
+  - Description: When multiple command sources are active, RadioComm needs priority logic. RC receiver = primary (real-time hardware). Serial/I2C/WiFi = override sources (flight computer). If override source is active and sending, it takes priority. If it goes silent (timeout), RC receiver resumes. Failsafe applies across ALL sources.
+  - Notes: Simple timeout-based arbitration. No complex state machine needed.
 
 ---
 
@@ -487,6 +523,11 @@ Files: `ota.h`, `ota.cpp`.
 - [x] OTA firmware updates (ArduinoOTA, Core 1, safety-gated by armedFly) — 2026-02-09
 - [x] Serial PID tuning in calibration mode (runtime-tunable gains, line-buffered serial parser) — 2026-02-09
 - [x] Display screen rotation for small OLEDs (128x32 cycles screens every 2s, 128x64 shows all) — 2026-02-09
+- [x] Failsafe auto-detection calibration (`f` command) — 2026-02-09
+- [x] ESC endpoint calibration (`e` command) — 2026-02-09
+- [x] Magnetometer sphere calibration (MPU9250, `m` command) — 2026-02-09
+- [x] Runtime filter/limits tuning (`p` command) — 2026-02-09
+- [x] Wiring diagrams updated with OLED display connections — 2026-02-09
 
 ---
 
