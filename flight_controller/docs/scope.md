@@ -309,7 +309,7 @@ This is a separate project. The FC firmware just exposes the WiFi API endpoints.
 | 2026-02-09 | Added auto-calibration philosophy: every hardware-dependent value must have an auto-calibration routine. Documented calibration coverage table and planned routines (failsafe, ESC, magnetometer, filter/limits tuning). | LLM + User |
 | 2026-02-09 | Calibration coverage table: all items marked Done. Added RadioComm universal command layer design (all command sources → RadioComm → FC). Added configurable pin definitions as technical decision. | LLM + User |
 | 2026-02-10 | Added hardware architecture vision (modular base system, progression path, external controller app). Added iBUS receiver support. Updated RadioComm to include iBUS. Wiring diagrams reorganized into dedicated folder with specific build guides. | LLM + User |
-| 2026-02-10 | All RadioComm command sources implemented (serial, I2C, WiFi API). I2C slave on Wire1, OLED-guided calibration with progress bars. Arbitration design doc written. External controller app (swarm_api) marked as built. | LLM + User |
+| 2026-02-10 | All RadioComm command sources implemented (serial, I2C, WiFi API). I2C slave on Wire1. Arbitration design doc written. External controller app (swarm_api) marked as built. | LLM + User |
 
 ---
 
