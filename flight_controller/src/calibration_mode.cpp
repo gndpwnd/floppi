@@ -18,9 +18,28 @@
 #include "debug.h"
 #include "radioComm.h"
 
+#if defined(USE_ESP32) && defined(USE_WIFI)
+#include <WiFi.h>
+#include "wifi_config.h"
+#if __has_include("wifi_credentials.h")
+    #include "wifi_credentials.h"
+#else
+    #define WIFI_SSID     "unconfigured"
+    #define WIFI_PASSWORD ""
+#endif
+#ifdef USE_WEB_SERVER
+#include <ESPmDNS.h>
+#endif
+#endif
+
 // Channel PWM values (defined in radioComm module)
 extern unsigned long channel_1_pwm, channel_2_pwm, channel_3_pwm;
 extern unsigned long channel_4_pwm, channel_5_pwm, channel_6_pwm;
+
+// Forward declarations
+#if defined(USE_ESP32) && defined(USE_WIFI)
+static void runNetworkDiagnostics();
+#endif
 
 // Calibration status helpers — check compile-time markers from config.h
 static void printCalibrationStatus() {
@@ -149,6 +168,19 @@ static void calibrateSequential() {
     #else
     Serial.println(F("\n[DONE] Magnetometer already calibrated. Skipping."));
     #endif
+    #endif
+
+    // --- ESP32: Network Diagnostics ---
+    #if defined(USE_ESP32) && defined(USE_WIFI)
+    Serial.println(F("\n========================================"));
+    Serial.println(F("  ESP32: Network Diagnostics"));
+    Serial.println(F("========================================"));
+    Serial.println(F("Run WiFi/network diagnostics? (y/n)"));
+    if (waitForConfirmation(15)) {
+        runNetworkDiagnostics();
+    } else {
+        Serial.println(F("Skipping network diagnostics."));
+    }
     #endif
 
     // --- Stage 2: Command Source ---
@@ -417,6 +449,147 @@ static void printParams() {
     Serial.println(F("Set: p <name> <value>  (e.g. p b_accel 0.10)"));
 }
 
+// ============================================================================
+// ESP32 Network Diagnostics (command 'n')
+// ============================================================================
+
+#if defined(USE_ESP32) && defined(USE_WIFI)
+static void runNetworkDiagnostics() {
+    Serial.println(F("\n========================================"));
+    Serial.println(F("  NETWORK DIAGNOSTICS (ESP32)"));
+    Serial.println(F("========================================"));
+
+    int pass = 0;
+    int fail = 0;
+    int skip = 0;
+
+    // --- Test 1: WiFi credentials configured ---
+    Serial.print(F("\n[1] WiFi credentials configured... "));
+    const char* ssid = WIFI_SSID;
+    if (strcmp(ssid, "unconfigured") == 0 || strcmp(ssid, "YourNetworkName") == 0) {
+        Serial.println(F("FAIL"));
+        Serial.println(F("    Edit include/wifi_credentials.h with your network details"));
+        fail++;
+        Serial.println(F("\n>>> Cannot continue without WiFi credentials."));
+        Serial.printf("    Results: %d PASS, %d FAIL, %d SKIP\n\n", pass, fail, skip);
+        return;
+    }
+    Serial.println(F("PASS"));
+    Serial.printf("    SSID: %s\n", ssid);
+    pass++;
+
+    // --- Test 2: WiFi connection ---
+    Serial.print(F("[2] WiFi connected... "));
+    if (WiFi.status() == WL_CONNECTED) {
+        Serial.println(F("PASS"));
+        Serial.print(F("    IP: "));
+        Serial.println(WiFi.localIP());
+        pass++;
+    } else {
+        Serial.println(F("FAIL"));
+        Serial.printf("    Status: %d (expected WL_CONNECTED=%d)\n", WiFi.status(), WL_CONNECTED);
+        Serial.println(F("    Check: SSID/password correct? Router reachable? Antenna?"));
+        fail++;
+        Serial.println(F("\n>>> Cannot continue without WiFi connection."));
+        Serial.printf("    Results: %d PASS, %d FAIL, %d SKIP\n\n", pass, fail, skip);
+        return;
+    }
+
+    // --- Test 3: Signal strength (RSSI) ---
+    Serial.print(F("[3] Signal strength (RSSI)... "));
+    int8_t rssi = WiFi.RSSI();
+    if (rssi > -50) {
+        Serial.printf("EXCELLENT (%d dBm)\n", rssi);
+    } else if (rssi > -70) {
+        Serial.printf("GOOD (%d dBm)\n", rssi);
+    } else if (rssi > -80) {
+        Serial.printf("WEAK (%d dBm) — move closer to router\n", rssi);
+    } else {
+        Serial.printf("POOR (%d dBm) — signal too weak for reliable operation\n", rssi);
+    }
+    pass++; // RSSI is always informational
+
+    // --- Test 4: MAC address ---
+    Serial.print(F("[4] MAC address... "));
+    Serial.println(WiFi.macAddress());
+    pass++;
+
+    // --- Test 5: Gateway reachable ---
+    Serial.print(F("[5] Gateway... "));
+    IPAddress gw = WiFi.gatewayIP();
+    Serial.printf("%d.%d.%d.%d\n", gw[0], gw[1], gw[2], gw[3]);
+    pass++;
+
+    // --- Test 6: DNS ---
+    Serial.print(F("[6] DNS server... "));
+    IPAddress dns = WiFi.dnsIP();
+    Serial.printf("%d.%d.%d.%d\n", dns[0], dns[1], dns[2], dns[3]);
+    pass++;
+
+    // --- Test 7: mDNS hostname ---
+    #ifdef USE_WEB_SERVER
+    Serial.print(F("[7] mDNS hostname... "));
+    uint8_t mac[6];
+    WiFi.macAddress(mac);
+    char expected_hostname[20];
+    snprintf(expected_hostname, sizeof(expected_hostname), "floppi-%02X%02X", mac[4], mac[5]);
+    Serial.printf("%s.local\n", expected_hostname);
+    Serial.printf("    URL: http://%s.local\n", expected_hostname);
+    pass++;
+
+    // --- Test 8: Web server port 80 ---
+    Serial.print(F("[8] Web server (port 80)... "));
+    WiFiClient testClient;
+    IPAddress localIP = WiFi.localIP();
+    if (testClient.connect(localIP, 80)) {
+        testClient.stop();
+        Serial.println(F("PASS (listening)"));
+        pass++;
+    } else {
+        Serial.println(F("FAIL (not responding)"));
+        Serial.println(F("    Web server may not have started yet"));
+        fail++;
+    }
+    #else
+    Serial.println(F("[7] mDNS/Web server... SKIP (USE_WEB_SERVER not enabled)"));
+    skip += 2;
+    #endif
+
+    // --- Test 9: Free heap ---
+    Serial.print(F("[9] Free heap memory... "));
+    uint32_t heap = ESP.getFreeHeap();
+    Serial.printf("%u bytes", heap);
+    if (heap < 30000) {
+        Serial.println(F(" — WARNING: low memory"));
+    } else {
+        Serial.println(F(" — OK"));
+    }
+    pass++;
+
+    // --- Test 10: Uptime ---
+    Serial.print(F("[10] Uptime... "));
+    unsigned long up = millis();
+    Serial.printf("%lu.%lus\n", up / 1000, (up % 1000) / 100);
+    pass++;
+
+    // --- Summary ---
+    Serial.println(F("\n----------------------------------------"));
+    Serial.printf("Results: %d PASS, %d FAIL, %d SKIP\n", pass, fail, skip);
+
+    if (fail == 0) {
+        Serial.println(F("Network is ready for swarm_api / WiFi commands."));
+        #ifdef USE_WEB_SERVER
+        Serial.printf("Dashboard: http://%s.local\n", expected_hostname);
+        Serial.printf("API: http://%s.local/api/status\n", expected_hostname);
+        Serial.printf("WebSocket: ws://%s.local/ws\n", expected_hostname);
+        #endif
+    } else {
+        Serial.println(F("Fix failures above before using WiFi features."));
+    }
+    Serial.println();
+}
+#endif // USE_ESP32 && USE_WIFI
+
 static void processSerialLine(char* line) {
     // Trim leading whitespace
     while (*line == ' ' || *line == '\t') line++;
@@ -458,10 +631,10 @@ static void processSerialLine(char* line) {
                     Serial.println(F("\n>>> Telemetry OFF"));
                 } else if (telemetry_mode == 1) {
                     Serial.println(F("\n>>> Telemetry: IMU (50Hz)"));
-                    Serial.println(F("    Format: ax=X ay=Y az=Z gx=X gy=Y gz=Z"));
+                    Serial.println(F("    Accel→Plot0 Gyro→Plot1 (fc_tool multi-graph)"));
                 } else {
                     Serial.println(F("\n>>> Telemetry: FULL (20Hz)"));
-                    Serial.println(F("    Format: ax ay az gx gy gz roll pitch yaw m1 m2 m3 m4"));
+                    Serial.println(F("    Accel→Plot0 Gyro→Plot1 Attitude→Plot2 Motors→Plot3"));
                 }
                 return;
             case 'f': case 'F':
@@ -471,6 +644,13 @@ static void processSerialLine(char* line) {
             case 'e': case 'E':
                 Serial.println(F("\n>>> ESC Calibration requested via serial"));
                 calibration_mode = CALIB_ESC;
+                return;
+            case 'n': case 'N':
+                #if defined(USE_ESP32) && defined(USE_WIFI)
+                runNetworkDiagnostics();
+                #else
+                Serial.println(F("\n>>> Network diagnostics only available on ESP32 with WiFi"));
+                #endif
                 return;
             case 'a': case 'A':
                 Serial.println(F("\n>>> Sequential Calibration requested via serial"));
@@ -504,6 +684,7 @@ static void processSerialLine(char* line) {
                 Serial.println(F("  t - Toggle telemetry (off/IMU/full) for fc_tool"));
                 Serial.println(F("  g - Show/set PID gains (g <name> <value>)"));
                 Serial.println(F("  p - Show/set filter & limits (p <name> <value>)"));
+                Serial.println(F("  n - Network diagnostics (ESP32 only — WiFi, mDNS, web server)"));
                 Serial.println(F("  h - Help (this menu)"));
                 Serial.println(F("\nOr use CH6 switch:"));
                 Serial.println(F("  Mid position (3s hold): IMU calibration"));

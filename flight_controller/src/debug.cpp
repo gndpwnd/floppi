@@ -112,20 +112,21 @@ void printLoopRate() {
 // ============================================================================
 // FC_TOOL TELEMETRY OUTPUT
 // ============================================================================
-// These functions output data in formats compatible with fc_tool's parser.
+// Multi-graph format: name@plotId:value
+// Plot 0 = Accelerometer, Plot 1 = Gyroscope, Plot 2 = Attitude, Plot 3 = Motors
 // See: fc_tool/docs/features/serial-telemetry-protocol.md
 
 void printIMUTelemetry() {
     // Output at ~50Hz (20ms interval) for fc_tool visualization
     if (current_time - print_counter > 20000) {
         print_counter = current_time;
-        // Key-value format: ax=1.23 ay=4.56 az=7.89 gx=0.12 gy=0.34 gz=0.56
-        Serial.print(F("ax=")); Serial.print(AccX, 2);
-        Serial.print(F(" ay=")); Serial.print(AccY, 2);
-        Serial.print(F(" az=")); Serial.print(AccZ, 2);
-        Serial.print(F(" gx=")); Serial.print(GyroX, 2);
-        Serial.print(F(" gy=")); Serial.print(GyroY, 2);
-        Serial.print(F(" gz=")); Serial.println(GyroZ, 2);
+        // Accel → plot 0, Gyro → plot 1
+        Serial.print(F("ax@0:")); Serial.print(AccX, 2);
+        Serial.print(F(" ay@0:")); Serial.print(AccY, 2);
+        Serial.print(F(" az@0:")); Serial.print(AccZ, 2);
+        Serial.print(F(" gx@1:")); Serial.print(GyroX, 2);
+        Serial.print(F(" gy@1:")); Serial.print(GyroY, 2);
+        Serial.print(F(" gz@1:")); Serial.println(GyroZ, 2);
     }
 }
 
@@ -133,10 +134,10 @@ void printAttitudeTelemetry() {
     // Output at ~50Hz for fc_tool visualization
     if (current_time - print_counter > 20000) {
         print_counter = current_time;
-        // Key-value format for attitude
-        Serial.print(F("roll=")); Serial.print(roll_IMU, 2);
-        Serial.print(F(" pitch=")); Serial.print(pitch_IMU, 2);
-        Serial.print(F(" yaw=")); Serial.println(yaw_IMU, 2);
+        // Attitude → plot 2
+        Serial.print(F("roll@2:")); Serial.print(roll_IMU, 2);
+        Serial.print(F(" pitch@2:")); Serial.print(pitch_IMU, 2);
+        Serial.print(F(" yaw@2:")); Serial.println(yaw_IMU, 2);
     }
 }
 
@@ -144,22 +145,23 @@ void printFullTelemetry() {
     // Complete telemetry packet at ~20Hz (50ms interval)
     if (current_time - print_counter > 50000) {
         print_counter = current_time;
-        // IMU raw
-        Serial.print(F("ax=")); Serial.print(AccX, 2);
-        Serial.print(F(" ay=")); Serial.print(AccY, 2);
-        Serial.print(F(" az=")); Serial.print(AccZ, 2);
-        Serial.print(F(" gx=")); Serial.print(GyroX, 2);
-        Serial.print(F(" gy=")); Serial.print(GyroY, 2);
-        Serial.print(F(" gz=")); Serial.print(GyroZ, 2);
-        // Attitude
-        Serial.print(F(" roll=")); Serial.print(roll_IMU, 2);
-        Serial.print(F(" pitch=")); Serial.print(pitch_IMU, 2);
-        Serial.print(F(" yaw=")); Serial.print(yaw_IMU, 2);
-        // Motors (PWM 1000-2000)
-        Serial.print(F(" m1=")); Serial.print(m1_command_PWM);
-        Serial.print(F(" m2=")); Serial.print(m2_command_PWM);
-        Serial.print(F(" m3=")); Serial.print(m3_command_PWM);
-        Serial.print(F(" m4=")); Serial.println(m4_command_PWM);
+        // Accel → plot 0
+        Serial.print(F("ax@0:")); Serial.print(AccX, 2);
+        Serial.print(F(" ay@0:")); Serial.print(AccY, 2);
+        Serial.print(F(" az@0:")); Serial.print(AccZ, 2);
+        // Gyro → plot 1
+        Serial.print(F(" gx@1:")); Serial.print(GyroX, 2);
+        Serial.print(F(" gy@1:")); Serial.print(GyroY, 2);
+        Serial.print(F(" gz@1:")); Serial.print(GyroZ, 2);
+        // Attitude → plot 2
+        Serial.print(F(" roll@2:")); Serial.print(roll_IMU, 2);
+        Serial.print(F(" pitch@2:")); Serial.print(pitch_IMU, 2);
+        Serial.print(F(" yaw@2:")); Serial.print(yaw_IMU, 2);
+        // Motors → plot 3
+        Serial.print(F(" m1@3:")); Serial.print(m1_command_PWM);
+        Serial.print(F(" m2@3:")); Serial.print(m2_command_PWM);
+        Serial.print(F(" m3@3:")); Serial.print(m3_command_PWM);
+        Serial.print(F(" m4@3:")); Serial.println(m4_command_PWM);
     }
 }
 

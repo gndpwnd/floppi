@@ -27,6 +27,20 @@
     #define WIFI_PASSWORD ""
 #endif
 
+// Enterprise certificates (optional) — edit include/wifi_certs.h
+#if defined(WIFI_USE_ENTERPRISE) && defined(WIFI_USE_CERTS)
+    #if __has_include("wifi_certs.h")
+        #include "wifi_certs.h"
+    #else
+        #warning "wifi_certs.h not found — create it from the template in include/"
+    #endif
+#endif
+
+// Default auth method if not specified
+#if defined(WIFI_USE_ENTERPRISE) && !defined(WIFI_EAP_AUTH_METHOD)
+    #define WIFI_EAP_AUTH_METHOD WPA2_AUTH_PEAP
+#endif
+
 static bool wifi_initialized = false;
 static bool wifi_connected = false;
 static unsigned long last_reconnect_attempt = 0;
@@ -55,15 +69,30 @@ void setupWiFi() {
     Serial.println(WIFI_SSID);
 
     #ifdef WIFI_USE_ENTERPRISE
-        // WPA2-Enterprise (eduroam, university networks)
-        WiFi.begin(WIFI_SSID, WPA2_AUTH_PEAP, WIFI_EAP_IDENTITY,
-                   WIFI_EAP_USERNAME, WIFI_EAP_PASSWORD);
+        // WPA2-Enterprise (eduroam, university, corporate)
+        Serial.print(F("[WiFi] Mode: Enterprise "));
+        #if WIFI_EAP_AUTH_METHOD == WPA2_AUTH_TLS
+            Serial.println(F("(TLS)"));
+        #else
+            Serial.println(F("(PEAP)"));
+        #endif
+        #ifdef WIFI_USE_CERTS
+            WiFi.begin(WIFI_SSID, WIFI_EAP_AUTH_METHOD, WIFI_EAP_IDENTITY,
+                       WIFI_EAP_USERNAME, WIFI_EAP_PASSWORD,
+                       WIFI_CA_CERT,
+                       strlen(WIFI_CLIENT_CERT) > 0 ? WIFI_CLIENT_CERT : NULL,
+                       strlen(WIFI_CLIENT_KEY) > 0 ? WIFI_CLIENT_KEY : NULL);
+        #else
+            WiFi.begin(WIFI_SSID, WIFI_EAP_AUTH_METHOD, WIFI_EAP_IDENTITY,
+                       WIFI_EAP_USERNAME, WIFI_EAP_PASSWORD);
+        #endif
     #else
         // WPA2-Personal (standard home/lab networks)
         if (strlen(WIFI_PASSWORD) > 0) {
             WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
         } else {
-            WiFi.begin(WIFI_SSID);  // Open network
+            Serial.println(F("[WiFi] Mode: Open network"));
+            WiFi.begin(WIFI_SSID);
         }
     #endif
 

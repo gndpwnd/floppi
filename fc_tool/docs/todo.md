@@ -11,8 +11,6 @@
 
 ## Up Next
 
-- [ ] CLI arguments for port and baud (`--port /dev/ttyACM0 --baud 115200`) — auto-connect on launch, useful for scripting
-- [ ] Headless mode (`--headless`) — raw serial to stdout, no GUI window. Enables piping/logging/scripting.
 - [ ] Test with real Teensy hardware (serial + plotter visualization) — hardware now connected and available for testing
 - [ ] Validate cross-platform builds (Windows, macOS)
 
@@ -48,12 +46,11 @@
 
 ### Scripting & Automation
 
-- [ ] CLI arguments for port and baud — Tauri CLI plugin, auto-connect on launch
-- [ ] Headless mode — `--headless` flag, Rust-only serial read → stdout, no window
+- [ ] Raw data logging to file from headless mode
 
 ### Serial Features
 
-- [ ] Raw data logging to file (timestamped)
+- [ ] Raw data logging to file (timestamped, from headless or GUI)
 
 ### Platform Validation
 
@@ -68,6 +65,11 @@
 
 ## Recently Completed
 
+- [x] CLI arguments and headless mode — 2026-02-11
+  - `--port /dev/ttyACM0 --baud 115200` for auto-connect on launch
+  - `--headless` flag for raw serial to stdout (no GUI window)
+  - Headless mode includes stdin→serial forwarding for interactive use
+  - Frontend queries startup args via `get_startup_args` command, auto-connects
 - [x] ANSI escape code rendering — 2026-02-11
   - SGR parser: bold, dim, underline, 8+8 foreground colors (standard + bright)
   - Compound codes (e.g., `\033[1;31m` = bold red)

@@ -56,6 +56,16 @@ _For context; clear periodically_
   - Sections: IMU offsets/scales, orientation, radio mapping, failsafe, magnetometer, PID gains, filters/limits
   - Only prints sections that were actually calibrated (skips uncalibrated)
   - Sequential workflow (`a`) now suggests typing `d` at completion
+- [x] Modular WiFi configuration — 2026-02-11
+  - WPA2-Personal, Open, WPA2-Enterprise PEAP, WPA2-Enterprise TLS all supported
+  - wifi_credentials.h: configurable auth method (WPA2_AUTH_PEAP / WPA2_AUTH_TLS)
+  - wifi_certs.h: optional PEM certificate storage for enterprise networks
+  - Network diagnostics command (`n`) in calibration mode for ESP32 WiFi testing
+  - See [features/wifi-configuration.md](features/wifi-configuration.md)
+- [x] Firmware telemetry multi-graph format — 2026-02-11
+  - debug.cpp telemetry functions output `name@plotId:value` for fc_tool multi-graph plotting
+  - Plot assignment: 0=Accel, 1=Gyro, 2=Attitude, 3=Motors
+  - Backward compatible — fc_tool still handles plain `name:value` and CSV formats
 - [x] Command source arbitration implemented (`USE_COMMAND_ARBITRATION`) — 2026-02-11
   - CommandBuffer struct + CommandSource enum in radioComm.h
   - Priority: Serial > I2C > WiFi (overrides), RC (primary fallback)

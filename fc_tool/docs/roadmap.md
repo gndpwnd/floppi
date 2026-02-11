@@ -50,12 +50,14 @@ This roadmap tracks project-level features and milestones. For immediate tasks, 
 - [x] Auto-reconnect on disconnect
   - Description: Detect device disconnect, automatically retry connection
   - Implementation: Backend reader thread detects EOF/error, emits `serial-disconnected` event; frontend retries every 2s, max 15 attempts
-- [ ] CLI arguments for port and baud
-  - Description: Launch fc_tool with `--port /dev/ttyACM0 --baud 115200` to skip manual selection. Useful for scripting and repeated connections to known hardware.
-  - Notes: Tauri supports CLI argument parsing. On launch, if port+baud are provided, auto-connect immediately.
-- [ ] Headless mode (raw serial output)
-  - Description: `--headless` flag runs fc_tool without the GUI window. Prints raw serial data to stdout. Enables piping serial output to files or other tools (e.g., `fc_tool --port /dev/ttyACM0 --baud 115200 --headless > log.txt`).
-  - Notes: Requires port and baud as CLI args. No Tauri window created. Rust backend only (serial read → stdout). Useful for CI, logging, and scripting workflows.
+- [x] CLI arguments for port and baud
+  - Completed: 2026-02-11
+  - Description: Launch fc_tool with `--port /dev/ttyACM0 --baud 115200` to skip manual selection.
+  - Implementation: `std::env::args()` in main.rs, `StartupArgs` struct as Tauri managed state, `get_startup_args` command for frontend. Frontend auto-connects on matching startup args.
+- [x] Headless mode (raw serial output)
+  - Completed: 2026-02-11
+  - Description: `--headless` flag runs fc_tool without the GUI window. Prints all serial data (including plotter data) to stdout. Supports stdin→serial forwarding for interactive use.
+  - Implementation: Bypasses Tauri entirely — pure Rust serial loop. Lists available ports if --port not specified.
 - [ ] Raw data logging
   - Description: Save serial output to file for offline analysis
 
@@ -65,10 +67,8 @@ This roadmap tracks project-level features and milestones. For immediate tasks, 
   - Completed: 2026-02-11
   - Description: Parse ANSI SGR sequences (bold, dim, underline, 8/16 foreground colors) and render as styled HTML spans. Toggle checkbox in toolbar.
   - Notes: Regex-based parser in appendRx(). CSS classes for each color, optimized for dark terminal theme. Zero overhead when no ANSI codes present.
-- [ ] CLI arguments for port and baud
-  - Description: Launch with `--port` and `--baud` to auto-connect on startup. Useful for scripting and repeated hardware sessions.
-- [ ] Headless mode
-  - Description: `--headless` flag for raw serial output to stdout (no GUI). Enables piping, logging, and scripting.
+- [x] CLI arguments for port and baud — **DONE** (2026-02-11, see Serial Communication above)
+- [x] Headless mode — **DONE** (2026-02-11, see Serial Communication above)
 - [ ] Live Dashboard Mode
   - Description: A fixed-position panel that shows key=value data updating in place (not scrolling). Like an oscilloscope readout or a car dashboard — values change but the layout stays static.
   - Notes: Parses the existing `name=value` / `name:value` format. Each unique key gets a row in the dashboard. Values update live. Can coexist alongside the scrolling terminal (split view or toggle). Analogous to the plotter's "continuous vs period" modes but for text data.
@@ -216,6 +216,8 @@ Each build script sources the required env vars before compiling.
 - [x] Plotter polish: Y-axis zoom, data rate display, auto-fit grid, origin line, legend toggle — 2026-02-10
 - [x] Terminal polish: clipboard copy ("Copy All"), filter (Ctrl+F), buffer limit, keyboard shortcuts — 2026-02-10
 - [x] Enhanced serial plotter (PlotterManager, dark theme, crosshair, multi-graph protocol) — 2026-02-09
+- [x] CLI arguments (--port, --baud) + headless mode (--headless) — 2026-02-11
+- [x] ANSI escape code rendering (bold, dim, underline, 16 colors) — 2026-02-11
 - [x] Auto-reconnect on serial disconnect (backend event + frontend retry loop) — 2026-02-09
 - [x] Serial monitor UI with terminal (port selector, baud rate, connect/disconnect, send/receive) — 2026-02-06
 - [x] Serial connection backend (open_serial_port, close_serial_port, send_serial_data, events) — 2026-02-06

@@ -479,5 +479,43 @@ listen("serial-disconnected", (event) => {
   startReconnect(event.payload.port);
 });
 
-// Initial scan on load
-scanPorts();
+// Initial scan on load, then check for CLI startup args
+scanPorts().then(async () => {
+  try {
+    const args = await invoke("get_startup_args");
+    if (args.port) {
+      // Pre-select port in dropdown (add if not found from scan)
+      let found = false;
+      for (const opt of portSelect.options) {
+        if (opt.value === args.port) {
+          opt.selected = true;
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        const opt = document.createElement("option");
+        opt.value = args.port;
+        opt.textContent = args.port;
+        opt.selected = true;
+        portSelect.appendChild(opt);
+      }
+
+      // Set baud rate if provided
+      if (args.baud) {
+        for (const opt of baudSelect.options) {
+          if (parseInt(opt.value, 10) === args.baud) {
+            opt.selected = true;
+            break;
+          }
+        }
+      }
+
+      // Auto-connect
+      appendSystem(`CLI: auto-connecting to ${args.port} @ ${args.baud || baudSelect.value} baud`);
+      connect();
+    }
+  } catch {
+    // No startup args or command not available — normal startup
+  }
+});

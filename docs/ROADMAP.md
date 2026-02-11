@@ -36,9 +36,9 @@ All three configurations use the same codebase. Platform and command source are 
 
 ## Project Status
 
-**Firmware** (`flight_controller/`): ~90% of target features implemented. Feature development paused. All calibration routines, command sources, and platform support complete. Current focus: hardware bench testing, calibration on real hardware, PID tuning, and first flight.
+**Firmware** (`flight_controller/`): ~90% of target features implemented. Feature development paused. All calibration routines, command sources, and platform support complete. WiFi now supports WPA2-Personal, Open, WPA2-Enterprise PEAP/TLS with optional certificates. Current focus: hardware bench testing, calibration on real hardware, PID tuning, and first flight.
 
-**fc_tool** (`fc_tool/`): Functional. Serial monitor with ANSI rendering, dynamic multi-graph plotter, board detection, auto-reconnect all working. Next: CLI arguments for port/baud (scripting), headless mode (raw serial to stdout). Plotter enhancements (cursors, signal analysis) are lower priority.
+**fc_tool** (`fc_tool/`): Functional. Serial monitor with ANSI rendering, dynamic multi-graph plotter, board detection, auto-reconnect, CLI arguments (`--port`/`--baud`), and headless mode (`--headless`) all working. Plotter enhancements (cursors, signal analysis) are lower priority.
 
 **swarm_api** (`swarm_api/`): Core features complete. Fleet API, drone registry, telemetry bridging, web dashboard with control sliders. Needs testing with real ESP32 hardware.
 

@@ -1,13 +1,26 @@
 use serde::Serialize;
 use serialport::SerialPort;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, State};
 
-// State for managing serial connection
+// ============================================================================
+// Startup Args (passed from CLI → managed state → frontend)
+// ============================================================================
+
+#[derive(Clone, Serialize)]
+pub struct StartupArgs {
+    pub port: Option<String>,
+    pub baud: Option<u32>,
+}
+
+// ============================================================================
+// Serial State
+// ============================================================================
+
 pub struct SerialState {
     port: Arc<Mutex<Option<Box<dyn SerialPort + Send>>>>,
     reader_running: Arc<AtomicBool>,
@@ -83,6 +96,10 @@ pub struct ConnectionStatus {
     pub port: Option<String>,
 }
 
+// ============================================================================
+// Tauri Commands
+// ============================================================================
+
 #[tauri::command]
 fn list_serial_ports() -> Result<Vec<SerialPortInfo>, String> {
     let ports = serialport::available_ports().map_err(|e| e.to_string())?;
@@ -93,10 +110,8 @@ fn list_serial_ports() -> Result<Vec<SerialPortInfo>, String> {
                 serialport::SerialPortType::UsbPort(info) => {
                     let board = identify_board(info.vid, info.pid);
                     let type_str = if board.is_some() {
-                        // Simplified display when board is identified
                         format!("{:04X}:{:04X}", info.vid, info.pid)
                     } else {
-                        // Show product name for unknown devices
                         format!(
                             "{:04X}:{:04X}{}",
                             info.vid,
@@ -259,18 +274,130 @@ fn get_connection_status(state: State<'_, SerialState>) -> Result<ConnectionStat
     })
 }
 
+/// Returns CLI startup args (port/baud) so frontend can auto-connect
+#[tauri::command]
+fn get_startup_args(state: State<'_, StartupArgs>) -> StartupArgs {
+    state.inner().clone()
+}
+
+// ============================================================================
+// GUI Mode (Tauri window)
+// ============================================================================
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run() {
+pub fn run_gui(port: Option<String>, baud: Option<u32>) {
+    let startup_args = StartupArgs { port, baud };
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(SerialState::default())
+        .manage(startup_args)
         .invoke_handler(tauri::generate_handler![
             list_serial_ports,
             open_serial_port,
             close_serial_port,
             send_serial_data,
-            get_connection_status
+            get_connection_status,
+            get_startup_args
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+// ============================================================================
+// Headless Mode (no GUI, serial → stdout)
+// ============================================================================
+
+pub fn run_headless(port: Option<String>, baud: Option<u32>) {
+    let port_name = match port {
+        Some(p) => p,
+        None => {
+            eprintln!("Error: --headless requires --port <port>");
+            eprintln!("Usage: fc_tool --headless --port /dev/ttyACM0 --baud 115200");
+            // List available ports as a hint
+            if let Ok(ports) = serialport::available_ports() {
+                if !ports.is_empty() {
+                    eprintln!("\nAvailable ports:");
+                    for p in &ports {
+                        let board = match &p.port_type {
+                            serialport::SerialPortType::UsbPort(info) => {
+                                identify_board(info.vid, info.pid)
+                                    .map(|s| s.to_string())
+                                    .unwrap_or_default()
+                            }
+                            _ => String::new(),
+                        };
+                        if board.is_empty() {
+                            eprintln!("  {}", p.port_name);
+                        } else {
+                            eprintln!("  {} ({})", p.port_name, board);
+                        }
+                    }
+                }
+            }
+            std::process::exit(1);
+        }
+    };
+    let baud_rate = baud.unwrap_or(115200);
+
+    eprintln!("fc_tool headless: {} @ {} baud", port_name, baud_rate);
+    eprintln!("Press Ctrl+C to exit\n");
+
+    let port = match serialport::new(&port_name, baud_rate)
+        .timeout(Duration::from_millis(500))
+        .open()
+    {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("Error: Failed to open {}: {}", port_name, e);
+            std::process::exit(1);
+        }
+    };
+
+    // Clone port for stdin forwarding thread
+    let mut writer = port.try_clone().expect("Failed to clone serial port");
+
+    // Stdin → serial forwarding thread (enables sending commands in headless mode)
+    thread::spawn(move || {
+        let stdin = std::io::stdin();
+        let mut input = String::new();
+        loop {
+            input.clear();
+            match stdin.read_line(&mut input) {
+                Ok(0) => break, // EOF
+                Ok(_) => {
+                    let _ = writer.write_all(input.as_bytes());
+                    let _ = writer.flush();
+                }
+                Err(_) => break,
+            }
+        }
+    });
+
+    // Serial → stdout reader (main thread)
+    let mut reader = BufReader::new(port);
+    let mut line = String::new();
+    let stdout = std::io::stdout();
+    let mut out = stdout.lock();
+
+    loop {
+        line.clear();
+        match reader.read_line(&mut line) {
+            Ok(0) => {
+                eprintln!("\nDevice disconnected");
+                break;
+            }
+            Ok(_) => {
+                // Raw serial data to stdout (verbose — includes all telemetry/plotter data)
+                let _ = out.write_all(line.as_bytes());
+            }
+            Err(e) => {
+                if e.kind() == std::io::ErrorKind::TimedOut {
+                    continue;
+                }
+                eprintln!("\nSerial error: {}", e);
+                break;
+            }
+        }
+    }
 }
