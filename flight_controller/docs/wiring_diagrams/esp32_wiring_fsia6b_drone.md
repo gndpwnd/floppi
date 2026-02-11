@@ -141,6 +141,20 @@ FS-iA6B iBUS signal ──[1k ohm]──┬── ESP32 GPIO 4
 
 Output voltage: 5V * 2k/(1k+2k) = 3.33V (safe for ESP32)
 
+### iBUS Protocol Summary
+
+| Parameter | Value |
+|-----------|-------|
+| Baud rate | 115200 |
+| Format | 8N1 (standard UART, non-inverted) |
+| Frame size | 32 bytes |
+| Channels | 14 (first 6 used) |
+| Channel range | 1000-2000 us (direct microseconds) |
+| Update rate | ~143 Hz (~7ms per frame) |
+| Checksum | 0xFFFF minus sum of preceding bytes |
+
+**Why iBUS over other protocols?** All 14 channels are multiplexed into a single 32-byte serial frame — one signal wire carries everything. PWM needs one wire per channel (6 wires for 6 channels). iBUS is also **non-inverted** standard UART, unlike SBUS which requires signal inversion hardware. At ~143 Hz update rate, iBUS is faster than PWM (~50 Hz) and SBUS (~70-150 Hz). Protocol parsing takes microseconds on a 240MHz ESP32 — the bottleneck is always the receiver's refresh rate, not the MCU.
+
 ---
 
 ## ESP32-S3 Pin Reference

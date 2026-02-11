@@ -188,8 +188,14 @@ This roadmap tracks project-level features and milestones for the flight control
   - Dependencies: Basic flight validated on quad
   - Notes: dRehmFlight already supports this pattern — formalize and document it
 
+- [ ] Expand to 8 motor outputs for advanced VTOL configurations
+  - Description: Scale from 6 to 8 motor slots (`m1`-`m8`) to support octocopters, tiltrotors, and hybrid VTOL vehicles that start in vertical hover and transition to glide/forward flight. Currently 6 motors + 7 servos. Adding 2 more motor outputs (pins + PWM + mixer slots) is straightforward.
+  - Dependencies: Configurable mixer, hardware testing on quad first
+  - Status: **Future research** — not implementing yet. Document mixer patterns for common configurations.
+  - Notes: The complexity isn't in the motor count — it's in the mixer math. A quad X is 4 simple +/- combinations. A tiltrotor needs servo-driven motor tilt + transition logic (hover → cruise). That transition logic is flight computer territory. The FC just needs enough motor/servo outputs and a user-customizable mixer function. Keep the firmware's role simple: output N PWM signals based on PID + mixer math. The flight computer decides WHEN to transition and WHAT mixer weights to use.
+
 - [ ] Example configurations for common builds
-  - Description: Pre-made config files for popular drone types (quad X, quad +, hex, Y6, tricopter)
+  - Description: Pre-made config files for popular drone types (quad X, quad +, hex, Y6, tricopter, octo X, tiltrotor)
   - Dependencies: Configurable mixer
 
 ---
@@ -216,6 +222,12 @@ This roadmap tracks project-level features and milestones for the flight control
 - [x] Complexity calculator (CPU timing, memory, source analysis)
   - Completed: 2026-02-10 (replaces timing_calculator)
   - Notes: `tools/complexity_calculator.py` entry point with `tools/complexity/` package. Dynamic source scanning (no manual operation lists). CPU timing from source-scanned FP ops, memory analysis from ELF builds, per-tier breakdown. Inputs: clock/cores/FPU (via `--clock`, `--cores`, `--fpu`/`--no-fpu`) or platform presets (`-p esp32`). Modes: `--full`, `--memory`, `--source`, `--all`, `--builds`.
+- [x] Flash-and-run script (`tools/flash_and_run.sh`)
+  - Completed: 2026-02-11
+  - Notes: Builds, flashes PIO environment, waits for serial port, launches fc_tool in dev mode. Default: `teensy40_calibration`.
+- [x] Setup permissions script (`setup_permissions.sh` at repo root)
+  - Completed: 2026-02-11
+  - Notes: Idempotent sudo script — installs Teensy/ESP32 udev rules, adds user to dialout/plugdev groups, reloads udev. Skips steps already done.
 
 ---
 
@@ -575,6 +587,10 @@ Files: `ota.h`, `ota.cpp`.
 - [x] Calibration guide with hardware requirements and test sequencing — 2026-02-10
 - [x] Calibration reset tool (`tools/calibration_reset.py`) — 2026-02-10
 - [x] Config.h calibration status indicators (STATUS: UNCALIBRATED markers) — 2026-02-10
+- [x] OLED I2C address auto-detection (software I2C scan for 0x3C/0x3D) — 2026-02-11
+- [x] Blocking calibration input (waitForConfirmation blocks indefinitely, LED blink, no timeouts) — 2026-02-11
+- [x] CH6 calibration trigger debounce (must go LOW before re-trigger) — 2026-02-11
+- [x] fc_tool autoscroll fix (pauses during text selection) — 2026-02-11
 - [x] iBUS receiver support (FlySky FS-iA6B, inline parser, checksum validation) — 2026-02-10
 - [x] Wiring diagrams reorganized into `docs/wiring_diagrams/` with build-specific guides — 2026-02-10
 - [x] Hardware architecture vision documented (modular base system, progression path) — 2026-02-10

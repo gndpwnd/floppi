@@ -154,7 +154,7 @@ The flight controller is a **modular base system** where each component is confi
 │                                                     │
 │  MCU (Teensy/ESP32)  +  IMU (MPU6050/MPU9250)      │
 │       +  Receiver (iBUS/SBUS/DSM/PPM/WiFi API)     │
-│       +  ESCs (PWM signal, any brand)               │
+│       +  ESCs (PWM signal, up to 8 motors)           │
 │                                                     │
 ├─────────────────────────────────────────────────────┤
 │           Optional (config.h flags)                  │
@@ -174,6 +174,7 @@ The flight controller is a **modular base system** where each component is confi
 - **Magnetometer is out of scope**: Compass data is flight computer territory, not the base stabilizer. MPU9250 mag calibration exists for users who want it, but it's not part of the core loop.
 - **ESP32 dual-role**: Core 0 = flight controller (real-time PID loop). Core 1 = lightweight flight computer services (WiFi, web server, telemetry, OTA). Core 1 can outsource heavy computation to an external host over WiFi.
 - **Future sensors added modularly**: Additional sensors (barometer, GPS, lidar) would each get their own `USE_*` flag and run on Core 1 (ESP32) or be handled by an external flight computer. The base flight loop on Core 0 is never affected.
+- **Motor/servo scaling (future)**: Currently 6 motor outputs + 7 servo channels. Expanding to 8 motors is straightforward (add `m7`/`m8` variables, pins, PWM channels). The real complexity is in the mixer math, not the motor count. Advanced VTOL (tiltrotors, hybrid hover-to-glide) needs servo-driven tilt + transition logic — the transition decisions belong on the flight computer, the FC just outputs PWM based on mixer weights. See roadmap for details.
 
 ### Progression Path
 
@@ -216,7 +217,7 @@ This is a separate project. The FC firmware just exposes the WiFi API endpoints.
 - PID control loops (rate, angle modes) — compile-time selection
 - IMU integration and sensor fusion (Madgwick 6DOF filter)
 - Auto-calibration features (IMU, radio, attitude)
-- Multiple VTOL configurations (quad, hex, fixed-wing, tiltrotor, hybrid)
+- Multiple VTOL configurations (quad, hex, octo, fixed-wing, tiltrotor, hybrid) — up to 8 motors + 7 servos (future)
 - Firmware state machine (calibration mode ↔ live mode)
 - Build targets for different firmware states
 - Serial debug output and diagnostics

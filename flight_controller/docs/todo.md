@@ -4,14 +4,24 @@
 
 ## In Progress
 
-_No tasks in progress_
+- [ ] Bench test: IMU sensor validation — **Working.** MPU6050 initialized OK, 6-position calibration started.
+- [ ] Bench test: SBUS receiver communication — **Working.** X8R on Serial5/Pin 21 initialized OK.
+- [ ] Bench test: Motor/ESC response — **Pending.** Hardware assembled, not yet tested.
 
 ## Up Next
 
 _Priority queue for immediate work_
 
+- [ ] OLED startup welcome message — display "FLOPPI FC" + firmware version + build info on OLED during boot, visible for at least 2 seconds before transitioning to normal display. Currently `setupDisplay()` shows a brief message but it may be too fast to notice. Consider adding a deliberate `delay()` after the startup screen so users can confirm the OLED is working.
+- [ ] OLED context-aware calibration display — replace static "FLOPPI READY" with a progress indicator showing the current step and total (e.g. "1/5 IMU Orient", "2/5 Radio Cal"). Each step should display live data relevant to that calibration:
+  - **Line 1**: Progress indicator — `N/M step_name` format (e.g. "1/5 IMU Orient")
+  - **Line 2+**: Live sensor data for the active step:
+    - **IMU orientation**: AccX, AccY, AccZ values so user can confirm correct board position
+    - **Radio calibration**: channel PWM values (ch1..ch6) so user sees mapped receiver output
+    - **Level calibration**: roll/pitch angles updating in real-time
+    - **ESC calibration**: motor output PWM values
+  - When no calibration is active, show a summary status (armed/disarmed, loop rate, battery if available)
 - [ ] Command source arbitration — priority logic when multiple command sources are active (RC = primary, serial/I2C/WiFi = override). Design doc: [findings/command-arbitration-design.md](findings/command-arbitration-design.md)
-- [ ] Hardware testing when hardware is available — follow [calibration-guide.md](features/calibration-guide.md) stages
 - [ ] fc_tool WebSocket integration (connect to floppi.local/ws) — **deferred**, fc_tool still in development
 
 ## Backlog
@@ -26,14 +36,24 @@ _Lower priority, do when time permits_
 
 _Tasks waiting on something (include reason)_
 
-- [ ] Bench test: IMU sensor validation — **Blocked by**: Hardware not yet assembled
-- [ ] Bench test: SBUS receiver communication — **Blocked by**: Hardware not yet assembled
-- [ ] Bench test: Motor/ESC response — **Blocked by**: Hardware not yet assembled
+_No blocked tasks_
 
 ## Recently Completed
 
 _For context; clear periodically_
 
+- [x] OLED I2C address auto-detection and calibration input improvements — 2026-02-11
+  - Software I2C scan for OLED address (0x3C/0x3D) with auto-selection
+  - 2-second startup message delay for visual confirmation
+  - waitForConfirmation() now blocks indefinitely (no timeout) with LED blink
+  - CH6 calibration trigger debounce (must go LOW before re-trigger)
+- [x] Hardware bench testing started — 2026-02-10
+  - Firmware built and flashed successfully (teensy40_calibration)
+  - Serial connection working (/dev/ttyACM0 at 115200)
+  - IMU (MPU6050) initialized OK, 6-position calibration started
+  - SBUS receiver (X8R on Serial5/Pin 21) initialized OK
+  - OLED (DSD TECH 0.91" SSD1306 128x32) diagnosed: SDA/SCL pin swap fixed (SDA=16, SCL=17)
+  - setup_permissions.sh created at repo root (udev rules + user groups)
 - [x] I2C command input (`USE_I2C_COMMANDS`) — 2026-02-10
   - FC as I2C slave on Wire1 (0x42), master writes 12 bytes (6x uint16 LE)
   - Separate from IMU bus (Wire). ISR-based receive, noInterrupts for read.
@@ -134,7 +154,7 @@ _For context; clear periodically_
 
 - **Calibration automation complete** — all config.h hardware-dependent values now have auto-calibration routines
 - **RadioComm universal command layer** — all command sources implemented (SBUS, iBUS, DSM, PPM, PWM, serial, I2C, WiFi). Remaining: command source arbitration (design doc done, implementation pending). See [findings/command-arbitration-design.md](findings/command-arbitration-design.md).
-- **Hardware testing is the critical path** — firmware is ready, need physical drone to validate
+- **Hardware testing is in progress** — firmware flashed, IMU and receiver validated, motor/ESC testing next
 - **fc_tool will help** — visual diagnostics during calibration (separate project at /fc_tool/)
 - **Modular architecture** — code split into imu, control, motors, debug modules + feature flags
 - **Platform support**: Teensy 4.x (recommended), ESP32/S3 (WiFi-enabled)

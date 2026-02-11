@@ -37,6 +37,7 @@ const RECONNECT_INTERVAL_MS = 2000;
 const RECONNECT_MAX_ATTEMPTS = 15;
 const TERMINAL_MAX_LINES = 5000;
 let activeFilter = "";
+let userSelecting = false;  // Pause autoscroll during text selection
 
 // ============================================================================
 // Plotter
@@ -301,7 +302,7 @@ function trimTerminal() {
 }
 
 function autoScroll() {
-  if (autoscrollCheckbox.checked) {
+  if (autoscrollCheckbox.checked && !userSelecting) {
     terminalOutput.scrollTop = terminalOutput.scrollHeight;
   }
 }
@@ -333,6 +334,10 @@ terminalInput.addEventListener("keydown", (e) => {
 });
 
 clearMonitorBtn.addEventListener("click", clearTerminal);
+
+// Pause autoscroll while user is selecting text (click-and-drag)
+terminalOutput.addEventListener("mousedown", () => { userSelecting = true; });
+document.addEventListener("mouseup", () => { userSelecting = false; });
 
 filterInput.addEventListener("input", () => {
   activeFilter = filterInput.value;

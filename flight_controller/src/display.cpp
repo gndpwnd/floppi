@@ -252,10 +252,91 @@ static void drawArmed(const DisplayData_t* data) {
 //                                              PUBLIC FUNCTIONS                                                           //
 //========================================================================================================================//
 
+// Software I2C scan — check if a device ACKs at a given 7-bit address
+// Uses the same pins as U8G2 software I2C
+static bool swI2cProbe(uint8_t addr7bit) {
+    // Bit-bang a START + address byte + read ACK on OLED pins
+    uint8_t sda = OLED_SDA_PIN;
+    uint8_t scl = OLED_SCL_PIN;
+
+    pinMode(sda, INPUT_PULLUP);
+    pinMode(scl, INPUT_PULLUP);
+    delayMicroseconds(10);
+
+    // START: SDA goes low while SCL is high
+    pinMode(sda, OUTPUT);
+    digitalWrite(sda, LOW);
+    delayMicroseconds(5);
+    pinMode(scl, OUTPUT);
+    digitalWrite(scl, LOW);
+    delayMicroseconds(5);
+
+    // Send 7-bit address + write bit (0)
+    uint8_t byte = (addr7bit << 1) | 0;  // write
+    for (int i = 7; i >= 0; i--) {
+        if (byte & (1 << i)) {
+            pinMode(sda, INPUT_PULLUP);  // HIGH
+        } else {
+            pinMode(sda, OUTPUT);
+            digitalWrite(sda, LOW);
+        }
+        delayMicroseconds(2);
+        pinMode(scl, INPUT_PULLUP);  // clock high
+        delayMicroseconds(5);
+        pinMode(scl, OUTPUT);
+        digitalWrite(scl, LOW);  // clock low
+        delayMicroseconds(2);
+    }
+
+    // Read ACK: release SDA, clock one bit, check if SDA is LOW (ACK)
+    pinMode(sda, INPUT_PULLUP);
+    delayMicroseconds(2);
+    pinMode(scl, INPUT_PULLUP);
+    delayMicroseconds(5);
+    bool ack = (digitalRead(sda) == LOW);
+    pinMode(scl, OUTPUT);
+    digitalWrite(scl, LOW);
+
+    // STOP: SDA goes high while SCL is high
+    pinMode(sda, OUTPUT);
+    digitalWrite(sda, LOW);
+    delayMicroseconds(2);
+    pinMode(scl, INPUT_PULLUP);
+    delayMicroseconds(5);
+    pinMode(sda, INPUT_PULLUP);
+    delayMicroseconds(5);
+
+    return ack;
+}
+
 void setupDisplay() {
+    Serial.print(F("OLED: pins SDA="));
+    Serial.print(OLED_SDA_PIN);
+    Serial.print(F(" SCL="));
+    Serial.println(OLED_SCL_PIN);
+
+    // Scan for OLED on common SSD1306 addresses
+    Serial.print(F("OLED: scanning I2C... "));
+    bool found_3c = swI2cProbe(0x3C);
+    bool found_3d = swI2cProbe(0x3D);
+
+    if (found_3c) {
+        Serial.println(F("found at 0x3C"));
+    } else if (found_3d) {
+        Serial.println(F("found at 0x3D"));
+        u8g2.setI2CAddress(0x3D * 2);  // U8G2 uses 8-bit address
+    } else {
+        Serial.println(F("NO DEVICE FOUND!"));
+        Serial.println(F("  Check wiring: OLED SDA->Pin 16, SCL->Pin 17, VCC->3.3V"));
+        Serial.println(F("  If still failing, try swapping SDA/SCL wires"));
+        return;  // Don't try to init a display that isn't there
+    }
+
     u8g2.begin();
     u8g2.setFont(u8g2_font_6x10_tf);
     displayStartupMessage("FLOPPI FC");
+    delay(2000);  // Hold startup message so user can confirm display works
+    Serial.println(F("OLED: display initialized OK"));
 }
 
 void displayStartupMessage(const char* message) {

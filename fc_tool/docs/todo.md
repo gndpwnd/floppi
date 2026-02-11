@@ -11,7 +11,7 @@
 
 ## Up Next
 
-- [ ] Test with real Teensy hardware (serial + plotter visualization)
+- [ ] Test with real Teensy hardware (serial + plotter visualization) — hardware now connected and available for testing
 - [ ] Validate cross-platform builds (Windows, macOS)
 - [ ] Trigger Mode cursor system (neon yellow/blue intercept lines)
 - [ ] X-axis scaling controls (independent zoom/pan)
@@ -40,23 +40,15 @@
   - chart-manager.js, cursor-system.js, readout-panel.js
   - period-detector.js, anomaly-tracker.js, trigger-mode.js, color-palette.js
 
+### Serial Monitor Enhancements (research complete)
+
+- [ ] ANSI escape code rendering — bold, dim, underline, 16 colors as styled HTML spans
+- [ ] Live Dashboard Mode — fixed-position panel showing key=value data updating in place (not scrolling)
+- [ ] Companion Arduino library (floppi_serial) — plotVar(), ANSI macros, atomic line buffering
+
 ### Serial Features
 
 - [ ] Raw data logging to file (timestamped)
-
-### PlatformIO Integration
-
-- [ ] Detect PlatformIO installation
-- [ ] Compile firmware (`pio run`)
-- [ ] Flash firmware (`pio run --target upload`)
-- [ ] Build output display
-
-### Calibration Interface
-
-- [ ] Parse calibration values from serial
-- [ ] Display current calibration values
-- [ ] Generate config.h snippet
-- [ ] Save/load calibration profiles
 
 ### Platform Validation
 
@@ -71,6 +63,9 @@
 
 ## Recently Completed
 
+- [x] Autoscroll fix: pauses during text selection (mousedown/mouseup) — 2026-02-11
+- [x] fc_tool Rust backend debug build verified — 2026-02-10
+- [x] PIO serial monitor fallback documented in README.md — 2026-02-10
 - [x] Plotter improvements — 2026-02-10
   - Fixed sample count bug (was counting per-event, now per-line)
   - Data window size control (50-5000, adjustable in toolbar)
@@ -130,6 +125,13 @@ All in `fc_tool/docs/findings/`:
 | chartjs-oscilloscope-research.md | Complete | Chart.js plugins for oscilloscope features |
 | multi-graph-plotter-research.md | Complete | Protocol design, Arduino compatibility |
 | board-vid-pid-reference.md | Complete | USB VID/PID reference |
+| serial-formatting-libraries-research.md | Complete | Arduino libs, MSP/MAVLink/Firmata, protocol design patterns, ESP32/Teensy specifics |
+
+Also in `docs/literature/findings/`:
+
+| Document | Status | Summary |
+|----------|--------|---------|
+| serial-rich-text-formatting.md | Complete | ANSI escape codes, terminal support matrix, performance at 115200 baud |
 
 ---
 

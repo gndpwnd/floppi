@@ -24,39 +24,43 @@ extern void getCommands();
 //                                              HELPER FUNCTIONS                                                          //
 //========================================================================================================================//
 
-bool waitForConfirmation(int timeoutSeconds) {
-    // Wait for user to type 'y' or 'n' with timeout
-    unsigned long startTime = millis();
-    unsigned long timeout = timeoutSeconds * 1000;
-    
-    // Clear serial buffer
-    while (Serial.available()) Serial.read();
-    
-    Serial.print(F("\nType 'y' to continue, 'n' to wait (timeout "));
-    Serial.print(timeoutSeconds);
-    Serial.println(F(" seconds): "));
-    
-    while (millis() - startTime < timeout) {
+bool waitForConfirmation(int /* unused */) {
+    // Block until user types 'y' (continue) or 'n' (cancel).
+    // No timeout — waits indefinitely. LED blinks to show firmware is alive.
+
+    while (Serial.available()) Serial.read();  // Clear serial buffer
+
+    Serial.println(F("\n>> Type 'y' to continue, 'n' to cancel: "));
+
+    unsigned long lastBlink = millis();
+    bool ledState = false;
+
+    while (true) {
         if (Serial.available() > 0) {
             char response = Serial.read();
-            while (Serial.available()) Serial.read(); // Clear rest of buffer
-            
+            while (Serial.available()) Serial.read();  // Clear rest of buffer
+
             if (response == 'y' || response == 'Y') {
                 Serial.println(F("✓ Confirmed!"));
+                digitalWrite(LED_BUILTIN, LOW);
                 return true;
             }
             else if (response == 'n' || response == 'N') {
-                Serial.println(F("Waiting 3 seconds..."));
-                delay(3000);
-                return waitForConfirmation(timeoutSeconds); // Recursive call
+                Serial.println(F("✗ Cancelled."));
+                digitalWrite(LED_BUILTIN, LOW);
+                return false;
             }
         }
+
+        // Blink LED every 500ms to show we're waiting (not frozen)
+        if (millis() - lastBlink > 500) {
+            lastBlink = millis();
+            ledState = !ledState;
+            digitalWrite(LED_BUILTIN, ledState ? HIGH : LOW);
+        }
+
         delay(10);
     }
-    
-    // Timeout - assume 'y'
-    Serial.println(F("✓ Timeout - continuing..."));
-    return true;
 }
 
 int detectMovedChannel(uint16_t neutral1, uint16_t current1,
@@ -897,8 +901,8 @@ void calibrateIMUWithOrientation() {
     Serial.println(F("  ✓ Auto-detect how your IMU is mounted"));
     Serial.println(F("  ✓ Generate axis transformation code automatically\n"));
     
-    if (!waitForConfirmation(5)) return;
-    
+    if (!waitForConfirmation(30)) return;
+
     // First run basic calibration
     Serial.println(F("\n═══════════════════════════════════════════════════════════"));
     Serial.println(F("STEP 1: LEVEL CALIBRATION"));
@@ -907,8 +911,8 @@ void calibrateIMUWithOrientation() {
     Serial.println(F("▶ Nose pointing FORWARD"));
     Serial.println(F("▶ Wings level (no roll)"));
     Serial.println(F("▶ Do NOT move during calibration (5 seconds)"));
-    
-    if (!waitForConfirmation(3)) return;
+
+    if (!waitForConfirmation(30)) return;
     
     // Run calibration
     Serial.println(F("Calibrating..."));
@@ -946,9 +950,9 @@ void calibrateIMUWithOrientation() {
     Serial.println(F("▶ Tilt aircraft so NOSE points UP (tail on table)"));
     Serial.println(F("▶ Hold steady at approximately 90 degrees"));
     Serial.println(F("▶ Aircraft should be vertical with nose pointing at ceiling"));
-    
-    if (!waitForConfirmation(3)) return;
-    
+
+    if (!waitForConfirmation(30)) return;
+
     delay(1000);
     float accX_noseUp = 0, accY_noseUp = 0, accZ_noseUp = 0;
     for (int i = 0; i < 100; i++) {
@@ -974,9 +978,9 @@ void calibrateIMUWithOrientation() {
     Serial.println(F("▶ Tilt aircraft so RIGHT SIDE points UP (left wing on table)"));
     Serial.println(F("▶ Nose should still point FORWARD (not left/right)"));
     Serial.println(F("▶ Aircraft rolled 90° to the right"));
-    
-    if (!waitForConfirmation(3)) return;
-    
+
+    if (!waitForConfirmation(30)) return;
+
     delay(1000);
     float accX_rightUp = 0, accY_rightUp = 0, accZ_rightUp = 0;
     for (int i = 0; i < 100; i++) {
@@ -1002,9 +1006,9 @@ void calibrateIMUWithOrientation() {
     Serial.println(F("▶ Return aircraft to NORMAL position (level on table)"));
     Serial.println(F("▶ Top/back pointing UP, bottom/belly on table"));
     Serial.println(F("▶ This verifies our measurements"));
-    
-    if (!waitForConfirmation(3)) return;
-    
+
+    if (!waitForConfirmation(30)) return;
+
     delay(1000);
     float accX_topUp = 0, accY_topUp = 0, accZ_topUp = 0;
     for (int i = 0; i < 100; i++) {

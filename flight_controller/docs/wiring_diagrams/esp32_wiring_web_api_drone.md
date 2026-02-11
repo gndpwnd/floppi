@@ -196,4 +196,4 @@ LiPo Battery (3S or 4S)
 //#define USE_PWM_RECEIVER
 ```
 
-> Note: WiFi API command routing through RadioComm is planned but not yet implemented. See roadmap.md for status. For now, use with an RC receiver for actual flight testing, or use this configuration for bench testing and development.
+> WiFi API command routing through RadioComm is **fully implemented** (2026-02-10). POST `/api/commands` and WebSocket `/ws` both feed into RadioComm via spinlock-protected cross-core buffer. This configuration works as the sole command source — no RC receiver needed. See `swarm_api/` for the ground station that sends commands.

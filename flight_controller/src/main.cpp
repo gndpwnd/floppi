@@ -752,6 +752,7 @@ void runCalibrationIfRequested() {
 void checkCalibrationMode() {
     static CalibrationMode last_mode = CALIB_NONE;
     static unsigned long mode_start_time = 0;
+    static bool triggered_this_hold = false;  // Debounce: must go LOW before re-trigger
 
     if (armedFly || channel_3_pwm > 1050) {
         calibration_mode = CALIB_NONE;
@@ -771,14 +772,19 @@ void checkCalibrationMode() {
     if (new_mode != last_mode) {
         last_mode = new_mode;
         mode_start_time = millis();
+        // Reset debounce when switch position changes
+        if (new_mode == CALIB_NONE) {
+            triggered_this_hold = false;
+        }
         return;
     }
 
-    if (new_mode != CALIB_NONE) {
+    if (new_mode != CALIB_NONE && !triggered_this_hold) {
         unsigned long hold_time = millis() - mode_start_time;
 
         if (hold_time >= 3000) {
             calibration_mode = new_mode;
+            triggered_this_hold = true;  // Don't re-trigger until CH6 goes LOW
 
             digitalWrite(LED_PIN, HIGH);
             delay(100);

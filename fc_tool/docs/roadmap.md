@@ -26,13 +26,11 @@ This roadmap tracks project-level features and milestones. For immediate tasks, 
 
 **Nice-to-have (defer if needed):**
 
-- [ ] PlatformIO compile/flash integration
-- [ ] Calibration parameter display
 - [ ] macOS build
 
 ### Long-term Goal: v1.0 — Full Developer Workflow
 
-**Means:** Complete loop from parameter editing to compile to flash to monitor to calibrate, all from one tool.
+**Means:** Complete serial monitoring, data visualization, and analysis workflow from one tool.
 
 ---
 
@@ -54,6 +52,21 @@ This roadmap tracks project-level features and milestones. For immediate tasks, 
   - Implementation: Backend reader thread detects EOF/error, emits `serial-disconnected` event; frontend retries every 2s, max 15 attempts
 - [ ] Raw data logging
   - Description: Save serial output to file for offline analysis
+
+### Serial Monitor Enhancements (future)
+
+- [ ] ANSI escape code rendering
+  - Description: Parse ANSI SGR sequences (bold, dim, underline, 8/16 colors) and render as styled HTML spans in the terminal
+  - Notes: Firmware sends `\033[1;31mERROR\033[0m` → fc_tool renders bold red text. Safe subset: bold, dim, underline, 16 colors. Toggle on/off.
+  - Reference: [serial-rich-text-formatting.md](/docs/literature/findings/serial-rich-text-formatting.md)
+- [ ] Live Dashboard Mode
+  - Description: A fixed-position panel that shows key=value data updating in place (not scrolling). Like an oscilloscope readout or a car dashboard — values change but the layout stays static.
+  - Notes: Parses the existing `name=value` / `name:value` format. Each unique key gets a row in the dashboard. Values update live. Can coexist alongside the scrolling terminal (split view or toggle). Analogous to the plotter's "continuous vs period" modes but for text data.
+  - Implementation ideas: fc_tool parses key=value pairs, maintains a Map of latest values, renders in a CSS grid with key labels and value cells that update in place. Optional: firmware can also use ANSI cursor control (`\033[H` cursor home) for terminals that support it.
+- [ ] Companion Arduino library (floppi_serial)
+  - Description: Lightweight Arduino library providing helpers for fc_tool's protocol features — multi-graph plotting (`plotVar()`), ANSI color macros, structured telemetry output, atomic line buffering
+  - Notes: Not required — fc_tool works with raw `Serial.print()`. The library just makes it more convenient. Must be <5KB flash, zero-allocation. Compile-time ANSI toggle. See research findings.
+  - Reference: [serial-formatting-libraries-research.md](findings/serial-formatting-libraries-research.md)
 
 ### Dynamic Serial Plotter
 
@@ -116,32 +129,6 @@ Reference: [signal-analysis-discussion.md](signal-analysis-discussion.md)
 
 - [ ] Dedicated JS modules for plot analytics (chart-manager, cursor-system, readout-panel, period-detector, anomaly-tracker, trigger-mode, color-palette)
 
-### PlatformIO Integration
-
-- [ ] Detect PlatformIO installation
-  - Description: Verify PlatformIO CLI is available, show version
-- [ ] Compile firmware
-  - Description: Trigger `pio run` for the flight_controller project
-  - Dependencies: PlatformIO installed, flight_controller project path configured
-- [ ] Flash firmware
-  - Description: Trigger `pio run --target upload` to flash connected board
-  - Dependencies: Compile, board connected
-- [ ] Build output display
-  - Description: Show PlatformIO compile/upload output in GUI
-
-### Calibration Interface
-
-- [ ] Display current calibration values
-  - Description: Read and show calibration parameters from serial stream
-  - Related: [flight_controller/docs/findings/auto-calibration-research.md](/flight_controller/docs/findings/auto-calibration-research.md)
-- [ ] Calibration visualization
-  - Description: Visual feedback showing calibration quality/progress
-- [ ] Generate config.h snippet from calibration data
-  - Description: Export calibration values in copy-pasteable config.h format
-  - Notes: Supports the calibrate → hard-code → flash → fly workflow
-- [ ] Save/load calibration profiles
-  - Description: Store calibration snapshots for different boards or configurations
-
 ### Board Management
 
 - [x] Teensy 4.0/4.1 detection
@@ -184,8 +171,8 @@ Reference: [signal-analysis-discussion.md](signal-analysis-discussion.md)
 
 ### Dev Environment Scripts (dev_setup/)
 
-All scripts install to default home directory locations (`~/.cargo/`, `~/.nvm/`, `~/.platformio/`).
-Each setup-dev script installs: Rust, Node.js, PlatformIO (optional), and npm dependencies.
+All scripts install to default home directory locations (`~/.cargo/`, `~/.nvm/`).
+Each setup-dev script installs: Rust, Node.js, and npm dependencies.
 Each build script sources the required env vars before compiling.
 
 - [x] Linux: install-system-deps.sh, setup-dev.sh, build.sh — **VALIDATED**
@@ -235,9 +222,8 @@ Each build script sources the required env vars before compiling.
 ## Notes
 
 - The serial plotter uses a flexible protocol parser that handles `name@plotId:value`, `name:value`, `name=value`, and plain CSV/space-separated numbers
-- MVP focuses on serial + plotter; PlatformIO integration and calibration UI come after
-- Stability mode applies: if serial monitoring + plotting works, ship it before adding more features
-- The flight_controller has a calibration mode vs live mode workflow — fc_tool's calibration interface should help users go from raw calibration output to hard-coded config.h values seamlessly
+- MVP focuses on serial + plotter — ship it before adding more features
+- Firmware compilation and flashing are handled via existing PlatformIO scripts (`pio run`), not fc_tool
 - See [flight_controller/docs/scope.md](/flight_controller/docs/scope.md) and [flight_controller/docs/roadmap.md](/flight_controller/docs/roadmap.md) for firmware context
 
 ---

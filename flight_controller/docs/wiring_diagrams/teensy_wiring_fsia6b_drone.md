@@ -15,8 +15,8 @@ flowchart LR
         T18[Pin 18 SDA]
         T19[Pin 19 SCL]
         T15[Pin 15 RX3]
-        T16[Pin 16]
-        T17[Pin 17]
+        T16[Pin 16 OLED SDA]
+        T17[Pin 17 OLED SCL]
         T0[Pin 0]
         T1[Pin 1]
         T2[Pin 2]
@@ -177,6 +177,8 @@ Use 1% tolerance resistors for best accuracy. A 1k/2.2k pair also works (gives 3
 | Update rate | ~143 Hz (~7ms per frame) |
 | Checksum | 0xFFFF minus sum of preceding bytes |
 
+**Why iBUS over other protocols?** All 14 channels are multiplexed into a single 32-byte serial frame — one signal wire carries everything. PWM needs one wire per channel (6 wires for 6 channels). iBUS is also **non-inverted** standard UART, unlike SBUS which requires signal inversion hardware. At ~143 Hz update rate, iBUS is faster than PWM (~50 Hz) and SBUS (~70-150 Hz). Protocol parsing takes microseconds on a 600MHz Teensy — the bottleneck is always the receiver's refresh rate, not the MCU.
+
 ### Binding the Receiver
 
 1. Power off everything
@@ -280,3 +282,11 @@ The FS-iA6B supports IBus, PPM, and individual PWM. Change the protocol in confi
 ```
 
 **Supported OLED displays:** DSD TECH 0.91" (SSD1306 128x32), Generic 0.96" (SSD1306 128x64), HiLetGo 1.3" (SH1106 128x64). Select in config.h.
+
+---
+
+## Troubleshooting: Common Wiring Mistakes
+
+- **OLED SDA/SCL pin swap**: Pin 16 is SDA, Pin 17 is SCL. Many OLED breakout boards print these labels in the opposite order from what you'd expect. If the display powers on but shows nothing, swap the two data lines first — this is the most common cause.
+- **Voltage divider omitted on iBUS**: The FS-iA6B outputs 5V logic. Without the 1k/2k divider, Serial3 RX on the Teensy may read garbage or damage the pin.
+- **Multiple ESC BEC VCC wires connected**: Only one ESC's red (5V) wire should reach Teensy VIN. Cut or disconnect the red wire on all other ESCs to avoid regulator conflicts.

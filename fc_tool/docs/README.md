@@ -2,9 +2,17 @@
 
 Cross-platform desktop tool for floppi flight controller firmware management and real-time diagnostics.
 
+## Run It
+
+```bash
+cd fc_tool && npx tauri dev
+```
+
+Launches the GUI with hot-reload. Requires system deps installed first (see [Quick Start](#quick-start) below).
+
 ## Overview
 
-fc_tool provides a native GUI for serial communication, real-time IMU sensor visualization, and PlatformIO-based firmware compilation and flashing. Built in Rust with Tauri, it ships as a single executable per platform with no runtime dependencies.
+fc_tool provides a native GUI for serial communication and real-time data visualization (dynamic multi-graph plotter). Built in Rust with Tauri, it ships as a single executable per platform with no runtime dependencies. Firmware compilation and flashing are handled externally via PlatformIO scripts.
 
 ## Quick Start
 
@@ -95,7 +103,43 @@ sudo apt-get install -y \
 3. Click "Scan Ports" to detect connected boards
 4. Select a serial port and connect
 5. Use the serial monitor to interact with the board
-6. View real-time IMU data in the plots tab
+6. Click "Show Plotter" to visualize serial data in real time
+
+### PlatformIO Serial Monitor (fallback)
+
+During fc_tool development, you can use PlatformIO's built-in serial monitor as a
+fallback for interacting with the flight controller:
+
+```bash
+# Basic serial monitor (115200 baud, auto-detects port)
+pio device monitor
+
+# Specify port and baud rate explicitly
+pio device monitor --port /dev/ttyACM0 --baud 115200
+
+# With filters (useful for calibration output)
+pio device monitor --filter direct
+```
+
+This is useful when:
+
+- fc_tool is being rebuilt or modified
+- You need a quick serial connection without launching the full GUI
+- Debugging serial protocol issues at a lower level
+
+## Development
+
+After installing system deps (see Quick Start), you can run fc_tool directly:
+
+```bash
+# Dev mode with hot-reload (frontend changes reload automatically)
+cd fc_tool && npx tauri dev
+
+# Release build (output in src-tauri/target/release/bundle/)
+cd fc_tool && npx tauri build
+```
+
+Note: System dependencies must be installed first (see Quick Start above).
 
 ## Project Structure
 
@@ -144,8 +188,8 @@ For local development on Linux, use `./build.sh` or `./build.sh dev`.
 
 fc_tool has two layers — see [scope.md](scope.md) for full details:
 
-- **Standalone (no dependencies):** Serial monitor, IMU plots, calibration display. Uses `serialport-rs` directly. No Python, no PlatformIO needed.
-- **Optional PlatformIO integration:** Compile and flash firmware. Enabled when `pio` is on `$PATH`, grayed out otherwise.
+- **Rust backend:** Serial port detection, connection management, data streaming via `serialport-rs`. No Python, no PlatformIO needed at runtime.
+- **JS frontend:** Serial monitor terminal, dynamic multi-graph plotter (Chart.js), dark theme with neon data palette.
 
 ## Documentation
 

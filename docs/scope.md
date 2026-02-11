@@ -12,7 +12,7 @@ floppi is an open-source bare-bones flight controller platform: firmware + deskt
 | Sub-Project | Purpose | Docs |
 |-------------|---------|------|
 | `flight_controller/` | PlatformIO embedded firmware (Teensy + ESP32) | [scope](../flight_controller/docs/scope.md), [roadmap](../flight_controller/docs/roadmap.md) |
-| `fc_tool/` | Tauri 2 desktop app (Rust + vanilla JS) — serial monitor, plotter, calibration | [scope](../fc_tool/docs/scope.md), [roadmap](../fc_tool/docs/roadmap.md) |
+| `fc_tool/` | Tauri 2 desktop app (Rust + vanilla JS) — serial monitor, plotter | [scope](../fc_tool/docs/scope.md), [roadmap](../fc_tool/docs/roadmap.md) |
 
 ## Core Philosophy
 
@@ -57,7 +57,7 @@ floppi is an open-source bare-bones flight controller platform: firmware + deskt
 - Dynamic multi-graph serial plotter (`name@plotId:value` protocol)
 - Dark theme with neon data palette
 - Auto-reconnect on disconnect
-- Future: calibration interface, measurement cursors, signal analysis
+- Future: measurement cursors, signal analysis
 
 ## Out of Scope
 
