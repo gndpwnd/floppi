@@ -1,6 +1,6 @@
 # fc_tool - Todo
 
-> Last updated: 2026-02-10
+> Last updated: 2026-02-11
 
 ## In Progress
 
@@ -11,10 +11,10 @@
 
 ## Up Next
 
+- [ ] CLI arguments for port and baud (`--port /dev/ttyACM0 --baud 115200`) — auto-connect on launch, useful for scripting
+- [ ] Headless mode (`--headless`) — raw serial to stdout, no GUI window. Enables piping/logging/scripting.
 - [ ] Test with real Teensy hardware (serial + plotter visualization) — hardware now connected and available for testing
 - [ ] Validate cross-platform builds (Windows, macOS)
-- [ ] Trigger Mode cursor system (neon yellow/blue intercept lines)
-- [ ] X-axis scaling controls (independent zoom/pan)
 
 ## Backlog (Post-v0.1)
 
@@ -42,9 +42,14 @@
 
 ### Serial Monitor Enhancements (research complete)
 
-- [ ] ANSI escape code rendering — bold, dim, underline, 16 colors as styled HTML spans
+- [x] ANSI escape code rendering — bold, dim, underline, 16 colors as styled HTML spans — **DONE** 2026-02-11
 - [ ] Live Dashboard Mode — fixed-position panel showing key=value data updating in place (not scrolling)
 - [ ] Companion Arduino library (floppi_serial) — plotVar(), ANSI macros, atomic line buffering
+
+### Scripting & Automation
+
+- [ ] CLI arguments for port and baud — Tauri CLI plugin, auto-connect on launch
+- [ ] Headless mode — `--headless` flag, Rust-only serial read → stdout, no window
 
 ### Serial Features
 
@@ -63,6 +68,12 @@
 
 ## Recently Completed
 
+- [x] ANSI escape code rendering — 2026-02-11
+  - SGR parser: bold, dim, underline, 8+8 foreground colors (standard + bright)
+  - Compound codes (e.g., `\033[1;31m` = bold red)
+  - ANSI toggle checkbox in toolbar (enabled by default)
+  - CSS color classes matching dark terminal theme
+  - No ANSI codes? Falls through to plain text (zero overhead)
 - [x] Copy All button renamed for clarity — 2026-02-10
 - [x] Autoscroll fix: pauses during text selection (mousedown/mouseup) — 2026-02-11
 - [x] fc_tool Rust backend debug build verified — 2026-02-10

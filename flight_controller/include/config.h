@@ -87,15 +87,21 @@
 //=============================================================================
 // RECEIVER / COMMAND SOURCE SELECTION
 //=============================================================================
-// Uncomment ONLY ONE command source. RC receiver protocols are the primary
-// source for manual flying. Serial commands are for external flight computers.
+// Uncomment ONE RC receiver protocol for manual flying:
 //#define USE_PWM_RECEIVER       // Individual PWM channels
 //#define USE_PPM_RECEIVER       // PPM (single wire, 8 channels)
 #define USE_SBUS_RECEIVER        // SBUS (Futaba/FrSky standard)
 //#define USE_IBUS_RECEIVER      // iBUS (FlySky standard, 115200 baud)
 //#define USE_DSM_RECEIVER       // DSM/DSM2/DSMX (Spektrum)
+//
+// Override command sources (can coexist with RC when arbitration is enabled):
 //#define USE_SERIAL_COMMANDS    // External flight computer over UART (115200, binary)
 //#define USE_I2C_COMMANDS       // External flight computer over I2C slave (Wire1)
+//
+// Command source arbitration — required when multiple sources are active.
+// Priority: Serial > I2C > WiFi (overrides), RC (primary fallback).
+// Without this flag, only one source compiles per build (current behavior).
+//#define USE_COMMAND_ARBITRATION
 //
 // WiFi-only (ESP32): Comment out ALL receiver/command defines above.
 // The web server becomes the sole command source via POST /api/commands

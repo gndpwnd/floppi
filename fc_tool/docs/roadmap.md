@@ -1,6 +1,6 @@
 # fc_tool - Roadmap
 
-> Last updated: 2026-02-10
+> Last updated: 2026-02-11
 
 ## Overview
 
@@ -50,15 +50,25 @@ This roadmap tracks project-level features and milestones. For immediate tasks, 
 - [x] Auto-reconnect on disconnect
   - Description: Detect device disconnect, automatically retry connection
   - Implementation: Backend reader thread detects EOF/error, emits `serial-disconnected` event; frontend retries every 2s, max 15 attempts
+- [ ] CLI arguments for port and baud
+  - Description: Launch fc_tool with `--port /dev/ttyACM0 --baud 115200` to skip manual selection. Useful for scripting and repeated connections to known hardware.
+  - Notes: Tauri supports CLI argument parsing. On launch, if port+baud are provided, auto-connect immediately.
+- [ ] Headless mode (raw serial output)
+  - Description: `--headless` flag runs fc_tool without the GUI window. Prints raw serial data to stdout. Enables piping serial output to files or other tools (e.g., `fc_tool --port /dev/ttyACM0 --baud 115200 --headless > log.txt`).
+  - Notes: Requires port and baud as CLI args. No Tauri window created. Rust backend only (serial read → stdout). Useful for CI, logging, and scripting workflows.
 - [ ] Raw data logging
   - Description: Save serial output to file for offline analysis
 
 ### Serial Monitor Enhancements (future)
 
-- [ ] ANSI escape code rendering
-  - Description: Parse ANSI SGR sequences (bold, dim, underline, 8/16 colors) and render as styled HTML spans in the terminal
-  - Notes: Firmware sends `\033[1;31mERROR\033[0m` → fc_tool renders bold red text. Safe subset: bold, dim, underline, 16 colors. Toggle on/off.
-  - Reference: [serial-rich-text-formatting.md](/docs/literature/findings/serial-rich-text-formatting.md)
+- [x] ANSI escape code rendering
+  - Completed: 2026-02-11
+  - Description: Parse ANSI SGR sequences (bold, dim, underline, 8/16 foreground colors) and render as styled HTML spans. Toggle checkbox in toolbar.
+  - Notes: Regex-based parser in appendRx(). CSS classes for each color, optimized for dark terminal theme. Zero overhead when no ANSI codes present.
+- [ ] CLI arguments for port and baud
+  - Description: Launch with `--port` and `--baud` to auto-connect on startup. Useful for scripting and repeated hardware sessions.
+- [ ] Headless mode
+  - Description: `--headless` flag for raw serial output to stdout (no GUI). Enables piping, logging, and scripting.
 - [ ] Live Dashboard Mode
   - Description: A fixed-position panel that shows key=value data updating in place (not scrolling). Like an oscilloscope readout or a car dashboard — values change but the layout stays static.
   - Notes: Parses the existing `name=value` / `name:value` format. Each unique key gets a row in the dashboard. Values update live. Can coexist alongside the scrolling terminal (split view or toggle). Analogous to the plotter's "continuous vs period" modes but for text data.

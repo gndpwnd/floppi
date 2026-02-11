@@ -38,6 +38,7 @@ const RECONNECT_MAX_ATTEMPTS = 15;
 const TERMINAL_MAX_LINES = 5000;
 let activeFilter = "";
 let userSelecting = false;  // Pause autoscroll during text selection
+const ansiCheckbox = document.getElementById("ansi-checkbox");
 
 // ============================================================================
 // Plotter
@@ -257,6 +258,69 @@ async function sendData() {
 }
 
 // ============================================================================
+// ANSI Escape Code Parser
+// ============================================================================
+
+// SGR color code → CSS class mapping
+const ANSI_COLORS = {
+  30: 'ansi-black',   31: 'ansi-red',     32: 'ansi-green',   33: 'ansi-yellow',
+  34: 'ansi-blue',    35: 'ansi-magenta',  36: 'ansi-cyan',    37: 'ansi-white',
+  90: 'ansi-bright-black', 91: 'ansi-bright-red', 92: 'ansi-bright-green', 93: 'ansi-bright-yellow',
+  94: 'ansi-bright-blue', 95: 'ansi-bright-magenta', 96: 'ansi-bright-cyan', 97: 'ansi-bright-white',
+};
+
+const ANSI_REGEX = /\x1b\[([0-9;]*)m/g;
+
+function parseAnsi(text) {
+  const fragment = document.createDocumentFragment();
+  let lastIndex = 0;
+  let bold = false, dim = false, underline = false, color = null;
+
+  ANSI_REGEX.lastIndex = 0;
+  let match;
+
+  while ((match = ANSI_REGEX.exec(text)) !== null) {
+    // Text before this escape sequence
+    if (match.index > lastIndex) {
+      const span = document.createElement('span');
+      span.textContent = text.slice(lastIndex, match.index);
+      if (bold) span.classList.add('ansi-bold');
+      if (dim) span.classList.add('ansi-dim');
+      if (underline) span.classList.add('ansi-underline');
+      if (color) span.classList.add(color);
+      fragment.appendChild(span);
+    }
+    lastIndex = match.index + match[0].length;
+
+    // Parse SGR codes (e.g., "1;31" → bold + red)
+    const codes = match[1] ? match[1].split(';').map(Number) : [0];
+    for (const code of codes) {
+      if (code === 0) { bold = false; dim = false; underline = false; color = null; }
+      else if (code === 1) bold = true;
+      else if (code === 2) dim = true;
+      else if (code === 4) underline = true;
+      else if (code === 22) { bold = false; dim = false; }
+      else if (code === 24) underline = false;
+      else if (code === 39) color = null;
+      else if (ANSI_COLORS[code]) color = ANSI_COLORS[code];
+    }
+  }
+
+  // Remaining text after last escape
+  if (lastIndex < text.length) {
+    const span = document.createElement('span');
+    span.textContent = text.slice(lastIndex);
+    if (bold) span.classList.add('ansi-bold');
+    if (dim) span.classList.add('ansi-dim');
+    if (underline) span.classList.add('ansi-underline');
+    if (color) span.classList.add(color);
+    fragment.appendChild(span);
+  }
+
+  return fragment;
+}
+
+// ============================================================================
 // Terminal Functions
 // ============================================================================
 
@@ -267,11 +331,17 @@ function applyFilter(span) {
 }
 
 function appendRx(data) {
-  const span = document.createElement("span");
-  span.className = "rx";
-  span.textContent = data;
-  applyFilter(span);
-  terminalOutput.appendChild(span);
+  const container = document.createElement("span");
+  container.className = "rx";
+
+  if (ansiCheckbox.checked && data.includes('\x1b[')) {
+    container.appendChild(parseAnsi(data));
+  } else {
+    container.textContent = data;
+  }
+
+  applyFilter(container);
+  terminalOutput.appendChild(container);
   trimTerminal();
   autoScroll();
 

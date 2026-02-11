@@ -6,6 +6,7 @@
 #include "calibration.h"
 #include "config.h"
 #include "radioComm.h"
+#include "pin_definitions.h"
 
 // External variables (from main.cpp / globals.h)
 extern unsigned long channel_1_pwm, channel_2_pwm, channel_3_pwm;
@@ -43,12 +44,12 @@ bool waitForConfirmation(int /* unused */) {
 
             if (response == 'y' || response == 'Y') {
                 Serial.println(F("✓ Confirmed!"));
-                digitalWrite(LED_BUILTIN, LOW);
+                digitalWrite(LED_PIN, LOW);
                 return true;
             }
             else if (response == 'n' || response == 'N') {
                 Serial.println(F("✗ Cancelled."));
-                digitalWrite(LED_BUILTIN, LOW);
+                digitalWrite(LED_PIN, LOW);
                 return false;
             }
         }
@@ -57,7 +58,7 @@ bool waitForConfirmation(int /* unused */) {
         if (millis() - lastBlink > 500) {
             lastBlink = millis();
             ledState = !ledState;
-            digitalWrite(LED_BUILTIN, ledState ? HIGH : LOW);
+            digitalWrite(LED_PIN, ledState ? HIGH : LOW);
         }
 
         delay(10);

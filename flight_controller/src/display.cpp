@@ -249,6 +249,56 @@ static void drawArmed(const DisplayData_t* data) {
 #endif // DISPLAY_LINES
 
 //========================================================================================================================//
+//                                         COMPILE-TIME BUILD INFO STRING                                                  //
+//========================================================================================================================//
+
+// Platform tag
+#if defined(ARDUINO_TEENSY40)
+    #define PLATFORM_TAG "T40"
+#elif defined(ARDUINO_TEENSY41)
+    #define PLATFORM_TAG "T41"
+#elif defined(ARDUINO_TEENSY36)
+    #define PLATFORM_TAG "T36"
+#elif defined(USE_ESP32S3)
+    #define PLATFORM_TAG "ESP32S3"
+#elif defined(USE_ESP32)
+    #define PLATFORM_TAG "ESP32"
+#else
+    #define PLATFORM_TAG "MCU"
+#endif
+
+// Receiver / command source tag
+#if defined(USE_SBUS_RECEIVER)
+    #define RECEIVER_TAG "SBUS"
+#elif defined(USE_IBUS_RECEIVER)
+    #define RECEIVER_TAG "iBUS"
+#elif defined(USE_DSM_RECEIVER)
+    #define RECEIVER_TAG "DSM"
+#elif defined(USE_PPM_RECEIVER)
+    #define RECEIVER_TAG "PPM"
+#elif defined(USE_PWM_RECEIVER)
+    #define RECEIVER_TAG "PWM"
+#elif defined(USE_SERIAL_COMMANDS)
+    #define RECEIVER_TAG "SER"
+#elif defined(USE_I2C_COMMANDS)
+    #define RECEIVER_TAG "I2C"
+#elif defined(USE_WIFI)
+    #define RECEIVER_TAG "WiFi"
+#else
+    #define RECEIVER_TAG "???"
+#endif
+
+// Mode tag
+#if defined(CALIBRATION_MODE)
+    #define MODE_TAG " CAL"
+#else
+    #define MODE_TAG ""
+#endif
+
+// Combined build info string (e.g. "T40 SBUS CAL" or "ESP32 WiFi")
+#define BUILD_INFO_STR PLATFORM_TAG " " RECEIVER_TAG MODE_TAG
+
+//========================================================================================================================//
 //                                              PUBLIC FUNCTIONS                                                           //
 //========================================================================================================================//
 
@@ -309,6 +359,21 @@ static bool swI2cProbe(uint8_t addr7bit) {
     return ack;
 }
 
+void displayStartupMessage(const char* message) {
+    u8g2.clearBuffer();
+    u8g2.drawStr(0, LINE_Y(1), message);
+    u8g2.drawStr(0, LINE_Y(2), "Starting...");
+    u8g2.sendBuffer();
+}
+
+static void displayStartupScreen(const char* title, const char* build_info) {
+    u8g2.clearBuffer();
+    u8g2.drawStr(0, LINE_Y(1), title);
+    u8g2.drawStr(0, LINE_Y(2), build_info);
+    u8g2.drawStr(0, LINE_Y(3), "Starting...");
+    u8g2.sendBuffer();
+}
+
 void setupDisplay() {
     Serial.print(F("OLED: pins SDA="));
     Serial.print(OLED_SDA_PIN);
@@ -334,16 +399,10 @@ void setupDisplay() {
 
     u8g2.begin();
     u8g2.setFont(u8g2_font_6x10_tf);
-    displayStartupMessage("FLOPPI FC");
-    delay(2000);  // Hold startup message so user can confirm display works
+    displayStartupScreen("FLOPPI FC", BUILD_INFO_STR);
+    // Startup message stays on screen until renderDisplay() overwrites it.
+    // No delay() — setup sequence (IMU, radio, motors) takes enough time naturally.
     Serial.println(F("OLED: display initialized OK"));
-}
-
-void displayStartupMessage(const char* message) {
-    u8g2.clearBuffer();
-    u8g2.drawStr(0, LINE_Y(1), message);
-    u8g2.drawStr(0, LINE_Y(2), "Starting...");
-    u8g2.sendBuffer();
 }
 
 void populateDisplayData(DisplayData_t* data) {

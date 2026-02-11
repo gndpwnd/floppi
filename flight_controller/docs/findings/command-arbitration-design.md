@@ -1,8 +1,8 @@
 # Command Source Arbitration Design
 
-> Date: 2026-02-10
-> Status: Design (not implemented)
-> Files affected: radioComm.cpp, radioComm.h, config.h
+> Date: 2026-02-10 (design), 2026-02-11 (implemented)
+> Status: Implemented
+> Files: radioComm.h, radioComm.cpp, radioComm_rc.cpp, radioComm_ext.cpp, config.h
 
 ## Summary
 

@@ -1,7 +1,14 @@
 /*
  * Radio Communication Module
- * Complete interface for all receiver protocols
- * Based on original dRehmFlight - all features included
+ * Interface for all receiver protocols and command sources.
+ * Supports single-source (default) and multi-source with arbitration (USE_COMMAND_ARBITRATION).
+ * Based on original dRehmFlight — all features included.
+ *
+ * Files:
+ *   radioComm.h        — Types, validation, public API
+ *   radioComm.cpp      — Core: channels, dispatch, arbitration, failsafe
+ *   radioComm_rc.cpp   — RC protocols: SBUS, iBUS, DSM, PPM, PWM
+ *   radioComm_ext.cpp  — External sources: Serial, I2C, WiFi
  */
 
 #ifndef RADIO_COMM_H
@@ -10,80 +17,157 @@
 #include <Arduino.h>
 #include "config.h"
 
-// Serial port definitions for receivers
+//========================================================================================================================//
+//                                         COMMAND BUFFER & SOURCE TYPES                                                   //
+//========================================================================================================================//
+
+// Per-source command buffer — each source writes here, arbitration reads
+struct CommandBuffer {
+    uint16_t channels[6];   // Channel values in microseconds (1000-2000)
+    uint32_t timestamp;     // millis() of last valid update
+    bool     active;        // Source is providing data (not timed out / faulted)
+};
+
+// Command source identifier for arbitration
+enum CommandSource : uint8_t {
+    CMD_SRC_NONE   = 0,
+    CMD_SRC_RC     = 1,  // Any RC receiver (SBUS, iBUS, DSM, PPM, PWM)
+    CMD_SRC_SERIAL = 2,  // External flight computer over UART
+    CMD_SRC_I2C    = 3,  // External flight computer over I2C
+    CMD_SRC_WIFI   = 4   // WiFi API commands (ESP32)
+};
+
+// Override timeout — source considered inactive after this many ms with no data
+#define OVERRIDE_TIMEOUT_MS 500
+
+//========================================================================================================================//
+//                                         COMPILE-TIME VALIDATION                                                         //
+//========================================================================================================================//
+
+// At most one RC receiver protocol
+#if (defined(USE_SBUS_RECEIVER) + defined(USE_IBUS_RECEIVER) + defined(USE_DSM_RECEIVER) + defined(USE_PPM_RECEIVER) + defined(USE_PWM_RECEIVER)) > 1
+    #error "Only one RC receiver protocol can be defined at a time!"
+#endif
+
+// Multiple command sources require arbitration
+#ifndef USE_COMMAND_ARBITRATION
+    #if (defined(USE_SBUS_RECEIVER) + defined(USE_IBUS_RECEIVER) + defined(USE_DSM_RECEIVER) + defined(USE_PPM_RECEIVER) + defined(USE_PWM_RECEIVER) + defined(USE_SERIAL_COMMANDS) + defined(USE_I2C_COMMANDS)) > 1
+        #error "Multiple command sources defined — enable USE_COMMAND_ARBITRATION in config.h!"
+    #endif
+#endif
+
+// At least one command source must be defined
+#if !(defined(USE_SBUS_RECEIVER) || defined(USE_IBUS_RECEIVER) || defined(USE_DSM_RECEIVER) || defined(USE_PPM_RECEIVER) || defined(USE_PWM_RECEIVER) || defined(USE_SERIAL_COMMANDS) || defined(USE_I2C_COMMANDS)) && !(defined(USE_ESP32) && defined(USE_WEB_SERVER))
+    #error "No receiver or command source defined in config.h!"
+#endif
+
+//========================================================================================================================//
+//                                         SERIAL PORT DEFINITIONS                                                         //
+//========================================================================================================================//
+
 #ifdef USE_SBUS_RECEIVER
     #ifdef USE_ESP32
-        // ESP32: SBUS uses Serial2 (configurable pins)
         #define SBUS_SERIAL_PORT Serial2
     #else
-        // Teensy: SBUS uses Serial5 (pins 20 TX, 21 RX)
         #define SBUS_SERIAL_PORT Serial5
     #endif
 #endif
 
 #ifdef USE_DSM_RECEIVER
     #ifdef USE_ESP32
-        // ESP32: DSM uses Serial1 (configurable pins)
         #define DSM_SERIAL_PORT Serial1
     #else
-        // Teensy: DSM uses Serial3 (pins 14 TX, 15 RX)
         #define DSM_SERIAL_PORT Serial3
     #endif
 #endif
 
 #ifdef USE_IBUS_RECEIVER
     #ifdef USE_ESP32
-        // ESP32: iBUS uses Serial1 (configurable pins)
         #define IBUS_SERIAL_PORT Serial1
     #else
-        // Teensy: iBUS uses Serial3 (pins 14 TX, 15 RX)
         #define IBUS_SERIAL_PORT Serial3
     #endif
 #endif
 
 #ifdef USE_SERIAL_COMMANDS
     #ifdef USE_ESP32
-        // ESP32: Serial commands use Serial1 (configurable pins)
         #define SERIAL_CMD_PORT Serial1
     #else
-        // Teensy: Serial commands use Serial3 (pins 14 TX, 15 RX)
         #define SERIAL_CMD_PORT Serial3
     #endif
 #endif
 
 #ifdef USE_I2C_COMMANDS
-    // I2C commands use Wire1 (separate from IMU on Wire)
-    // ESP32: configurable pins via I2C_CMD_SDA_PIN / I2C_CMD_SCL_PIN
-    // Teensy: Wire1 on pins 16 (SCL) / 17 (SDA)
     #include <Wire.h>
 #endif
 
-// Initialize receiver hardware
+//========================================================================================================================//
+//                                              PUBLIC API                                                                 //
+//========================================================================================================================//
+
 void radioSetup();
-
-// Read receiver channels (call this every loop)
 void getCommands();
-
-// Handle failsafe condition
 void failSafe();
-
-// Check if receiver is connected
 bool isReceiverConnected();
-
-// Get specific channel PWM value (1-6) - original dRehmFlight function
 unsigned long getRadioPWM(int ch_num);
-
-// DSM serial event handler (called automatically)
 void serialEvent3();
 
 // External channel variables (microseconds: 1000-2000)
 extern unsigned long channel_1_pwm, channel_2_pwm, channel_3_pwm;
 extern unsigned long channel_4_pwm, channel_5_pwm, channel_6_pwm;
 
-// WiFi API command routing — web server on Core 1 feeds commands to RadioComm on Core 0
-// Called by web_server.cpp when POST /api/commands or WebSocket commands arrive.
-// Values are 1000-2000 microseconds, same as all other command sources.
+// Active command source (only with arbitration)
+#ifdef USE_COMMAND_ARBITRATION
+extern CommandSource activeSource;
+#endif
+
+//========================================================================================================================//
+//                                   PER-SOURCE FUNCTIONS (radioComm_rc.cpp / radioComm_ext.cpp)                           //
+//========================================================================================================================//
+
+// --- RC receiver protocols (radioComm_rc.cpp) ---
+
+#ifdef USE_SBUS_RECEIVER
+void sbusSetup();
+bool readSBUS(CommandBuffer& buf);
+#endif
+
+#ifdef USE_IBUS_RECEIVER
+void ibusSetup();
+bool readIBUS(CommandBuffer& buf);
+#endif
+
+#ifdef USE_DSM_RECEIVER
+void dsmSetup();
+bool readDSM(CommandBuffer& buf);
+void dsmSerialEvent();
+#endif
+
+#ifdef USE_PPM_RECEIVER
+void ppmSetup();
+bool readPPM(CommandBuffer& buf);
+#endif
+
+#ifdef USE_PWM_RECEIVER
+void pwmSetup();
+bool readPWM(CommandBuffer& buf);
+#endif
+
+// --- External command sources (radioComm_ext.cpp) ---
+
+#ifdef USE_SERIAL_COMMANDS
+void serialCmdSetup();
+bool readSerialCmd(CommandBuffer& buf);
+#endif
+
+#ifdef USE_I2C_COMMANDS
+void i2cCmdSetup();
+bool readI2CCmd(CommandBuffer& buf);
+#endif
+
 #if defined(USE_ESP32) && defined(USE_WEB_SERVER)
+void wifiCmdSetup();
+bool readWifiCmd(CommandBuffer& buf);
 void setWifiCommandChannels(uint16_t ch1, uint16_t ch2, uint16_t ch3, uint16_t ch4, uint16_t ch5, uint16_t ch6);
 #endif
 

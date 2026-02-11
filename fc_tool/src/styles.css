@@ -192,6 +192,27 @@ button:active {
   font-style: italic;
 }
 
+/* ANSI escape code styles */
+.ansi-bold { font-weight: bold; }
+.ansi-dim { opacity: 0.6; }
+.ansi-underline { text-decoration: underline; }
+.ansi-black { color: #555; }
+.ansi-red { color: #f44336; }
+.ansi-green { color: #81c784; }
+.ansi-yellow { color: #ffeb3b; }
+.ansi-blue { color: #64b5f6; }
+.ansi-magenta { color: #ce93d8; }
+.ansi-cyan { color: #80deea; }
+.ansi-white { color: #e0e0e0; }
+.ansi-bright-black { color: #888; }
+.ansi-bright-red { color: #ef5350; }
+.ansi-bright-green { color: #a5d6a7; }
+.ansi-bright-yellow { color: #fff176; }
+.ansi-bright-blue { color: #90caf9; }
+.ansi-bright-magenta { color: #e1bee7; }
+.ansi-bright-cyan { color: #b2ebf2; }
+.ansi-bright-white { color: #fff; }
+
 .terminal-input-row {
   display: flex;
   border-top: 1px solid #333;

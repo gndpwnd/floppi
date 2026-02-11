@@ -1,12 +1,14 @@
 # Flight Controller Firmware - Roadmap
 
-> Last updated: 2026-02-10
+> Last updated: 2026-02-11
 
 ## Overview
 
 This roadmap tracks project-level features and milestones for the flight controller firmware. For immediate tasks, see `todo.md`. For project boundaries, see `scope.md`.
 
 **Note**: No time estimates. Focus on WHAT needs to be done, not WHEN.
+
+**Current focus**: Feature development is paused (~90% complete). Priority is hardware validation, calibration, PID tuning, and first flight on real hardware. See `todo.md` for immediate tasks.
 
 **Design philosophy**: Bare-bones flight stabilizer, not a full autopilot. Raw performance and simplicity over feature count. The FC does lots of math really fast (read sensors → filter → PID → output motors). Complex logic (missions, mode switching, GPS navigation) belongs on an external flight computer. Not trying to be Betaflight/ArduPilot — a simple, fast, open-source flight controller that people can build in their garage. See [findings/bare-bones-fc-research.md](findings/bare-bones-fc-research.md) for detailed analysis.
 
@@ -345,7 +347,7 @@ Files: `ota.h`, `ota.cpp`.
 >
 > **Key insight**: The API web server is NOT a separate command path. It feeds INTO RadioComm, which feeds the flight controller. One entry point, one data format, one failsafe path.
 
-**Current state**: RadioComm handles 5 RC protocols (SBUS, iBUS, DSM, PPM, PWM) + 3 command sources (serial, I2C, WiFi API), compile-time selected. One source per build. All produce `channel_1_pwm` through `channel_6_pwm` in 1000-2000us format.
+**Current state**: RadioComm handles 5 RC protocols (SBUS, iBUS, DSM, PPM, PWM) + 3 command sources (serial, I2C, WiFi API). Single-source per build (default) or multi-source with `USE_COMMAND_ARBITRATION`. Modularized: radioComm.cpp (core/arbitration), radioComm_rc.cpp (RC protocols), radioComm_ext.cpp (external sources). All produce `channel_1_pwm` through `channel_6_pwm` in 1000-2000us format.
 
 **Command sources:**
 
@@ -377,10 +379,10 @@ Files: `ota.h`, `ota.cpp`.
   - Endpoints: POST `/api/commands` (JSON), WebSocket `/ws` (JSON). Format: `{"ch1":1500,"ch2":1500,"ch3":1000,"ch4":1500,"ch5":1000,"ch6":1000}`.
   - Works as sole command source when no RC receiver is defined (ESP32 + Web API progression path). Failsafe: 500ms timeout.
 
-- [ ] Command source arbitration
-  - Description: When multiple command sources are active, RadioComm needs priority logic. RC receiver = primary (real-time hardware). Serial/I2C/WiFi = override sources (flight computer). If override source is active and sending, it takes priority. If it goes silent (timeout), RC receiver resumes. Failsafe applies across ALL sources.
-  - Design doc: [findings/command-arbitration-design.md](findings/command-arbitration-design.md) — `USE_COMMAND_ARBITRATION` flag, CommandBuffer struct, priority: serial > I2C > WiFi, 8-step implementation plan.
-  - Notes: All command sources now implemented. Arbitration is the last piece for multi-source builds.
+- [x] Command source arbitration
+  - Completed: 2026-02-11
+  - Description: Priority-based selection when multiple command sources are active. RC = primary, serial/I2C/WiFi = overrides. `USE_COMMAND_ARBITRATION` flag in config.h. CommandBuffer struct per source, 500ms timeout. RadioComm modularized into 3 files (core, rc protocols, external sources).
+  - Design doc: [findings/command-arbitration-design.md](findings/command-arbitration-design.md)
 
 ---
 
@@ -605,6 +607,10 @@ Files: `ota.h`, `ota.cpp`.
 - [x] WiFi API command routing — POST /api/commands + WebSocket, spinlock cross-core buffer — 2026-02-10
 - [x] I2C command input (`USE_I2C_COMMANDS`) — FC as I2C slave on Wire1, 12-byte frames — 2026-02-10
 - [x] Command source arbitration design doc — [findings/command-arbitration-design.md](findings/command-arbitration-design.md) — 2026-02-10
+- [x] Command source arbitration implementation (`USE_COMMAND_ARBITRATION`, CommandBuffer, priority logic) — 2026-02-11
+- [x] RadioComm library modularization (663 lines → 3 files: core, rc protocols, external sources) — 2026-02-11
+- [x] OLED startup build info (platform + receiver + mode tags, no delay) — 2026-02-11
+- [x] LED_BUILTIN → LED_PIN fix in calibration.cpp (ESP32 build fix) — 2026-02-11
 
 ---
 

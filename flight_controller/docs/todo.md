@@ -1,8 +1,10 @@
 # Flight Controller Firmware - Todo
 
-> Last updated: 2026-02-10
+> Last updated: 2026-02-11
 
 ## In Progress
+
+_Focus: Get everything working on real hardware. Feature development is paused — ~90% of target features are implemented._
 
 - [ ] Bench test: IMU sensor validation — **Working.** MPU6050 initialized OK, 6-position calibration started.
 - [ ] Bench test: SBUS receiver communication — **Working.** X8R on Serial5/Pin 21 initialized OK.
@@ -10,19 +12,14 @@
 
 ## Up Next
 
-_Priority queue for immediate work_
+_Priority queue for immediate work — all hardware validation and tuning_
 
-- [ ] OLED startup welcome message — display "FLOPPI FC" + firmware version + build info on OLED during boot, visible for at least 2 seconds before transitioning to normal display. Currently `setupDisplay()` shows a brief message but it may be too fast to notice. Consider adding a deliberate `delay()` after the startup screen so users can confirm the OLED is working.
-- [ ] OLED context-aware calibration display — replace static "FLOPPI READY" with a progress indicator showing the current step and total (e.g. "1/5 IMU Orient", "2/5 Radio Cal"). Each step should display live data relevant to that calibration:
-  - **Line 1**: Progress indicator — `N/M step_name` format (e.g. "1/5 IMU Orient")
-  - **Line 2+**: Live sensor data for the active step:
-    - **IMU orientation**: AccX, AccY, AccZ values so user can confirm correct board position
-    - **Radio calibration**: channel PWM values (ch1..ch6) so user sees mapped receiver output
-    - **Level calibration**: roll/pitch angles updating in real-time
-    - **ESC calibration**: motor output PWM values
-  - When no calibration is active, show a summary status (armed/disarmed, loop rate, battery if available)
-- [ ] Command source arbitration — priority logic when multiple command sources are active (RC = primary, serial/I2C/WiFi = override). Design doc: [findings/command-arbitration-design.md](findings/command-arbitration-design.md)
-- [ ] fc_tool WebSocket integration (connect to floppi.local/ws) — **deferred**, fc_tool still in development
+- [ ] Complete motor/ESC bench test — verify PWM output, ESC calibration routine, throttle response
+- [ ] Complete IMU calibration — finish 6-position calibration, verify offsets, validate attitude filter
+- [ ] Complete radio calibration — full channel mapping, endpoint calibration, failsafe verification
+- [ ] PID tuning on real hardware — use `g` command in calibration mode, tune roll/pitch/yaw gains
+- [ ] First hover test — tethered/constrained flight, validate stability
+- [ ] OLED context-aware calibration display — progress indicator (e.g. "1/5 IMU Orient", "2/5 Radio Cal") with live data per step
 
 ## Backlog
 
@@ -31,6 +28,7 @@ _Lower priority, do when time permits_
 - [ ] Create example configurations for common VTOL types
 - [ ] Implement full 9DOF Madgwick filter for MPU9250
 - [ ] Low battery voltage monitoring (ADC)
+- [ ] fc_tool WebSocket integration (connect to floppi.local/ws) — deferred, fc_tool works fine over serial
 
 ## Blocked
 
@@ -58,9 +56,24 @@ _For context; clear periodically_
   - Sections: IMU offsets/scales, orientation, radio mapping, failsafe, magnetometer, PID gains, filters/limits
   - Only prints sections that were actually calibrated (skips uncalibrated)
   - Sequential workflow (`a`) now suggests typing `d` at completion
+- [x] Command source arbitration implemented (`USE_COMMAND_ARBITRATION`) — 2026-02-11
+  - CommandBuffer struct + CommandSource enum in radioComm.h
+  - Priority: Serial > I2C > WiFi (overrides), RC (primary fallback)
+  - Compile-time validation (max 1 RC protocol, multi-source requires arbitration flag)
+  - Zero overhead for single-source builds (identical behavior when arbitration disabled)
+- [x] RadioComm library modularization — 2026-02-11
+  - radioComm.cpp (663 lines) split into 3 focused files:
+    - radioComm.cpp (core): channels, dispatch, arbitration, failsafe (~200 lines)
+    - radioComm_rc.cpp: RC protocols (SBUS, iBUS, DSM, PPM, PWM) (~280 lines)
+    - radioComm_ext.cpp: external sources (serial, I2C, WiFi) (~180 lines)
+  - Each protocol has setup() + read() function pair
+  - Per-source CommandBuffer with timeout-based activity tracking
+- [x] OLED startup build info + no-delay — 2026-02-11
+  - Startup screen shows "FLOPPI FC" + build info (e.g., "T40 SBUS CAL", "ESP32 WiFi")
+  - Compile-time BUILD_INFO_STR from platform + receiver + mode tags
+  - No delay() — startup message stays on screen naturally until renderDisplay() overwrites
 - [x] OLED I2C address auto-detection and calibration input improvements — 2026-02-11
   - Software I2C scan for OLED address (0x3C/0x3D) with auto-selection
-  - 2-second startup message delay for visual confirmation
   - waitForConfirmation() now blocks indefinitely (no timeout) with LED blink
   - CH6 calibration trigger debounce (must go LOW before re-trigger)
 - [x] Hardware bench testing started — 2026-02-10
@@ -169,10 +182,10 @@ _For context; clear periodically_
 ## Notes
 
 - **Calibration automation complete** — all config.h hardware-dependent values now have auto-calibration routines
-- **RadioComm universal command layer** — all command sources implemented (SBUS, iBUS, DSM, PPM, PWM, serial, I2C, WiFi). Remaining: command source arbitration (design doc done, implementation pending). See [findings/command-arbitration-design.md](findings/command-arbitration-design.md).
+- **RadioComm universal command layer** — all command sources implemented (SBUS, iBUS, DSM, PPM, PWM, serial, I2C, WiFi) + command source arbitration (USE_COMMAND_ARBITRATION). RadioComm modularized: radioComm.cpp (core), radioComm_rc.cpp (RC protocols), radioComm_ext.cpp (external sources).
 - **Hardware testing is in progress** — firmware flashed, IMU and receiver validated, motor/ESC testing next
 - **fc_tool will help** — visual diagnostics during calibration (separate project at /fc_tool/)
-- **Modular architecture** — code split into imu, control, motors, debug modules + feature flags. Calibration library split into 5 focused files. Calibration mode extracted from main.cpp.
+- **Modular architecture** — code split into imu, control, motors, debug modules + feature flags. Calibration library split into 5 focused files. RadioComm split into 3 focused files. Calibration mode extracted from main.cpp.
 - **Platform support**: Teensy 4.x (recommended), ESP32/S3 (WiFi-enabled)
 - **NOT supported**: Arduino Uno/Mega (16MHz + no FPU = max 302Hz loop rate)
 - **Feature modularity**: Users enable features in config.h based on their MCU capabilities. Use `python3 tools/complexity_calculator.py --all` to check feasibility across platforms.
