@@ -1,88 +1,29 @@
-Excellent! Your firmware compiles successfully and is ready for hardware testing. Based on what I can see, here's my assessment:
+All committed. Here's a summary of what was done:
 
-Current Status: Ready for Hardware Testing ✅
-Your flight controller firmware is in good shape:
+This Session
+Completed
+fc_tool CLI + headless mode — --port, --baud for auto-connect; --headless for raw serial to stdout with stdin forwarding. Built and tested with real Teensy hardware.
 
-✅ What's Already Done:
-Complete dRehmFlight port to PlatformIO - Clean build, properly structured
-Multi-platform support - Teensy 4.0/4.1/3.6 configurations
-Automatic calibration programs - Radio calibration, IMU calibration with auto-detection
-SBUS receiver support - Configured for FlySky FS-iA6B receiver
-MPU6050 IMU integration - I2C sensor ready to go
-Safety features - Failsafe values, arming logic
-Clean configuration - All settings in config.h
-🔧 What You Need for Testing:
-Minimum Hardware Setup:
+Modular WiFi configuration — Added support for:
 
-Teensy 4.0 (you have the code ready)
-MPU6050 IMU (GY-521 breakout board, ~$3)
-SBUS receiver (FlySky FS-iA6B - your code is configured for this)
-Transmitter (FlySky FS-i6 or compatible)
-Power supply (5V for Teensy, can use USB initially)
-4× ESCs + Motors (for basic quad testing)
-📋 Recommended Next Steps:
-Option 1: Start Hardware Testing Now (Recommended)
-Your firmware is solid enough to start bench testing. You'll learn more from actual hardware than from more code development.
+WPA2-Personal (default)
+Open networks
+WPA2-Enterprise PEAP (with configurable auth method)
+WPA2-Enterprise TLS with certificates
+New wifi_certs.h template for PEM storage
+Documented in wifi-configuration.md
+ESP32 network diagnostics — n command in calibration mode tests WiFi credentials, connection, RSSI, MAC, gateway, DNS, mDNS, web server (all local, no external connections). Integrated into sequential calibration workflow.
 
-Testing Phase Progression:
+Telemetry multi-graph format — debug.cpp upgraded to name@plotId:value for fc_tool multi-graph plotting (backward compatible — plain name:value and CSV still work)
 
-Bench Test (No props) - Verify sensors, radio, arming
+All 8 build environments verified — teensy40, teensy40_calibration, teensy41, teensy36, esp32, esp32_calibration, esp32s3, esp32s3_calibration all pass.
 
-Upload firmware to Teensy
-Run IMU calibration program
-Run radio calibration program
-Verify sensor readings on Serial Monitor
-Test arming/disarming logic
-Verify motor commands (no props, low throttle)
-Tethered Test (With props) - Test with drone tethered/secured
+What's Next (Flight Controller Focus)
+The Teensy is flashed with calibration firmware and the hardware is connected. The main priorities from the todo are:
 
-Mount to test rig
-Verify PID response
-Tune basic stability
-Hover Test - First flight in safe area
-
-Start PID tuning iterations
-Option 2: Pre-Hardware Software Development
-Only if you can't get hardware yet. Otherwise these can wait:
-
-Telemetry/Logging System
-
-Add MAVLink protocol for ground station communication
-SD card logging (Teensy 4.1 has built-in SD)
-Real-time parameter tuning over serial
-Advanced Flight Modes
-
-Altitude hold (add barometer: BMP280/MS5611)
-Position hold (add GPS module)
-Return-to-home
-Waypoint navigation
-Safety Enhancements
-
-Battery voltage monitoring
-Low battery RTH
-Geofencing
-Motor failure detection
-Flight Computer Integration (ESP32/RPi)
-
-Companion computer communication
-High-level mission planning
-Computer vision integration
-My Recommendation: Start with Hardware 🚁
-Your commit message says "now need to start physical testing" - I agree! The firmware is ready. You'll learn way more from:
-
-Real sensor noise and filtering needs
-Actual PID tuning on physical hardware
-Radio range and interference issues
-Real-world arming/disarming workflows
-Motor/ESC timing and behavior
-The code is solid. Time to see it fly!
-
-Quick Hardware Shopping List (if you don't have it):
-Teensy 4.0: $25
-MPU6050 (GY-521): $3
-FlySky FS-i6 transmitter + FS-iA6B receiver: $50
-Cheap quadcopter frame kit with motors/ESCs: $50-100
-Battery (3S LiPo): $20
-Total: ~$150 to start flying
-
-Want me to help you plan the bench testing procedure, or would you rather continue with software development?
+Complete IMU calibration (6-position, verify offsets)
+Motor/ESC bench testing (when hardware ready)
+Radio calibration (when controller available)
+PID tuning on real hardware
+ESP32 testing (when connected)
+Want me to continue with any of these, or is there something specific you'd like to work on?
