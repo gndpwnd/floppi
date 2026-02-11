@@ -357,7 +357,7 @@ copyMonitorBtn.addEventListener("click", async () => {
   try {
     await navigator.clipboard.writeText(text);
     copyMonitorBtn.textContent = "Copied!";
-    setTimeout(() => { copyMonitorBtn.textContent = "Copy"; }, 1500);
+    setTimeout(() => { copyMonitorBtn.textContent = "Copy All"; }, 1500);
   } catch {
     appendSystem("Clipboard copy failed");
   }

@@ -204,7 +204,7 @@ Each build script sources the required env vars before compiling.
 > Features moved here when done, for historical reference.
 
 - [x] Plotter polish: Y-axis zoom, data rate display, auto-fit grid, origin line, legend toggle — 2026-02-10
-- [x] Terminal polish: clipboard copy, filter (Ctrl+F), buffer limit, keyboard shortcuts — 2026-02-10
+- [x] Terminal polish: clipboard copy ("Copy All"), filter (Ctrl+F), buffer limit, keyboard shortcuts — 2026-02-10
 - [x] Enhanced serial plotter (PlotterManager, dark theme, crosshair, multi-graph protocol) — 2026-02-09
 - [x] Auto-reconnect on serial disconnect (backend event + frontend retry loop) — 2026-02-09
 - [x] Serial monitor UI with terminal (port selector, baud rate, connect/disconnect, send/receive) — 2026-02-06

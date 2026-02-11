@@ -63,6 +63,7 @@
 
 ## Recently Completed
 
+- [x] Copy All button renamed for clarity — 2026-02-10
 - [x] Autoscroll fix: pauses during text selection (mousedown/mouseup) — 2026-02-11
 - [x] fc_tool Rust backend debug build verified — 2026-02-10
 - [x] PIO serial monitor fallback documented in README.md — 2026-02-10

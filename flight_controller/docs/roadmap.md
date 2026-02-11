@@ -113,6 +113,11 @@ This roadmap tracks project-level features and milestones for the flight control
   - Completed: 2026-02-09
   - Notes: Same pattern as PID `g` command. Covers `B_ACCEL`, `B_GYRO`, `B_DTERM`, `MADGWICK_BETA`, max rates/angles.
 
+- [x] Calibration value dump — serial command `d`
+  - Completed: 2026-02-10
+  - Notes: Prints ALL calibration values from current session in one copy-paste-ready config.h block. CalibrationResults accumulator stores results as each calibration completes. Only prints sections that were calibrated. PID gains and filter params always included (from runtime values). Sequential workflow (`a`) suggests `d` at completion.
+  - Outputs: Combined block with all calibrated sections (IMU, radio, failsafe, orientation, magnetometer, PID, filters)
+
 ### Firmware State Machine
 
 - [x] Build target separation (calibration vs live)
@@ -210,8 +215,8 @@ This roadmap tracks project-level features and milestones for the flight control
   - Notes: All external libs vendored into lib/ (U8g2, ArduinoJson) and lib_esp32/ (AsyncTCP, ESPAsyncWebServer). No internet downloads needed. See platformio.ini.
 - [x] Library organization (SBUS, MPU6050, RadioComm, Calibration, etc.)
 - [x] Modular source code architecture
-  - Completed: 2026-02-06
-  - Notes: Split main.cpp into imu.cpp, control.cpp, motors.cpp, debug.cpp + globals.h
+  - Completed: 2026-02-06, expanded 2026-02-10
+  - Notes: Split main.cpp into imu.cpp, control.cpp, motors.cpp, debug.cpp + globals.h. Further modularized 2026-02-10: calibration.cpp (1753 lines) split into 5 files (calibration.cpp core 287, calibration_imu.cpp 444, calibration_orientation.cpp 285, calibration_radio.cpp 375, calibration_hardware.cpp 347). Calibration mode code extracted from main.cpp (1091→490 lines) into calibration_mode.cpp (614 lines) + calibration_mode.h.
 - [x] Serial command interface for calibration mode
   - Completed: 2026-02-06
   - Notes: Commands r/i/o/s/h for radio, IMU, orientation, status, help
@@ -591,6 +596,8 @@ Files: `ota.h`, `ota.cpp`.
 - [x] Blocking calibration input (waitForConfirmation blocks indefinitely, LED blink, no timeouts) — 2026-02-11
 - [x] CH6 calibration trigger debounce (must go LOW before re-trigger) — 2026-02-11
 - [x] fc_tool autoscroll fix (pauses during text selection) — 2026-02-11
+- [x] Calibration value dump (`d` command — all values in one config.h block) — 2026-02-10
+- [x] Calibration library modularization (calibration.cpp 1753→5 files, main.cpp 1091→490 lines) — 2026-02-10
 - [x] iBUS receiver support (FlySky FS-iA6B, inline parser, checksum validation) — 2026-02-10
 - [x] Wiring diagrams reorganized into `docs/wiring_diagrams/` with build-specific guides — 2026-02-10
 - [x] Hardware architecture vision documented (modular base system, progression path) — 2026-02-10

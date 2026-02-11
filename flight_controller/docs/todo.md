@@ -42,6 +42,22 @@ _No blocked tasks_
 
 _For context; clear periodically_
 
+- [x] Calibration library modularization — 2026-02-10
+  - calibration.cpp (1753 lines) split into 5 focused files in lib/Calibration/:
+    - calibration.cpp (287 lines): core helpers, CalibrationResults, dump command
+    - calibration_imu.cpp (444 lines): IMU offset + 6-position calibration
+    - calibration_orientation.cpp (285 lines): orientation auto-detection
+    - calibration_radio.cpp (375 lines): radio channel mapping
+    - calibration_hardware.cpp (347 lines): failsafe, ESC, magnetometer
+  - main.cpp (1091→490 lines): extracted calibration mode into calibration_mode.cpp (614 lines) + calibration_mode.h
+  - CalibrationResults struct moved to calibration.h (shared across all files)
+  - Both teensy40 and teensy40_calibration builds verified (identical binary sizes)
+- [x] Calibration value dump command (`d`) — 2026-02-10
+  - Serial command `d` prints ALL calibration values from current session in one config.h-ready block
+  - CalibrationResults accumulator stores results as each calibration completes
+  - Sections: IMU offsets/scales, orientation, radio mapping, failsafe, magnetometer, PID gains, filters/limits
+  - Only prints sections that were actually calibrated (skips uncalibrated)
+  - Sequential workflow (`a`) now suggests typing `d` at completion
 - [x] OLED I2C address auto-detection and calibration input improvements — 2026-02-11
   - Software I2C scan for OLED address (0x3C/0x3D) with auto-selection
   - 2-second startup message delay for visual confirmation
@@ -156,7 +172,7 @@ _For context; clear periodically_
 - **RadioComm universal command layer** — all command sources implemented (SBUS, iBUS, DSM, PPM, PWM, serial, I2C, WiFi). Remaining: command source arbitration (design doc done, implementation pending). See [findings/command-arbitration-design.md](findings/command-arbitration-design.md).
 - **Hardware testing is in progress** — firmware flashed, IMU and receiver validated, motor/ESC testing next
 - **fc_tool will help** — visual diagnostics during calibration (separate project at /fc_tool/)
-- **Modular architecture** — code split into imu, control, motors, debug modules + feature flags
+- **Modular architecture** — code split into imu, control, motors, debug modules + feature flags. Calibration library split into 5 focused files. Calibration mode extracted from main.cpp.
 - **Platform support**: Teensy 4.x (recommended), ESP32/S3 (WiFi-enabled)
 - **NOT supported**: Arduino Uno/Mega (16MHz + no FPU = max 302Hz loop rate)
 - **Feature modularity**: Users enable features in config.h based on their MCU capabilities. Use `python3 tools/complexity_calculator.py --all` to check feasibility across platforms.

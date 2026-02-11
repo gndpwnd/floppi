@@ -22,6 +22,50 @@ extern float AccX, AccY, AccZ;
 extern float GyroX, GyroY, GyroZ;
 
 // ======================================================================
+// CALIBRATION RESULTS ACCUMULATOR
+// ======================================================================
+// Stores results from each calibration so 'd' can dump everything at once.
+
+struct CalibrationResults {
+    // IMU offsets
+    bool hasIMU;
+    float accErrorX, accErrorY, accErrorZ;
+    float gyroErrorX, gyroErrorY, gyroErrorZ;
+
+    // IMU scale factors (from 6-position only)
+    bool hasIMUScale;
+    float accScaleX, accScaleY, accScaleZ;
+
+    // IMU orientation
+    bool hasOrientation;
+    char forwardAxis, rightAxis, upAxis;
+    bool forwardInverted, rightInverted, upInverted;
+
+    // Radio channel mapping
+    bool hasRadio;
+    int throttleChannel, rollChannel, pitchChannel, yawChannel, aux1Channel, aux2Channel;
+
+    // Failsafe values
+    bool hasFailsafe;
+    uint32_t failsafe[6];
+
+    // PID gains (from runtime tuning)
+    bool hasPID;
+
+    // Filter params
+    bool hasFilters;
+
+    #ifdef USE_MPU9250
+    // Magnetometer
+    bool hasMag;
+    float magOffsetX, magOffsetY, magOffsetZ;
+    float magScaleX, magScaleY, magScaleZ;
+    #endif
+};
+
+extern CalibrationResults calResults;
+
+// ======================================================================
 // HELPER FUNCTIONS
 // ======================================================================
 
@@ -166,6 +210,21 @@ void calibrateESC();
 
 // External motor functions (from motors.cpp / globals.h)
 void commandMotors();
+
+// ======================================================================
+// DUMP ALL CALIBRATION VALUES
+// ======================================================================
+
+#ifdef CALIBRATION_MODE
+/**
+ * Print ALL calibration values collected during this session.
+ * Outputs a single copy-paste-ready block for config.h.
+ * Only prints sections that were actually calibrated.
+ * PID gains and filter params are always included (from runtime values).
+ * Triggered by serial command 'd'.
+ */
+void printAllCalibrationValues();
+#endif
 
 // ======================================================================
 // MAGNETOMETER CALIBRATION (MPU9250 only)
