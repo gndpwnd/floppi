@@ -58,6 +58,10 @@ This roadmap tracks project-level features and milestones. For immediate tasks, 
   - Completed: 2026-02-11
   - Description: `--headless` flag runs fc_tool without the GUI window. Prints all serial data (including plotter data) to stdout. Supports stdin→serial forwarding for interactive use.
   - Implementation: Bypasses Tauri entirely — pure Rust serial loop. Lists available ports if --port not specified.
+- [ ] Force-release serial connections
+  - Priority: High
+  - Description: Ability to forcibly close/release serial port connections (e.g., `--kill-port /dev/ttyACM0`). USB CDC serial ports can become stale when connections are killed uncleanly, leaving the port locked. fc_tool should detect this and offer to force-release before connecting.
+  - Notes: On Linux, use `fuser -k` equivalent. Also detect stale ports on startup and warn the user.
 - [ ] Raw data logging
   - Description: Save serial output to file for offline analysis
 

@@ -56,9 +56,11 @@ enum CommandSource : uint8_t {
     #endif
 #endif
 
-// At least one command source must be defined
+// At least one command source must be defined (except in calibration mode)
 #if !(defined(USE_SBUS_RECEIVER) || defined(USE_IBUS_RECEIVER) || defined(USE_DSM_RECEIVER) || defined(USE_PPM_RECEIVER) || defined(USE_PWM_RECEIVER) || defined(USE_SERIAL_COMMANDS) || defined(USE_I2C_COMMANDS)) && !(defined(USE_ESP32) && defined(USE_WEB_SERVER))
-    #error "No receiver or command source defined in config.h!"
+    #ifndef CALIBRATION_MODE
+        #error "No receiver or command source defined in config.h!"
+    #endif
 #endif
 
 //========================================================================================================================//

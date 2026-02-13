@@ -20,24 +20,37 @@ void calibrateIMU() {
 
     if (!waitForConfirmation(5)) return;
 
-    // Check if IMU is stable before starting
+    // Check if IMU is stable before starting (variance-based, works before calibration)
     Serial.println(F("Checking IMU stability..."));
     delay(1000);
 
-    float gyroStability = 0;
-    float accelStability = 0;
-    for (int i = 0; i < 100; i++) {
+    // Two-pass: collect means, then measure variance
+    const int N = 100;
+    float gxSum = 0, gySum = 0, gzSum = 0, azSum = 0;
+    for (int i = 0; i < N; i++) {
         getIMUdata();
-        gyroStability += abs(GyroX) + abs(GyroY) + abs(GyroZ);
-        accelStability += abs(AccZ - 1.0);
+        gxSum += GyroX; gySum += GyroY; gzSum += GyroZ;
+        azSum += AccZ;
         delay(10);
     }
-    gyroStability /= 100.0;
-    accelStability /= 100.0;
+    float gxMean = gxSum / N, gyMean = gySum / N, gzMean = gzSum / N;
+    float azMean = azSum / N;
 
-    if (gyroStability > 5.0) {
+    float gyroVariance = 0, accelVariance = 0;
+    for (int i = 0; i < N; i++) {
+        getIMUdata();
+        float dx = GyroX - gxMean, dy = GyroY - gyMean, dz = GyroZ - gzMean;
+        gyroVariance += dx*dx + dy*dy + dz*dz;
+        float daz = AccZ - azMean;
+        accelVariance += daz*daz;
+        delay(10);
+    }
+    float gyroStdDev = sqrt(gyroVariance / N);
+    float accelStdDev = sqrt(accelVariance / N);
+
+    if (gyroStdDev > 3.0) {
         Serial.println(F("⚠️  WARNING: Gyro readings unstable (vehicle moving or vibrating)"));
-        Serial.print(F("   Stability metric: ")); Serial.println(gyroStability);
+        Serial.print(F("   Gyro std dev: ")); Serial.println(gyroStdDev);
         Serial.println(F("   Place on stable surface and try again."));
         Serial.println(F("\nRetry? (y/n)"));
         if (waitForConfirmation(3)) {
@@ -46,9 +59,11 @@ void calibrateIMU() {
         return;
     }
 
-    if (accelStability > 0.2) {
+    float accelLevelError = abs(azMean - 1.0);
+    if (accelLevelError > 0.2) {
         Serial.println(F("⚠️  WARNING: Surface may not be level"));
-        Serial.print(F("   Level metric: ")); Serial.println(accelStability);
+        Serial.print(F("   AccZ mean: ")); Serial.print(azMean);
+        Serial.print(F("g (expected ~1.0g, error: ")); Serial.print(accelLevelError); Serial.println(F("g)"));
         Serial.println(F("   Try to find a more level surface."));
         Serial.println(F("\nContinue anyway? (y/n)"));
         if (!waitForConfirmation(3)) return;
@@ -98,55 +113,64 @@ void calibrateIMU() {
 
     Serial.println(F("\n*** CALIBRATION COMPLETE! ***\n"));
 
-    // Validate results
+    // Validate results — check if conditions were good during calibration
+    // Note: Large gyro offsets are NORMAL for uncalibrated MPU6050 (up to ±20°/s)
+    // The accel checks detect if the board wasn't level during measurement
     Serial.println(F("╔═══════════════════════════════════════════════════════════╗"));
     Serial.println(F("║     CALIBRATION QUALITY CHECK                             ║"));
     Serial.println(F("╚═══════════════════════════════════════════════════════════╝"));
 
     bool goodCal = true;
 
-    // Check accelerometer
+    // Check accelerometer level (surface should be flat)
     if (abs(AccErrorX) > 0.2) {
-        Serial.println(F("⚠️  AccX offset is large - surface may not be level"));
+        Serial.print(F("⚠️  AccX offset ")); Serial.print(AccErrorX, 3);
+        Serial.println(F("g — surface may not be level"));
         goodCal = false;
     } else {
         Serial.println(F("✅ AccX offset good"));
     }
 
     if (abs(AccErrorY) > 0.2) {
-        Serial.println(F("⚠️  AccY offset is large - surface may not be level"));
+        Serial.print(F("⚠️  AccY offset ")); Serial.print(AccErrorY, 3);
+        Serial.println(F("g — surface may not be level"));
         goodCal = false;
     } else {
         Serial.println(F("✅ AccY offset good"));
     }
 
-    if (abs(AccErrorZ) > 0.1) {
-        Serial.println(F("⚠️  AccZ offset is large - check sensor orientation"));
+    if (abs(AccErrorZ) > 0.3) {
+        Serial.print(F("⚠️  AccZ offset ")); Serial.print(AccErrorZ, 3);
+        Serial.println(F("g — check sensor orientation"));
         goodCal = false;
     } else {
         Serial.println(F("✅ AccZ offset good"));
     }
 
-    // Check gyro
-    if (abs(GyroErrorX) > 2.0) {
-        Serial.println(F("⚠️  GyroX drift is high - vehicle may have moved"));
+    // Check gyro bias (MPU6050 typical: ±3-10°/s, max ±20°/s per datasheet)
+    // Only flag truly extreme values that suggest sensor problems
+    if (abs(GyroErrorX) > 15.0) {
+        Serial.print(F("⚠️  GyroX bias ")); Serial.print(GyroErrorX, 1);
+        Serial.println(F("°/s — unusually high, check sensor"));
         goodCal = false;
     } else {
-        Serial.println(F("✅ GyroX drift acceptable"));
+        Serial.print(F("✅ GyroX bias ")); Serial.print(GyroErrorX, 1); Serial.println(F("°/s"));
     }
 
-    if (abs(GyroErrorY) > 2.0) {
-        Serial.println(F("⚠️  GyroY drift is high - vehicle may have moved"));
+    if (abs(GyroErrorY) > 15.0) {
+        Serial.print(F("⚠️  GyroY bias ")); Serial.print(GyroErrorY, 1);
+        Serial.println(F("°/s — unusually high, check sensor"));
         goodCal = false;
     } else {
-        Serial.println(F("✅ GyroY drift acceptable"));
+        Serial.print(F("✅ GyroY bias ")); Serial.print(GyroErrorY, 1); Serial.println(F("°/s"));
     }
 
-    if (abs(GyroErrorZ) > 2.0) {
-        Serial.println(F("⚠️  GyroZ drift is high - vehicle may have moved"));
+    if (abs(GyroErrorZ) > 15.0) {
+        Serial.print(F("⚠️  GyroZ bias ")); Serial.print(GyroErrorZ, 1);
+        Serial.println(F("°/s — unusually high, check sensor"));
         goodCal = false;
     } else {
-        Serial.println(F("✅ GyroZ drift acceptable"));
+        Serial.print(F("✅ GyroZ bias ")); Serial.print(GyroErrorZ, 1); Serial.println(F("°/s"));
     }
 
     Serial.println();
@@ -159,7 +183,7 @@ void calibrateIMU() {
             return;
         }
     } else {
-        Serial.println(F("✅ Calibration quality is EXCELLENT!\n"));
+        Serial.println(F("✅ Calibration quality is GOOD!\n"));
     }
 
     printIMUCalibrationResults(AccErrorX, AccErrorY, AccErrorZ, GyroErrorX, GyroErrorY, GyroErrorZ);
@@ -365,12 +389,14 @@ void calibrateIMU6Position() {
         Serial.println(F(")"));
     }
 
-    // Check gyro
-    if (abs(GyroErrorX) > 2.0 || abs(GyroErrorY) > 2.0 || abs(GyroErrorZ) > 2.0) {
-        Serial.println(F("⚠️  Gyro drift higher than expected"));
+    // Check gyro bias (MPU6050 typical: ±3-10°/s, max ±20°/s per datasheet)
+    if (abs(GyroErrorX) > 15.0 || abs(GyroErrorY) > 15.0 || abs(GyroErrorZ) > 15.0) {
+        Serial.println(F("⚠️  Gyro bias unusually high — check sensor"));
         goodCal = false;
     } else {
-        Serial.println(F("✅ Gyro drift acceptable"));
+        Serial.print(F("✅ Gyro bias: X=")); Serial.print(GyroErrorX, 1);
+        Serial.print(F(" Y=")); Serial.print(GyroErrorY, 1);
+        Serial.print(F(" Z=")); Serial.print(GyroErrorZ, 1); Serial.println(F("°/s"));
     }
 
     if (!goodCal) {

@@ -159,6 +159,7 @@ This roadmap tracks project-level features and milestones for the flight control
 - [ ] Bench test: IMU sensor data validation
   - Description: Verify accelerometer and gyroscope readings are correct and calibrated
   - Dependencies: Hardware available
+  - Notes: IMU initialized OK on Teensy 4.0. AccZ reads -0.08g (MPU6050 mounted with X-axis pointing down). Run orientation detection (`o` command) to auto-detect and correct.
 
 - [ ] Bench test: SBUS receiver communication
   - Description: Verify all 6 channels respond correctly to transmitter inputs
@@ -184,6 +185,42 @@ This roadmap tracks project-level features and milestones for the flight control
 - [ ] Free flight testing
   - Description: Progressive envelope expansion in open area
   - Dependencies: PID tuning baseline
+
+### Automated Test Infrastructure (High Priority)
+
+> **Vision**: A modular test harness (`tests/test_calibration.sh`) that can test any combination of board + firmware across all calibration commands. Currently Teensy-only via fc_tool headless. Expand to ESP32, add motor/radio test suites, and make tests runnable as CI-like pass/fail checks.
+
+- [x] Calibration test suite for Teensy — `tests/test_calibration.sh`
+  - Completed: 2026-02-12
+  - Notes: FIFO-based fc_tool interaction, `teensy_reboot` for board reset, 9 test functions, 20/20 checks passing. Uses fc_tool headless (NOT pyserial — see findings/teensy-serial-troubleshooting.md).
+
+- [ ] Modular test runner architecture
+  - Priority: High
+  - Description: Refactor `test_calibration.sh` into a modular framework. Separate test definitions from harness logic. Support test suites: `imu`, `radio`, `motors`, `telemetry`, `full`. Config-driven board/port/firmware selection.
+  - Pattern: `./test_runner.sh --board teensy40 --suite imu` or `./test_runner.sh --board esp32 --suite full`
+  - Key modules: `tests/lib/harness.sh` (port mgmt, fc_tool interaction, teensy_reboot, assertions), `tests/suites/test_imu.sh`, `tests/suites/test_radio.sh`, `tests/suites/test_motors.sh`, etc.
+
+- [ ] ESP32 test support
+  - Priority: High
+  - Description: Add ESP32 serial communication to the test harness. ESP32 uses standard USB-UART (CP2102/CH340) which works with both fc_tool and pyserial. Board reset via RTS/DTR toggle (not teensy_reboot). Auto-detect board type from USB VID/PID.
+  - Notes: `serial_monitor.py` works for ESP32 reads (unlike Teensy). fc_tool headless also works. Test harness should abstract board-specific reset and connection logic.
+
+- [ ] Motor/ESC test suite
+  - Priority: Medium (blocked by hardware)
+  - Description: Automated ESC calibration verification, motor spin-up test, PWM range validation. Safety: require explicit user confirmation before motor tests, assert props-off.
+
+- [ ] Radio test suite
+  - Priority: Medium (blocked by hardware)
+  - Description: Automated channel range verification, failsafe measurement, channel mapping validation. Requires radio transmitter.
+
+- [ ] Auto-flash-and-test workflow
+  - Priority: Medium
+  - Description: Build firmware → flash to board → run test suite → report results. Single command: `./test_runner.sh --board teensy40 --suite imu --flash`. Eliminates manual build/flash/connect cycle.
+  - Notes: Extend existing `tools/flash_and_run.sh` pattern. PlatformIO handles build+flash, test harness handles verification.
+
+- [ ] Test results archival
+  - Priority: Low
+  - Description: Machine-readable test output (JSON/TAP) alongside human-readable logs. Timestamped results in `tests/results/`. Git-ignored results, git-tracked test scripts.
 
 ### VTOL Configuration Support
 

@@ -1,25 +1,37 @@
 # Flight Controller Firmware - Todo
 
-> Last updated: 2026-02-11
+> Last updated: 2026-02-12
 
 ## In Progress
 
 _Focus: Get everything working on real hardware. Feature development is paused — ~90% of target features are implemented._
 
-- [ ] Bench test: IMU sensor validation — **Working.** MPU6050 initialized OK, 6-position calibration started.
-- [ ] Bench test: SBUS receiver communication — **Working.** X8R on Serial5/Pin 21 initialized OK.
+- [ ] Bench test: IMU sensor validation — **Working.** MPU6050 reads data. AccZ=-0.08g (mounted sideways). Run orientation detection (`o`) next.
+- [ ] Bench test: SBUS receiver communication — **Pending.** SBUS configured but receiver not connected during testing.
 - [ ] Bench test: Motor/ESC response — **Pending.** Hardware assembled, not yet tested.
 
 ## Up Next
 
-_Priority queue for immediate work — all hardware validation and tuning_
+_Priority queue for immediate work_
 
-- [ ] Complete motor/ESC bench test — verify PWM output, ESC calibration routine, throttle response
-- [ ] Complete IMU calibration — finish 6-position calibration, verify offsets, validate attitude filter
-- [ ] Complete radio calibration — full channel mapping, endpoint calibration, failsafe verification
-- [ ] PID tuning on real hardware — use `g` command in calibration mode, tune roll/pitch/yaw gains
+### Immediate: Test Infrastructure (High Priority)
+
+- [ ] Modular test runner — refactor `test_calibration.sh` into harness + suites (see roadmap)
+- [ ] ESP32 test support — board detection, RTS/DTR reset, pyserial-compatible reads
+- [ ] Auto-flash-and-test — `./test_runner.sh --board teensy40 --suite imu --flash`
+
+### Immediate: Hardware Validation
+
+- [ ] Run orientation detection (`o` command) — auto-detect MPU6050 mounting, generate axis transforms
+- [ ] Complete IMU calibration with orientation correction — verify corrected AccZ ≈ 1.0g
+- [ ] Complete radio calibration — full channel mapping when transmitter available
+- [ ] Complete motor/ESC bench test — verify PWM output, ESC calibration routine
+
+### Next: Tuning & Flight
+
+- [ ] PID tuning on real hardware — use `g` command in calibration mode
 - [ ] First hover test — tethered/constrained flight, validate stability
-- [ ] OLED context-aware calibration display — progress indicator (e.g. "1/5 IMU Orient", "2/5 Radio Cal") with live data per step
+- [ ] OLED context-aware calibration display — progress indicator per step
 
 ## Backlog
 
