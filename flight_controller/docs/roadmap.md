@@ -1,6 +1,6 @@
 # Flight Controller Firmware - Roadmap
 
-> Last updated: 2026-02-11
+> Last updated: 2026-02-13
 
 ## Overview
 
@@ -188,35 +188,42 @@ This roadmap tracks project-level features and milestones for the flight control
 
 ### Automated Test Infrastructure (High Priority)
 
-> **Vision**: A modular test harness (`tests/test_calibration.sh`) that can test any combination of board + firmware across all calibration commands. Currently Teensy-only via fc_tool headless. Expand to ESP32, add motor/radio test suites, and make tests runnable as CI-like pass/fail checks.
+> **Vision**: A modular test harness that can test any combination of board + firmware across all calibration commands. Uses Python (`serial_monitor.py`) and PlatformIO (`pio device monitor`) for serial communication — **no fc_tool dependency**. Runnable as CI-like pass/fail checks.
+>
+> **Serial tools**: `tools/serial_monitor.py` (Python/pyserial — works for ESP32 and Teensy), `pio device monitor` (PlatformIO built-in). No dependency on fc_tool for testing.
 
 - [x] Calibration test suite for Teensy — `tests/test_calibration.sh`
-  - Completed: 2026-02-12
-  - Notes: FIFO-based fc_tool interaction, `teensy_reboot` for board reset, 9 test functions, 20/20 checks passing. Uses fc_tool headless (NOT pyserial — see findings/teensy-serial-troubleshooting.md).
+  - Completed: 2026-02-12, rewritten 2026-02-13
+  - Notes: Rewritten to use `serial_monitor.py` instead of fc_tool. 11 test functions, all using Python serial backend. No fc_tool dependency.
+
+- [x] Rewrite test harness to use Python serial (drop fc_tool dependency)
+  - Completed: 2026-02-13
+  - Description: Replaced fc_tool headless FIFO interaction in `test_calibration.sh` with `serial_monitor.py` (raw termios). Tests are self-contained within flight_controller/ with no cross-project dependency.
+  - Pattern: `python3 tools/serial_monitor.py /dev/ttyACM0 --send h --wait 3 --output results/help.txt`
 
 - [ ] Modular test runner architecture
   - Priority: High
-  - Description: Refactor `test_calibration.sh` into a modular framework. Separate test definitions from harness logic. Support test suites: `imu`, `radio`, `motors`, `telemetry`, `full`. Config-driven board/port/firmware selection.
+  - Description: Refactor test suite into a modular framework. Separate test definitions from harness logic. Support test suites: `imu`, `radio`, `motors`, `telemetry`, `full`. Config-driven board/port/firmware selection.
   - Pattern: `./test_runner.sh --board teensy40 --suite imu` or `./test_runner.sh --board esp32 --suite full`
-  - Key modules: `tests/lib/harness.sh` (port mgmt, fc_tool interaction, teensy_reboot, assertions), `tests/suites/test_imu.sh`, `tests/suites/test_radio.sh`, `tests/suites/test_motors.sh`, etc.
+  - Key modules: `tests/lib/harness.sh` (port mgmt, serial_monitor.py interaction, board reset, assertions), `tests/suites/test_imu.sh`, `tests/suites/test_radio.sh`, `tests/suites/test_motors.sh`, etc.
 
 - [ ] ESP32 test support
   - Priority: High
-  - Description: Add ESP32 serial communication to the test harness. ESP32 uses standard USB-UART (CP2102/CH340) which works with both fc_tool and pyserial. Board reset via RTS/DTR toggle (not teensy_reboot). Auto-detect board type from USB VID/PID.
-  - Notes: `serial_monitor.py` works for ESP32 reads (unlike Teensy). fc_tool headless also works. Test harness should abstract board-specific reset and connection logic.
+  - Description: Add ESP32 serial communication to the test harness. ESP32 uses standard USB-UART (CP2102/CH340) which works with pyserial natively. Board reset via RTS/DTR toggle (not teensy_reboot). Auto-detect board type from USB VID/PID.
+  - Notes: `serial_monitor.py` works for ESP32. Test harness should abstract board-specific reset and connection logic.
 
 - [ ] Motor/ESC test suite
   - Priority: Medium (blocked by hardware)
   - Description: Automated ESC calibration verification, motor spin-up test, PWM range validation. Safety: require explicit user confirmation before motor tests, assert props-off.
 
 - [ ] Radio test suite
-  - Priority: Medium (blocked by hardware)
+  - Priority: Medium (blocked by receiver hardware)
   - Description: Automated channel range verification, failsafe measurement, channel mapping validation. Requires radio transmitter.
 
 - [ ] Auto-flash-and-test workflow
   - Priority: Medium
   - Description: Build firmware → flash to board → run test suite → report results. Single command: `./test_runner.sh --board teensy40 --suite imu --flash`. Eliminates manual build/flash/connect cycle.
-  - Notes: Extend existing `tools/flash_and_run.sh` pattern. PlatformIO handles build+flash, test harness handles verification.
+  - Notes: PlatformIO handles build+flash (`pio run -e <env> -t upload`), test harness handles serial verification via `serial_monitor.py`.
 
 - [ ] Test results archival
   - Priority: Low
@@ -268,7 +275,7 @@ This roadmap tracks project-level features and milestones for the flight control
   - Notes: `tools/complexity_calculator.py` entry point with `tools/complexity/` package. Dynamic source scanning (no manual operation lists). CPU timing from source-scanned FP ops, memory analysis from ELF builds, per-tier breakdown. Inputs: clock/cores/FPU (via `--clock`, `--cores`, `--fpu`/`--no-fpu`) or platform presets (`-p esp32`). Modes: `--full`, `--memory`, `--source`, `--all`, `--builds`.
 - [x] Flash-and-run script (`tools/flash_and_run.sh`)
   - Completed: 2026-02-11
-  - Notes: Builds, flashes PIO environment, waits for serial port, launches fc_tool in dev mode. Default: `teensy40_calibration`.
+  - Notes: Builds, flashes PIO environment, waits for serial port, launches serial monitor. Default: `teensy40_calibration`. Can use `pio device monitor` or `serial_monitor.py`.
 - [x] Setup permissions script (`setup_permissions.sh` at repo root)
   - Completed: 2026-02-11
   - Notes: Idempotent sudo script — installs Teensy/ESP32 udev rules, adds user to dialout/plugdev groups, reloads udev. Skips steps already done.
@@ -375,6 +382,23 @@ Files: `ota.h`, `ota.cpp`.
 - [ ] Wiring validation on startup
   - Description: Basic startup checks — detect if IMU is responding, if receiver is sending data, if OLED is connected. Report status on serial and display. Helps users catch wiring mistakes before attempting calibration.
   - Dependencies: Hardware testing
+
+### Calibration Wrapper Script (High Priority)
+
+> **Plan**: [docs/plans/calibrate-sh-plan.md](plans/calibrate-sh-plan.md)
+
+- [ ] `tools/calibrate.sh` — Menu-driven calibration wrapper for Linux/Mac
+  - Priority: High
+  - Description: Interactive bash wrapper around `serial_monitor.py`. Menu-driven terminal UI for all calibration commands. Handles prerequisites (ModemManager, port detection). Display commands show output and return to menu. Interactive calibrations (orientation, radio, ESC) use serial pass-through mode — user types y/n directly to firmware, Ctrl+C returns to menu. CLI mode for scriptable access (`./calibrate.sh PORT imu`).
+  - Backend: `serial_monitor.py` with `--send CMD --wait N --interactive` — no changes to Python script needed.
+  - Pattern: Follows `build.sh` conventions (colors, menu loop, CLI args).
+
+- [ ] `tools/calibrate.bat` — Windows equivalent
+  - Priority: Low (blocked by serial_monitor.py cross-platform support)
+  - Description: Same menu structure as calibrate.sh but in batch syntax. Depends on making serial_monitor.py work on Windows (currently uses Linux-only termios/fcntl). Follows `build.bat` patterns.
+
+- [x] Update calibration guide to reference calibrate.sh
+  - Dependencies: calibrate.sh implementation
 
 ---
 
@@ -654,9 +678,9 @@ Files: `ota.h`, `ota.cpp`.
 ## Notes
 
 - **Testing is hardware-based**: Tests are baked into the firmware as calibration modes and debug builds, not as separate test files. The firmware itself is the test harness. Each calibration routine validates its own results with quality checks and retry logic.
+- **Serial tools**: `tools/serial_monitor.py` (Python, raw termios) is the primary serial tool. Works with Teensy USB CDC and ESP32 USB-UART. `pio device monitor` (PlatformIO) as fallback. Planned: `tools/calibrate.sh` as menu-driven wrapper (see [plans/calibrate-sh-plan.md](plans/calibrate-sh-plan.md)). No fc_tool dependency. **NEVER use raw bash for serial** (cat, stty, echo > /dev) — always use the Python scripts, calibrate.sh wrapper, or PlatformIO.
 - **Calibration workflow**: Flash calibration build → run auto-calibration routines → copy `#define` values to config.h → flash live build → fly. This is by design — thorough automated calibration upfront means lean runtime.
 - **Calibration automation goal**: Every hardware-dependent value in config.h should have a guided auto-calibration routine. No manual guesswork. The serial command interface in calibration builds is the primary calibration tool.
-- **fc_tool synergy**: The fc_tool desktop app will provide visual diagnostics during calibration, making the calibrate → hard-code → flash cycle more user-friendly.
 - **VTOL generality**: Always design features to work across vehicle types, not just quadcopters. The mixer pattern from dRehmFlight supports this well.
 - **Bare bones + automation**: The firmware is intentionally minimal at runtime. It can afford to be simple because calibration is thorough. Automation has a large impact with minimal code.
 

@@ -1,25 +1,29 @@
 # Calibration Mode Test Results
 
-Date: 2026-02-12
+Date: 2026-02-12 (updated 2026-02-13)
 Hardware: Teensy 4.0 + MPU6050 + SSD1306 0.91" OLED
 Firmware: teensy40_calibration
-Test script: flight_controller/tests/test_calibration.sh
+Serial tool: flight_controller/tools/serial_monitor.py (raw termios, not pyserial)
 
 ## Test Summary
 
-| Test | Result | Notes |
-|------|--------|-------|
-| Boot | PASS (3/3) | Full boot sequence, OLED init, calibration mode entry |
-| Help (h) | PASS (4/4) | Full help menu with all commands listed |
-| Status (c) | PASS (1/1) | All 7 calibration stages shown as pending |
-| PID (g) | PASS (3/3) | Angle mode gains displayed correctly |
-| Params (p) | PASS (1/1) | Filters and limits displayed |
-| Dump (d) | PASS (1/1) | Clean config.h format output |
-| Channels (s) | PASS (2/2) | CH1-6 values shown, Armed=YES |
-| Telemetry (t) | PASS (2/2) | 309 lines, @plotId format confirmed |
-| IMU Cal (i) | PASS (3/3) | Prompts and stability check work |
+| Command | Result | Notes |
+|---------|--------|-------|
+| Help (h) | PASS | Full help menu, all 16 commands listed |
+| Status (c) | PASS | All 7 calibration stages shown as pending |
+| Channels (s) | PASS | CH1-6 values shown, Armed=YES |
+| Telemetry (t) | PASS | IMU mode ~50Hz, FULL mode ~20Hz, @plotId format confirmed |
+| PID gains (g) | PASS | Display + set (kp_roll 0.2→0.25 round-trip verified) |
+| Filters (p) | PASS | All filter/limit values displayed |
+| Dump (d) | PASS | Clean config.h format output with PID + filters |
+| IMU Cal (i) | PASS | Full flow: start → level warning → continue → calibrate → quality check → results |
+| Orientation (o) | PASS | Start + cancel verified (full test needs physical board manipulation) |
+| Sequential (a) | PASS | Workflow starts, shows all stages, offers 6-pos/single-pos choice |
+| Radio cal (r) | BLOCKED | Needs radio transmitter powered on |
+| Failsafe (f) | BLOCKED | Needs transmitter power-off cycle |
+| ESC cal (e) | BLOCKED | Needs ESCs/motors connected |
 
-**Total: 20/20 checks passed**
+**Total: 10/13 commands verified (3 blocked by hardware)**
 
 ## Key Observations
 
@@ -52,6 +56,21 @@ The accelerometer Z axis reads nearly zero, meaning gravity is NOT detected on Z
 3. **Need orientation detection** — use `o` command to auto-detect mounting
 
 **Next step**: Run orientation detection (`o` command) to determine actual mounting and generate axis transformation code.
+
+### IMU Calibration Values (from `i` command, 2026-02-13)
+
+Full calibration run completed with quality warnings (expected due to sideways mounting):
+
+| Parameter | Value | Status |
+|-----------|-------|--------|
+| AccErrorX | 1.022g | Warning — sideways mount, X-axis has gravity |
+| AccErrorY | 0.039g | Good |
+| AccErrorZ | -1.081g | Warning — expected, Z-axis not pointing down |
+| GyroErrorX | -4.5°/s | Good (within ±15°/s threshold) |
+| GyroErrorY | -10.5°/s | Good (within ±15°/s threshold) |
+| GyroErrorZ | -2.1°/s | Good (within ±15°/s threshold) |
+
+Gyro calibration values are correct regardless of mounting orientation. Accelerometer values are incorrect because `i` command assumes Z-axis = gravity — need `o` command for proper mounting detection.
 
 ### Gyro Readings
 - gx: ~-4.3°/s, gy: ~-11.2°/s, gz: ~-2.3°/s
@@ -88,13 +107,16 @@ See: docs/findings/teensy-serial-troubleshooting.md
 
 Key workflow:
 1. Stop ModemManager: `sudo systemctl stop ModemManager`
-2. Use teensy_reboot to reset board: `~/.platformio/packages/tool-teensy/teensy_reboot`
-3. Wait 4-6 seconds for re-enumeration
-4. Use fc_tool headless (NOT pyserial) for Teensy serial
+2. Use `serial_monitor.py` for both Teensy and ESP32 (rewritten 2026-02-13 with raw termios)
+3. Board reset: `~/.platformio/packages/tool-teensy/teensy_reboot` (Teensy only)
+4. Never use raw bash (cat, stty, echo) for serial
+
+The serial_monitor.py rewrite (2026-02-13) uses raw POSIX termios with cfmakeraw()-equivalent settings and select()+os.read() instead of pyserial. This matches Rust's serialport-rs behavior and works reliably with Teensy USB CDC.
 
 ## Files Created/Modified
-- `flight_controller/tests/test_calibration.sh` — automated test suite
-- `flight_controller/tools/serial_monitor.py` — Python serial tool (ESP32 only)
+- `flight_controller/tests/test_calibration.sh` — automated test suite (uses fc_tool, needs rewrite)
+- `flight_controller/tools/serial_monitor.py` — Python serial tool (Teensy + ESP32, raw termios)
+- `flight_controller/tests/results/` — test output captures
 - `docs/findings/teensy-serial-troubleshooting.md` — troubleshooting guide
 - `docs/findings/calibration-test-results-2026-02-12.md` — this file
 - `flight_controller/lib/Calibration/calibration_imu.cpp` — stability check + quality thresholds

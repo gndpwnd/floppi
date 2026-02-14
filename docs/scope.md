@@ -1,18 +1,19 @@
 # Project Scope: floppi
 
-> Last updated: 2026-02-09
+> Last updated: 2026-02-13
 > Status: Active
 
 ## Mission Statement
 
-floppi is an open-source bare-bones flight controller platform: firmware + desktop tool. The flight controller firmware does one thing well — stabilize a drone (read sensors, filter, PID, output motors). Complex logic (missions, GPS navigation, mode switching) belongs on an external flight computer. The desktop tool (fc_tool) provides serial monitoring, data visualization, and calibration support.
+floppi is an open-source bare-bones flight controller platform. The flight controller firmware does one thing well — stabilize a drone (read sensors, filter, PID, output motors). Complex logic (missions, GPS navigation, mode switching) belongs on an external flight computer.
 
 ## Sub-Projects
 
-| Sub-Project | Purpose | Docs |
-|-------------|---------|------|
-| `flight_controller/` | PlatformIO embedded firmware (Teensy + ESP32) | [scope](../flight_controller/docs/scope.md), [roadmap](../flight_controller/docs/roadmap.md) |
-| `fc_tool/` | Tauri 2 desktop app (Rust + vanilla JS) — serial monitor, plotter | [scope](../fc_tool/docs/scope.md), [roadmap](../fc_tool/docs/roadmap.md) |
+| Sub-Project | Purpose | Status | Docs |
+|-------------|---------|--------|------|
+| `flight_controller/` | PlatformIO embedded firmware (Teensy + ESP32) | **Active** — hardware validation phase | [scope](../flight_controller/docs/scope.md), [roadmap](../flight_controller/docs/roadmap.md) |
+| `fc_tool/` | Tauri 2 desktop app (Rust + vanilla JS) — serial monitor, plotter | Paused — not needed for FC development | [scope](../fc_tool/docs/scope.md), [roadmap](../fc_tool/docs/roadmap.md) |
+| `swarm_api/` | Python FastAPI ground station for ESP32 drone control over WiFi | Paused — needs ESP32 hardware testing | [scope](../swarm_api/docs/scope.md), [roadmap](../swarm_api/docs/roadmap.md) |
 
 ## Core Philosophy
 
@@ -39,6 +40,7 @@ floppi is an open-source bare-bones flight controller platform: firmware + deskt
 ## In Scope
 
 ### Flight Controller Firmware
+
 - PID control loops (rate + angle modes, compile-time selection)
 - IMU integration (MPU6050 primary, Madgwick 6DOF filter)
 - SBUS receiver support

@@ -72,7 +72,7 @@ The firmware supports a two-mode workflow: **calibration mode** for determining 
 | Teensy 4.0/4.1 + ESP32/S3 targets | Proven platforms, ESP32 adds WiFi | No |
 | No paid services or cloud dependencies | Open-source, self-contained | No |
 | PlatformIO build system | Cross-platform, library management | No |
-| No separate tests/ directory | Tests are baked into firmware as build targets/calibration modes | No |
+| Testing via firmware + serial scripts | Calibration routines self-validate. `tests/` has bash/Python test harness using `serial_monitor.py` | No |
 
 ## Assumptions
 
@@ -256,7 +256,7 @@ This is a separate project. The FC firmware just exposes the WiFi API endpoints.
 | Primary receiver | iBUS/SBUS (FlySky FS-iA6B) | iBUS recommended (non-inverted, 115200, direct microseconds). SBUS also supported. | 2026-02-10 |
 | Calibration storage | Hard-coded in config.h | No SD cards, no EEPROM in live builds, simple and reliable | 2026-02-05 |
 | Firmware states | Calibration mode vs Live mode | Separate debug/test from production flight | 2026-02-05 |
-| Testing approach | Built into firmware as build targets | Embedded firmware testing is hardware-based, not unit test files | 2026-02-05 |
+| Testing approach | Built into firmware + Python serial tools | Calibration routines validate own results. Test harness uses `serial_monitor.py` (pyserial) + `pio device monitor`. No fc_tool dependency. NEVER use raw bash for serial (cat/stty/echo). | 2026-02-13 |
 | Build separation | PlatformIO `extends` + `-D CALIBRATION_MODE` | Each board gets a `_calibration` variant. Clean, DRY, no code duplication. | 2026-02-05 |
 | Attitude filter | Madgwick 6DOF | Better noise rejection than complementary, simpler than EKF, single tuning parameter | Pre-2026 |
 | WiFi architecture | STA mode (connect to existing) | Swarm coordination — drones on same network, API to centralized computers | 2026-02-07 |
@@ -273,7 +273,7 @@ This is a separate project. The FC firmware just exposes the WiFi API endpoints.
 
 ## Integration Points
 
-- **fc_tool** (Tauri desktop app): Serial communication for real-time IMU visualization, calibration interface, firmware management. Future: WebSocket connection to floppi.local/ws.
+- **fc_tool** (Tauri desktop app): Optional visualization tool for serial data plotting. Not required for development or testing — `serial_monitor.py` and `pio device monitor` cover all testing needs.
 - **Flight computer** (external): Sends commands to FC via radio or WiFi API. Handles complex logic (missions, mode switching, aerobatics sequencing, swarm coordination). FC just executes.
 - **engineering360**: Receives physical platform specifications (mass, inertia, motor specs) for PID tuning
 - **PlatformIO**: Build system, library management, firmware upload
