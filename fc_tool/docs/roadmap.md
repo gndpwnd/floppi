@@ -1,6 +1,6 @@
 # fc_tool - Roadmap
 
-> Last updated: 2026-02-11
+> Last updated: 2026-02-17
 
 ## Overview
 
@@ -196,6 +196,22 @@ Each build script sources the required env vars before compiling.
 - [x] PlatformIO install via official get-platformio.py in all setup-dev scripts
 - [x] PlatformIO PATH setup (`~/.platformio/penv/bin/` or `Scripts\`) in all build scripts
 
+### Test Infrastructure
+
+- [x] Serial data simulator (`tests/simulate_serial.py`)
+  - Completed: 2026-02-17
+  - Description: Python script generating fake serial data in all 4 protocol formats. 8 scenarios: imu, sine, mixed, ansi, stress, dashboard, protocol, noise.
+  - Implementation: Derivative of flight_controller/tools/serial_monitor.py. Writes to virtual serial port (socat pty pair) or stdout.
+- [x] Plotter test suite (`tests/test_plotter.sh`)
+  - Completed: 2026-02-17
+  - Description: Tests all simulator scenarios, protocol format verification, stress test (max plots cap), headless mode with virtual serial.
+- [x] Monitor test suite (`tests/test_monitor.sh`)
+  - Completed: 2026-02-17
+  - Description: Tests ANSI escape code generation, dashboard format, headless echo round-trip, headless ANSI passthrough.
+- [x] Max plots cap (10)
+  - Completed: 2026-02-17
+  - Description: PlotterManager limits to 10 simultaneous plots. Logs console warning when cap reached.
+
 ### Platform Validation (future)
 
 - [ ] Clone repo on a real Windows machine, run all three scripts, verify build produces .msi/.exe
@@ -217,6 +233,8 @@ Each build script sources the required env vars before compiling.
 
 > Features moved here when done, for historical reference.
 
+- [x] Test infrastructure: simulator, plotter tests, monitor tests, virtual serial via socat — 2026-02-17
+- [x] Max plots cap (10), removed unused tokio dep, code review fixes — 2026-02-17
 - [x] Plotter polish: Y-axis zoom, data rate display, auto-fit grid, origin line, legend toggle — 2026-02-10
 - [x] Terminal polish: clipboard copy ("Copy All"), filter (Ctrl+F), buffer limit, keyboard shortcuts — 2026-02-10
 - [x] Enhanced serial plotter (PlotterManager, dark theme, crosshair, multi-graph protocol) — 2026-02-09

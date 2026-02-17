@@ -1,6 +1,6 @@
 # fc_tool - Todo
 
-> Last updated: 2026-02-11
+> Last updated: 2026-02-17
 
 ## In Progress
 
@@ -11,7 +11,8 @@
 
 ## Up Next
 
-- [ ] Test with real Teensy hardware (serial + plotter visualization) — hardware now connected and available for testing
+- [ ] Test with real Teensy hardware (serial + plotter visualization) — hardware available but not on current machine
+- [ ] Run test suite with socat virtual serial ports (need `sudo apt-get install socat`)
 - [ ] Validate cross-platform builds (Windows, macOS)
 
 ## Backlog (Post-v0.1)
@@ -65,6 +66,17 @@
 
 ## Recently Completed
 
+- [x] Test infrastructure — 2026-02-17
+  - `tests/simulate_serial.py` — Python data simulator with 8 scenarios (imu, sine, mixed, ansi, stress, dashboard, protocol, noise)
+  - `tests/test_plotter.sh` — Plotter test suite (12 tests: format verification, stress test, headless+socat)
+  - `tests/test_monitor.sh` — Monitor test suite (9 tests: ANSI codes, dashboard format, headless echo)
+  - Virtual serial ports via socat for testing without real hardware
+  - `tests/results/` gitignored
+- [x] Code review fixes — 2026-02-17
+  - Removed unused `tokio` dependency from Cargo.toml (saves compile time + ~1MB binary)
+  - Fixed Cargo.toml and README.md description (said "firmware management", now "data visualization")
+  - Removed redundant `use std::io::Write` in lib.rs
+  - Added max plots cap (10) in PlotterManager — logs console warning when exceeded
 - [x] CLI arguments and headless mode — 2026-02-11
   - `--port /dev/ttyACM0 --baud 115200` for auto-connect on launch
   - `--headless` flag for raw serial to stdout (no GUI window)

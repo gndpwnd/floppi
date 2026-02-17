@@ -127,12 +127,12 @@ static void calibrateSequential() {
     #else
     Serial.println(F("\nStep 1a: IMU Offset Calibration"));
     Serial.println(F("Run 6-position calibration for best accuracy? (y/n)"));
-    if (waitForConfirmation(30)) {
+    if (waitForConfirmation()) {
         Serial.println(F("\n--- Running 6-Position IMU Calibration ---"));
         calibrateIMU6Position();
     } else {
         Serial.println(F("\nRun single-position instead? (y/n)"));
-        if (waitForConfirmation(15)) {
+        if (waitForConfirmation()) {
             Serial.println(F("\n--- Running Single-Position IMU Calibration ---"));
             calibrateIMU();
         } else {
@@ -145,7 +145,7 @@ static void calibrateSequential() {
     Serial.println(F("\nStep 1b: IMU Orientation Detection"));
     Serial.println(F("Only needed if IMU is NOT flat with chip up, X forward."));
     Serial.println(F("Run orientation detection? (y/n)"));
-    if (waitForConfirmation(15)) {
+    if (waitForConfirmation()) {
         Serial.println(F("\n--- Running IMU + Orientation Detection ---"));
         calibrateIMUWithOrientation();
     } else {
@@ -159,7 +159,7 @@ static void calibrateSequential() {
     #ifndef CALIBRATED_MAG
     Serial.println(F("\nStep 1c: Magnetometer Calibration (MPU9250)"));
     Serial.println(F("Run magnetometer calibration? (y/n)"));
-    if (waitForConfirmation(15)) {
+    if (waitForConfirmation()) {
         Serial.println(F("\n--- Running Magnetometer Calibration ---"));
         calibrateMagnetometer();
     } else {
@@ -176,7 +176,7 @@ static void calibrateSequential() {
     Serial.println(F("  ESP32: Network Diagnostics"));
     Serial.println(F("========================================"));
     Serial.println(F("Run WiFi/network diagnostics? (y/n)"));
-    if (waitForConfirmation(15)) {
+    if (waitForConfirmation()) {
         runNetworkDiagnostics();
     } else {
         Serial.println(F("Skipping network diagnostics."));
@@ -195,7 +195,7 @@ static void calibrateSequential() {
     #else
     Serial.println(F("\nStep 2a: Radio Channel Mapping"));
     Serial.println(F("Is your receiver + transmitter connected and powered? (y/n)"));
-    if (waitForConfirmation(30)) {
+    if (waitForConfirmation()) {
         Serial.println(F("\n--- Running Radio Calibration ---"));
         calibrateRadio();
     } else {
@@ -208,7 +208,7 @@ static void calibrateSequential() {
     #else
     Serial.println(F("\nStep 2b: Failsafe Auto-Detection"));
     Serial.println(F("Is your receiver connected? (y/n)"));
-    if (waitForConfirmation(15)) {
+    if (waitForConfirmation()) {
         Serial.println(F("\n--- Running Failsafe Detection ---"));
         calibrateFailsafe();
     } else {
@@ -228,7 +228,7 @@ static void calibrateSequential() {
     #else
     Serial.println(F("\nStep 3a: ESC Endpoint Calibration"));
     Serial.println(F("Are ESCs connected and propellers REMOVED? (y/n)"));
-    if (waitForConfirmation(30)) {
+    if (waitForConfirmation()) {
         Serial.println(F("\n--- Running ESC Calibration ---"));
         calibrateESC();
     } else {

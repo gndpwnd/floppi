@@ -58,8 +58,22 @@ teensy40_calibration  SUCCESS   00:00:06.xxx
 pio run -e teensy40_calibration -t upload
 ```
 
-### Step 3: Open Serial Monitor
+### Step 3: Open Calibration Tool
 
+**Recommended** — use the interactive calibration wrapper:
+```bash
+cd ~/floppi/flight_controller
+./tools/calibrate.sh
+```
+
+This provides a menu-driven interface with all calibration commands, prerequisite checks (ModemManager, port detection), and interactive pass-through for y/n prompts.
+
+**Alternative** — direct serial monitor:
+```bash
+python3 tools/serial_monitor.py /dev/ttyACM0
+```
+
+**Fallback** — PlatformIO serial monitor:
 ```bash
 pio device monitor
 ```
@@ -72,15 +86,7 @@ pio device monitor
 
 === CALIBRATION MODE ===
 Serial commands (type in monitor):
-  r - Radio calibration
-  i - IMU calibration
-  o - IMU + Orientation
-  s - Status
-  h - Help
-
-CH6 switch (hold 3s):
-  Mid:  IMU cal
-  High: IMU + Orientation
+  h - Help (full command list)
 ```
 
 ---
@@ -321,14 +327,39 @@ After applying calibration, verify:
 
 ## Command Reference
 
-| Command | Action |
-|---------|--------|
-| `r` | Radio calibration (channel mapping) |
-| `i` | IMU calibration (single-position, offsets only) |
-| `m` | IMU calibration (6-position, offsets + scale factors) |
-| `o` | IMU + Orientation detection |
-| `s` | Status (show current channel values) |
-| `h` | Help (show command menu) |
+### Serial Commands
+
+| Command | Action | Type |
+|---------|--------|------|
+| `h` | Help (show all commands) | Display |
+| `c` | Calibration status (what's done/pending) | Display |
+| `s` | Channel status (CH1-6 + Armed) | Display |
+| `g` | Show PID gains | Display |
+| `p` | Show filter & limits | Display |
+| `d` | Dump ALL calibration values (config.h block) | Display |
+| `t` | Toggle telemetry (off/IMU/full) | Display |
+| `i` | IMU calibration (single-position, offsets only) | Interactive |
+| `m` | IMU calibration (6-position, offsets + scale) | Interactive |
+| `o` | IMU + Orientation detection | Interactive |
+| `r` | Radio calibration (channel mapping) | Interactive |
+| `f` | Failsafe auto-detection | Interactive |
+| `e` | ESC endpoint calibration | Interactive |
+| `n` | Network diagnostics (ESP32 only) | Display |
+| `a` | Sequential calibration (guided workflow) | Interactive |
+| `g <name> <value>` | Set PID gain (e.g. `g kp_roll 0.25`) | Tuning |
+| `p <name> <value>` | Set filter param (e.g. `p b_accel 0.12`) | Tuning |
+
+### calibrate.sh (recommended)
+
+```bash
+./tools/calibrate.sh                          # Auto-detect port, launch menu
+./tools/calibrate.sh /dev/ttyACM0             # Specific port, launch menu
+./tools/calibrate.sh /dev/ttyACM0 imu         # Run IMU calibration directly
+./tools/calibrate.sh /dev/ttyACM0 dump        # Dump values directly
+./tools/calibrate.sh help                     # Show all CLI commands
+```
+
+### CH6 Switch (no serial required)
 
 | CH6 Position | Action (hold 3s) |
 |--------------|------------------|

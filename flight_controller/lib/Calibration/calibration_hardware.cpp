@@ -29,7 +29,7 @@ void calibrateFailsafe() {
     Serial.println(F("  - Make sure your transmitter is ON and connected"));
     Serial.println(F("  - Center all sticks, switches in default position"));
 
-    if (!waitForConfirmation(5)) return;
+    if (!waitForConfirmation()) return;
 
     // Read normal values (average over 50 samples)
     uint32_t normal[6] = {0};
@@ -63,7 +63,7 @@ void calibrateFailsafe() {
         Serial.println(F("\nWARNING: Some channels are out of normal range (800-2200us)."));
         Serial.println(F("Is your receiver connected and transmitter bound?"));
         Serial.println(F("Continue anyway?"));
-        if (!waitForConfirmation(3)) return;
+        if (!waitForConfirmation()) return;
     }
 
     Serial.println(F("\nSTEP 2: Now TURN OFF your transmitter."));
@@ -72,7 +72,7 @@ void calibrateFailsafe() {
     Serial.println(F("  - This usually takes 1-3 seconds"));
     Serial.println(F("\nAfter turning off transmitter, confirm below."));
 
-    if (!waitForConfirmation(30)) return;
+    if (!waitForConfirmation()) return;
 
     Serial.println(F("\nWaiting 3 seconds for failsafe to activate..."));
     delay(3000);
@@ -156,7 +156,7 @@ void calibrateESC() {
 
     Serial.println(F("Are propellers removed? Type 'y' to confirm."));
 
-    if (!waitForConfirmation(30)) return;
+    if (!waitForConfirmation()) return;
 
     // Step 1: Send max throttle
     Serial.println(F("\nSending MAX throttle (2000us) to all motors..."));
@@ -173,7 +173,7 @@ void calibrateESC() {
     Serial.println(F("You should hear ascending beeps from the ESCs."));
     Serial.println(F("Wait for the beeps, then confirm below."));
 
-    if (!waitForConfirmation(60)) {
+    if (!waitForConfirmation()) {
         // Safety: send min on timeout/cancel
         m1_command_PWM = 1000;
         m2_command_PWM = 1000;
@@ -230,7 +230,7 @@ void calibrateMagnetometer() {
     Serial.println(F("     - Combine motions — cover as many orientations as possible"));
     Serial.println(F("  3. Collection runs for 30 seconds\n"));
 
-    if (!waitForConfirmation(5)) return;
+    if (!waitForConfirmation()) return;
 
     Serial.println(F("\nStart rotating NOW! 30 seconds..."));
 
@@ -307,7 +307,7 @@ void calibrateMagnetometer() {
         Serial.println(F("Calibration quality looks GOOD!"));
     } else {
         Serial.println(F("\nRetry calibration? (y/n)"));
-        if (waitForConfirmation(3)) {
+        if (waitForConfirmation()) {
             calibrateMagnetometer();
             return;
         }

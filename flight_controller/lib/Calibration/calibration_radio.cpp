@@ -23,7 +23,7 @@ void calibrateRadio() {
     Serial.println(F("  • Keep ALL other controls centered/neutral"));
     Serial.println(F("  • Follow timing instructions carefully\n"));
 
-    if (!waitForConfirmation(5)) return;
+    if (!waitForConfirmation()) return;
 
     // Storage for channel data
     struct ChannelData {
@@ -38,7 +38,7 @@ void calibrateRadio() {
     Serial.println(F("▶ Center ALL sticks"));
     Serial.println(F("▶ Set ALL switches to their middle or OFF position"));
 
-    if (!waitForConfirmation(3)) return;
+    if (!waitForConfirmation()) return;
 
     Serial.println(F("Recording neutral positions..."));
     delay(500);
@@ -65,7 +65,7 @@ void calibrateRadio() {
     Serial.println(F("▶ Move to MINIMUM (full down)"));
     Serial.println(F("▶ Hold for 2 seconds..."));
 
-    if (!waitForConfirmation(3)) return;
+    if (!waitForConfirmation()) return;
 
     delay(500);
     getCommands();
@@ -91,7 +91,7 @@ void calibrateRadio() {
     Serial.println(F("\n▶ Now move throttle to MAXIMUM (full up)"));
     Serial.println(F("▶ Hold for 2 seconds..."));
 
-    if (!waitForConfirmation(3)) return;
+    if (!waitForConfirmation()) return;
 
     delay(500);
     getCommands();
@@ -105,7 +105,7 @@ void calibrateRadio() {
     Serial.println(throttle_max);
 
     Serial.println(F("\n▶ Return throttle to center/neutral"));
-    if (!waitForConfirmation(3)) return;
+    if (!waitForConfirmation()) return;
 
     // STEP 2: ROLL STICK
     Serial.println(F("\n═══════════════════════════════════════════════════════════"));
@@ -114,7 +114,7 @@ void calibrateRadio() {
     Serial.println(F("▶ Move ONLY the ROLL stick (typically RIGHT stick LEFT/RIGHT)"));
     Serial.println(F("▶ Move to full LEFT"));
 
-    if (!waitForConfirmation(3)) return;
+    if (!waitForConfirmation()) return;
 
     delay(500);
     getCommands();
@@ -137,7 +137,7 @@ void calibrateRadio() {
     uint16_t roll_left = getChannelValue(rollChannel);
 
     Serial.println(F("\n▶ Now move roll to full RIGHT"));
-    if (!waitForConfirmation(3)) return;
+    if (!waitForConfirmation()) return;
 
     delay(500);
     getCommands();
@@ -152,7 +152,7 @@ void calibrateRadio() {
     Serial.println(channels[rollChannel].max);
 
     Serial.println(F("\n▶ Return roll to center"));
-    if (!waitForConfirmation(3)) return;
+    if (!waitForConfirmation()) return;
 
     // STEP 3: PITCH STICK
     Serial.println(F("\n═══════════════════════════════════════════════════════════"));
@@ -161,7 +161,7 @@ void calibrateRadio() {
     Serial.println(F("▶ Move ONLY the PITCH stick (typically RIGHT stick UP/DOWN)"));
     Serial.println(F("▶ Move to full FORWARD (down)"));
 
-    if (!waitForConfirmation(3)) return;
+    if (!waitForConfirmation()) return;
 
     delay(500);
     getCommands();
@@ -184,7 +184,7 @@ void calibrateRadio() {
     uint16_t pitch_fwd = getChannelValue(pitchChannel);
 
     Serial.println(F("\n▶ Now move pitch to full BACK (up)"));
-    if (!waitForConfirmation(3)) return;
+    if (!waitForConfirmation()) return;
 
     delay(500);
     getCommands();
@@ -199,7 +199,7 @@ void calibrateRadio() {
     Serial.println(channels[pitchChannel].max);
 
     Serial.println(F("\n▶ Return pitch to center"));
-    if (!waitForConfirmation(3)) return;
+    if (!waitForConfirmation()) return;
 
     // STEP 4: YAW STICK
     Serial.println(F("\n═══════════════════════════════════════════════════════════"));
@@ -208,7 +208,7 @@ void calibrateRadio() {
     Serial.println(F("▶ Move ONLY the YAW stick (typically LEFT stick LEFT/RIGHT)"));
     Serial.println(F("▶ Move to full LEFT"));
 
-    if (!waitForConfirmation(3)) return;
+    if (!waitForConfirmation()) return;
 
     delay(500);
     getCommands();
@@ -231,7 +231,7 @@ void calibrateRadio() {
     uint16_t yaw_left = getChannelValue(yawChannel);
 
     Serial.println(F("\n▶ Now move yaw to full RIGHT"));
-    if (!waitForConfirmation(3)) return;
+    if (!waitForConfirmation()) return;
 
     delay(500);
     getCommands();
@@ -246,7 +246,7 @@ void calibrateRadio() {
     Serial.println(channels[yawChannel].max);
 
     Serial.println(F("\n▶ Return yaw to center"));
-    if (!waitForConfirmation(3)) return;
+    if (!waitForConfirmation()) return;
 
     // STEP 5: AUX1 (Typically throttle cut / arm switch)
     Serial.println(F("\n═══════════════════════════════════════════════════════════"));
@@ -255,7 +255,7 @@ void calibrateRadio() {
     Serial.println(F("▶ Move ONLY the AUX1 switch (typically a 2-position switch)"));
     Serial.println(F("▶ Move to LOW position"));
 
-    if (!waitForConfirmation(3)) return;
+    if (!waitForConfirmation()) return;
 
     delay(500);
     getCommands();
@@ -279,7 +279,7 @@ void calibrateRadio() {
         uint16_t aux1_low = getChannelValue(aux1Channel);
 
         Serial.println(F("\n▶ Now move AUX1 to HIGH position"));
-        if (!waitForConfirmation(3)) return;
+        if (!waitForConfirmation()) return;
 
         delay(500);
         getCommands();
@@ -301,7 +301,7 @@ void calibrateRadio() {
         Serial.println(F("▶ If you have another switch, move it now"));
         Serial.println(F("▶ Otherwise, type 'n' to skip"));
 
-        if (waitForConfirmation(3)) {
+        if (waitForConfirmation()) {
             delay(500);
             getCommands();
             aux2Channel = detectMovedChannel(

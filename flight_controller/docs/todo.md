@@ -1,6 +1,6 @@
 # Flight Controller Firmware - Todo
 
-> Last updated: 2026-02-13
+> Last updated: 2026-02-17
 
 ## In Progress
 
@@ -38,15 +38,16 @@ _Test every calibration command with the hardware we have. Use `serial_monitor.p
 - [ ] `f` — failsafe detection (BLOCKED: needs transmitter power-off cycle)
 - [ ] `e` — ESC endpoint calibration (BLOCKED: needs ESCs/motors connected)
 
-### Immediate: Calibration Wrapper Script (High Priority)
+### Immediate: Calibration Wrapper Script
 
-- [ ] Create `tools/calibrate.sh` — menu-driven wrapper for serial_monitor.py (see [plans/calibrate-sh-plan.md](plans/calibrate-sh-plan.md))
-- [ ] Update `docs/2_calibration_guide.md` to reference calibrate.sh as primary method
+- [x] Create `tools/calibrate.sh` — menu-driven wrapper for serial_monitor.py — 2026-02-17
+- [x] Update `docs/2_calibration_guide.md` to reference calibrate.sh as primary method — 2026-02-17
 - [ ] Windows `tools/calibrate.bat` — future, blocked by serial_monitor.py cross-platform
 
 ### Future: Test Infrastructure
 
 - [x] Rewrite `test_calibration.sh` to use `serial_monitor.py` instead of fc_tool headless — 2026-02-13
+- [x] Improve `test_calibration.sh` — rename pass/fail builtins, add 8 missing tests, tighten assertions, add failure diagnostics — 2026-02-17
 - [ ] Modular test runner — harness + suites pattern (see roadmap)
 - [ ] Auto-flash-and-test — `./test_runner.sh --board teensy40 --suite imu --flash`
 
@@ -93,6 +94,12 @@ _For context; clear periodically_
 - [x] calibrate.sh plan documented — 2026-02-13
   - Plan: [plans/calibrate-sh-plan.md](plans/calibrate-sh-plan.md)
   - Menu-driven wrapper, interactive pass-through, CLI mode
+- [x] calibrate.sh implemented — 2026-02-17
+  - 17 menu options: 6 display, 6 calibration, 4 tuning, 1 workflow
+  - CLI mode: `./calibrate.sh /dev/ttyACM0 imu`
+  - Auto port detection, ModemManager check, prerequisite handling
+- [x] waitForConfirmation() dead parameter removed — 2026-02-17
+  - Cleaned up unused `int timeoutSeconds` parameter across 7 files (~45 call sites)
 - [x] Calibration library modularization — 2026-02-10
 - [x] RadioComm library modularization + command arbitration — 2026-02-11
 - [x] All feature tiers implemented (base, optimization, racing) — 2026-02-09
@@ -100,7 +107,7 @@ _For context; clear periodically_
 
 ## Notes
 
-- **Serial tools**: `tools/serial_monitor.py` (primary), `pio device monitor` (fallback), `tools/calibrate.sh` (planned wrapper). No fc_tool dependency.
+- **Serial tools**: `tools/calibrate.sh` (primary, menu-driven), `tools/serial_monitor.py` (backend/scripting), `pio device monitor` (fallback). No fc_tool dependency.
 - **Teensy quirk**: Stop ModemManager first (`sudo systemctl stop ModemManager`), use `teensy_reboot` for board reset
 - **MPU6050 mounting**: AccX≈1.02g, AccZ≈-0.08g → X-axis points down. Roll≈128° confirms non-standard mounting.
 - **SBUS noise**: Floating serial pin produces random channel values when no receiver connected. Comment out USE_SBUS_RECEIVER for bench testing without receiver.

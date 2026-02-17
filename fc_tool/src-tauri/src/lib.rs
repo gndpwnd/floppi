@@ -257,7 +257,6 @@ fn send_serial_data(data: String, state: State<'_, SerialState>) -> Result<(), S
         .as_mut()
         .ok_or_else(|| "No serial port connected".to_string())?;
 
-    use std::io::Write;
     port.write_all(data.as_bytes())
         .map_err(|e| format!("Write failed: {}", e))?;
     port.flush().map_err(|e| format!("Flush failed: {}", e))?;

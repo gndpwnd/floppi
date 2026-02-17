@@ -1,6 +1,6 @@
 # fc_tool
 
-Cross-platform desktop tool for floppi flight controller firmware management and real-time diagnostics.
+Cross-platform desktop tool for floppi flight controller serial monitoring and real-time data visualization.
 
 ## Run It
 
@@ -92,7 +92,6 @@ sudo apt-get install -y \
 |-------|---------|
 | `tauri` | Desktop app framework (webview + native APIs) |
 | `serialport` | Cross-platform serial port access |
-| `tokio` | Async runtime for serial I/O |
 | `serde` / `serde_json` | Serialization between Rust backend and JS frontend |
 | `tauri-plugin-opener` | System URL/file opener |
 
@@ -167,7 +166,11 @@ fc_tool/
 │   ├── linux/              # install-system-deps.sh, setup-dev.sh, build.sh
 │   ├── windows/            # install-system-deps.bat, setup-dev.bat, build.bat
 │   └── macos/              # install-system-deps.sh, setup-dev.sh, build.sh
-├── tests/              # Test files
+├── tests/
+│   ├── simulate_serial.py  # Data simulator (generates fake serial data)
+│   ├── test_plotter.sh     # Plotter test suite (socat virtual serial)
+│   ├── test_monitor.sh     # Monitor test suite (ANSI, formats, headless)
+│   └── results/            # Test output (gitignored)
 ├── package.json            # npm config (Tauri CLI)
 └── .gitignore
 ```

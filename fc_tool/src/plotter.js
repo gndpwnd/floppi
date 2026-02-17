@@ -169,6 +169,7 @@ class PlotterManager {
     this.container = containerEl;
     this.plots = new Map(); // plotId -> plot state
     this.maxDataPoints = 200;
+    this.maxPlots = 10;
     this.paused = false;
     this.enabled = false;
     this._registered = false;
@@ -197,7 +198,13 @@ class PlotterManager {
     }
 
     for (const [plotId, pts] of byPlot) {
-      if (!this.plots.has(plotId)) this._createPlot(plotId);
+      if (!this.plots.has(plotId)) {
+        if (this.plots.size >= this.maxPlots) {
+          console.warn(`PlotterManager: max plots (${this.maxPlots}) reached, ignoring plot ${plotId}`);
+          continue;
+        }
+        this._createPlot(plotId);
+      }
       const plot = this.plots.get(plotId);
       plot.sampleCount++;
 

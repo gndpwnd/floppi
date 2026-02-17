@@ -64,14 +64,14 @@ This project uses **two types of builds**:
 ## Quick Start
 
 ```bash
-# Build and upload (Teensy 4.0)
-pio run -e teensy40 -t upload
-
-# Build and upload calibration version
+# 1. Build and upload calibration firmware
 pio run -e teensy40_calibration -t upload
 
-# Open serial monitor
-pio device monitor
+# 2. Run calibration (recommended — menu-driven wrapper)
+./tools/calibrate.sh
+
+# 3. Copy calibration values to config.h, then flash live build
+pio run -e teensy40 -t upload
 ```
 
 ---
@@ -80,36 +80,89 @@ pio device monitor
 
 ```mermaid
 flowchart TD
-    A[Flash CALIBRATION build] --> B[Run calibration commands]
-    B --> C[Copy printed #define values]
-    C --> D[Paste into config.h]
-    D --> E[Flash LIVE build]
-    E --> F[Fly!]
+    A["Flash CALIBRATION build<br/><code>pio run -e teensy40_calibration -t upload</code>"] --> B["Run calibration<br/><code>./tools/calibrate.sh</code>"]
+    B --> C["Copy printed #define values"]
+    C --> D["Paste into include/config.h"]
+    D --> E["Flash LIVE build<br/><code>pio run -e teensy40 -t upload</code>"]
+    E --> F["Fly!"]
 
     style A fill:#f9f,stroke:#333
+    style B fill:#ff9,stroke:#333
     style E fill:#9f9,stroke:#333
     style F fill:#9f9,stroke:#333
 ```
 
 **Why two builds?**
 
-- The **live build** is small and fast (no debug code)
-- The **calibration build** includes tools for setup
-- Calibration values are "baked in" for reliability
+- The **live build** is small and fast (no debug code, no calibration overhead)
+- The **calibration build** includes guided routines, serial command interface, and debug output
+- Calibration values are "baked in" to config.h for reliability — no SD cards, no runtime config files
+
+---
+
+## Calibration Tools
+
+### calibrate.sh (Recommended)
+
+Interactive menu-driven wrapper around `serial_monitor.py`. Handles port detection, ModemManager, and all calibration commands.
+
+```bash
+./tools/calibrate.sh                          # Auto-detect port, launch menu
+./tools/calibrate.sh /dev/ttyACM0             # Specific port, launch menu
+./tools/calibrate.sh /dev/ttyACM0 imu         # Run IMU calibration directly
+./tools/calibrate.sh /dev/ttyACM0 dump        # Dump all values directly
+./tools/calibrate.sh help                     # Show all CLI commands
+```
+
+CLI commands: `help` `status` `channels` `pid` `filters` `dump` `imu` `imu6` `orientation` `radio` `failsafe` `esc` `tuning-pid` `tuning-filter` `telemetry` `network` `sequential`
+
+### serial_monitor.py (Scripting / Advanced)
+
+Raw serial monitor for direct interaction or automated scripts.
+
+```bash
+python3 tools/serial_monitor.py /dev/ttyACM0                          # Interactive monitor
+python3 tools/serial_monitor.py /dev/ttyACM0 --send h --wait 3        # Send command, capture output
+python3 tools/serial_monitor.py /dev/ttyACM0 --send i --wait 1 --interactive  # Interactive calibration
+```
+
+### PlatformIO (Fallback)
+
+```bash
+pio device monitor
+```
 
 ---
 
 ## Serial Commands (Calibration Build Only)
 
-| Command | What It Does |
-|---------|--------------|
-| `h` | Show help menu |
-| `i` | Run IMU calibration (single position, quick) |
-| `m` | Run 6-position IMU calibration (more accurate) |
-| `o` | Run IMU calibration + detect mounting orientation |
-| `r` | Run radio/receiver calibration |
-| `s` | Show current status (channel values, armed state) |
-| `t` | Toggle telemetry output for fc_tool (off/IMU/full) |
+| Command | Action | Type |
+|---------|--------|------|
+| `h` | Help (show all commands) | Display |
+| `c` | Calibration status (what's done/pending) | Display |
+| `s` | Channel status (CH1-6 + Armed) | Display |
+| `g` | Show PID gains | Display |
+| `p` | Show filter & limits | Display |
+| `d` | Dump ALL calibration values (config.h block) | Display |
+| `t` | Toggle telemetry (off/IMU/full) | Display |
+| `i` | IMU calibration (single-position, offsets only) | Interactive |
+| `m` | IMU calibration (6-position, offsets + scale) | Interactive |
+| `o` | IMU + Orientation detection | Interactive |
+| `r` | Radio calibration (channel mapping) | Interactive |
+| `f` | Failsafe auto-detection | Interactive |
+| `e` | ESC endpoint calibration | Interactive |
+| `n` | Network diagnostics (ESP32 only) | Display |
+| `a` | Sequential calibration (guided workflow) | Interactive |
+| `g <name> <value>` | Set PID gain (e.g. `g kp_roll 0.25`) | Tuning |
+| `p <name> <value>` | Set filter param (e.g. `p b_accel 0.12`) | Tuning |
+
+### CH6 Switch (no serial required)
+
+| CH6 Position | Action (hold 3s) |
+|--------------|------------------|
+| Low (<1200) | Normal flight (no calibration) |
+| Mid (1200-1800) | IMU calibration |
+| High (>1800) | IMU + Orientation calibration |
 
 ---
 
@@ -205,6 +258,7 @@ For university/eduroam networks, uncomment the WPA2-Enterprise section.
 flight_controller/
 ├── src/
 │   ├── main.cpp              # Main program (dual-core on ESP32)
+│   ├── calibration_mode.cpp  # Serial command dispatch (calibration builds)
 │   ├── imu.cpp               # IMU sensor handling
 │   ├── control.cpp           # PID controllers
 │   ├── motors.cpp            # Motor/servo output
@@ -214,13 +268,20 @@ flight_controller/
 ├── include/
 │   ├── config.h              # *** YOUR SETTINGS: hardware, calibration, PID ***
 │   ├── wifi_credentials.h    # *** YOUR SETTINGS: WiFi network (ESP32) ***
+│   ├── calibration.h         # Calibration library interface
 │   ├── pin_definitions.h     # Pin assignments (Teensy)
 │   ├── pin_definitions_esp32.h # Pin assignments (ESP32/S3)
-│   ├── display.h             # Display module interface
-│   ├── display_data.h        # Shared data struct (FC → display)
-│   ├── wifi_config.h         # WiFi function declarations
-│   └── globals.h             # Shared variables
-├── lib/                      # Libraries (Calibration, SBUS, MPU6050)
+│   ├── globals.h             # Shared variables
+│   └── ...                   # Display, WiFi, RadioComm headers
+├── lib/                      # Libraries (Calibration, RadioComm, SBUS, MPU6050, U8g2)
+├── tools/
+│   ├── calibrate.sh          # *** PRIMARY CALIBRATION TOOL ***
+│   ├── serial_monitor.py     # Raw serial monitor (Python, POSIX termios)
+│   ├── flash_and_run.sh      # Build + flash + serial monitor
+│   ├── calibration_reset.py  # Reset config.h to factory defaults
+│   └── complexity_calculator.py  # CPU/memory analysis
+├── tests/
+│   └── test_calibration.sh   # Automated test suite (19 tests)
 ├── platformio.ini            # Build configuration
 └── docs/                     # Documentation
 ```
@@ -232,17 +293,29 @@ flight_controller/
 | Document | Description |
 |----------|-------------|
 | [docs/0_quickstart.md](docs/0_quickstart.md) | 60-minute setup guide |
+| [docs/2_calibration_guide.md](docs/2_calibration_guide.md) | Detailed calibration procedures |
 | [docs/teensy_wiring.md](docs/teensy_wiring.md) | Teensy wiring diagrams |
 | [docs/esp32_wiring.md](docs/esp32_wiring.md) | ESP32 wiring diagrams |
-| [docs/2_calibration_guide.md](docs/2_calibration_guide.md) | Detailed calibration |
+| [docs/scope.md](docs/scope.md) | Project scope and boundaries |
 | [docs/roadmap.md](docs/roadmap.md) | Feature roadmap |
+
+## Tools
+
+| Tool | Description |
+|------|-------------|
+| [tools/calibrate.sh](tools/calibrate.sh) | Menu-driven calibration wrapper (primary calibration tool) |
+| [tools/serial_monitor.py](tools/serial_monitor.py) | Raw serial monitor (scripting backend) |
+| [tools/flash_and_run.sh](tools/flash_and_run.sh) | Build, flash, and launch serial monitor |
+| [tools/calibration_reset.py](tools/calibration_reset.py) | Reset config.h calibration values to defaults |
+| [tools/complexity_calculator.py](tools/complexity_calculator.py) | CPU timing, memory usage, and source complexity analysis |
+| [tests/test_calibration.sh](tests/test_calibration.sh) | Automated calibration command test suite (19 tests) |
 
 ---
 
 ## Related Projects
 
-- **[fc_tool](../fc_tool/)** - Desktop app for serial monitoring and IMU visualization
-- **[tools/complexity_calculator.py](tools/complexity_calculator.py)** - CPU timing, memory usage, and source complexity analysis tool
+- **[fc_tool](../fc_tool/)** - Desktop app for serial monitoring and data visualization
+- **[swarm_api](../swarm_api/)** - Python FastAPI server for ESP32 drone fleet control over WiFi
 
 ---
 

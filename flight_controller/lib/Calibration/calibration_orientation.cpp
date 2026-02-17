@@ -17,7 +17,7 @@ void calibrateIMUWithOrientation() {
     Serial.println(F("  ✓ Auto-detect how your IMU is mounted"));
     Serial.println(F("  ✓ Generate axis transformation code automatically\n"));
 
-    if (!waitForConfirmation(30)) return;
+    if (!waitForConfirmation()) return;
 
     // First run basic calibration
     Serial.println(F("\n═══════════════════════════════════════════════════════════"));
@@ -28,7 +28,7 @@ void calibrateIMUWithOrientation() {
     Serial.println(F("▶ Wings level (no roll)"));
     Serial.println(F("▶ Do NOT move during calibration (5 seconds)"));
 
-    if (!waitForConfirmation(30)) return;
+    if (!waitForConfirmation()) return;
 
     // Run calibration
     Serial.println(F("Calibrating..."));
@@ -67,7 +67,7 @@ void calibrateIMUWithOrientation() {
     Serial.println(F("▶ Hold steady at approximately 90 degrees"));
     Serial.println(F("▶ Aircraft should be vertical with nose pointing at ceiling"));
 
-    if (!waitForConfirmation(30)) return;
+    if (!waitForConfirmation()) return;
 
     delay(1000);
     float accX_noseUp = 0, accY_noseUp = 0, accZ_noseUp = 0;
@@ -95,7 +95,7 @@ void calibrateIMUWithOrientation() {
     Serial.println(F("▶ Nose should still point FORWARD (not left/right)"));
     Serial.println(F("▶ Aircraft rolled 90° to the right"));
 
-    if (!waitForConfirmation(30)) return;
+    if (!waitForConfirmation()) return;
 
     delay(1000);
     float accX_rightUp = 0, accY_rightUp = 0, accZ_rightUp = 0;
@@ -123,7 +123,7 @@ void calibrateIMUWithOrientation() {
     Serial.println(F("▶ Top/back pointing UP, bottom/belly on table"));
     Serial.println(F("▶ This verifies our measurements"));
 
-    if (!waitForConfirmation(30)) return;
+    if (!waitForConfirmation()) return;
 
     delay(1000);
     float accX_topUp = 0, accY_topUp = 0, accZ_topUp = 0;

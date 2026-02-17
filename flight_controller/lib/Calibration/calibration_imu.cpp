@@ -18,7 +18,7 @@ void calibrateIMU() {
     Serial.println(F("  3. Keep the area VIBRATION-FREE (no fans, motors, etc.)"));
     Serial.println(F("  4. This will take approximately 5 seconds\n"));
 
-    if (!waitForConfirmation(5)) return;
+    if (!waitForConfirmation()) return;
 
     // Check if IMU is stable before starting (variance-based, works before calibration)
     Serial.println(F("Checking IMU stability..."));
@@ -53,7 +53,7 @@ void calibrateIMU() {
         Serial.print(F("   Gyro std dev: ")); Serial.println(gyroStdDev);
         Serial.println(F("   Place on stable surface and try again."));
         Serial.println(F("\nRetry? (y/n)"));
-        if (waitForConfirmation(3)) {
+        if (waitForConfirmation()) {
             calibrateIMU(); // Recursive retry
         }
         return;
@@ -66,7 +66,7 @@ void calibrateIMU() {
         Serial.print(F("g (expected ~1.0g, error: ")); Serial.print(accelLevelError); Serial.println(F("g)"));
         Serial.println(F("   Try to find a more level surface."));
         Serial.println(F("\nContinue anyway? (y/n)"));
-        if (!waitForConfirmation(3)) return;
+        if (!waitForConfirmation()) return;
     }
 
     Serial.println(F("✅ IMU stable, starting calibration...\n"));
@@ -178,7 +178,7 @@ void calibrateIMU() {
     if (!goodCal) {
         Serial.println(F("⚠️  Calibration quality is marginal."));
         Serial.println(F("\nRetry calibration? (y/n)"));
-        if (waitForConfirmation(3)) {
+        if (waitForConfirmation()) {
             calibrateIMU(); // Recursive retry
             return;
         }
@@ -246,7 +246,7 @@ void calibrateIMU6Position() {
     Serial.println(F("  5. Right side up"));
     Serial.println(F("  6. Left side up\n"));
 
-    if (!waitForConfirmation(5)) return;
+    if (!waitForConfirmation()) return;
 
     // Storage for measurements
     float measurements[6][3]; // [position][axis] - stores AccX, AccY, AccZ for each position
@@ -267,7 +267,7 @@ void calibrateIMU6Position() {
         Serial.print(F("▶ Hold aircraft: ")); Serial.println(positionNames[pos]);
         Serial.println(F("▶ Keep STEADY for 2 seconds during measurement"));
 
-        if (!waitForConfirmation(3)) return;
+        if (!waitForConfirmation()) return;
 
         Serial.println(F("Measuring..."));
         delay(500); // Settle time
@@ -332,7 +332,7 @@ void calibrateIMU6Position() {
     Serial.println(F("▶ Return aircraft to LEVEL position"));
     Serial.println(F("▶ Keep STILL for gyro calibration"));
 
-    if (!waitForConfirmation(3)) return;
+    if (!waitForConfirmation()) return;
 
     float GyroX_sum = 0, GyroY_sum = 0, GyroZ_sum = 0;
     int numGyroSamples = 1000;
@@ -402,7 +402,7 @@ void calibrateIMU6Position() {
     if (!goodCal) {
         Serial.println(F("\n⚠️  Some values are outside ideal range."));
         Serial.println(F("Retry calibration? (y/n)"));
-        if (waitForConfirmation(3)) {
+        if (waitForConfirmation()) {
             calibrateIMU6Position();
             return;
         }

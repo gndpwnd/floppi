@@ -70,11 +70,11 @@ extern CalibrationResults calResults;
 // ======================================================================
 
 /**
- * Wait for user confirmation (y/n) with timeout
- * @param timeoutSeconds Timeout in seconds
+ * Wait for user confirmation (y/n)
+ * Blocks indefinitely until user types 'y' or 'n'. LED blinks while waiting.
  * @return true if confirmed, false if cancelled
  */
-bool waitForConfirmation(int timeoutSeconds);
+bool waitForConfirmation();
 
 /**
  * Detect which channel has moved the most from neutral positions

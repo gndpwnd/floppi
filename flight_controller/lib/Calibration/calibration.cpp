@@ -26,7 +26,7 @@ CalibrationResults calResults = {};
 //                                              HELPER FUNCTIONS                                                          //
 //========================================================================================================================//
 
-bool waitForConfirmation(int /* unused */) {
+bool waitForConfirmation() {
     // Block until user types 'y' (continue) or 'n' (cancel).
     // No timeout — waits indefinitely. LED blinks to show firmware is alive.
 
