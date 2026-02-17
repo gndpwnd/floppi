@@ -95,6 +95,30 @@ sudo apt-get install -y \
 | `serde` / `serde_json` | Serialization between Rust backend and JS frontend |
 | `tauri-plugin-opener` | System URL/file opener |
 
+## CLI Reference
+
+```bash
+# GUI mode (default)
+fc_tool                                          # launch GUI
+fc_tool --port /dev/ttyACM0 --baud 115200        # GUI with auto-connect
+
+# Headless mode (no GUI, serial → stdout)
+fc_tool --headless --port /dev/ttyACM0           # raw serial to stdout (default 115200)
+fc_tool --headless --port /dev/ttyACM0 --baud 9600
+fc_tool --headless --port /dev/ttyACM0 --log data.txt   # tee to file + stdout
+
+# Utility
+fc_tool --kill-port /dev/ttyACM0                 # force-release a port held by stale processes
+```
+
+| Flag | Description |
+|------|-------------|
+| `--port <path>` | Serial port path (e.g., `/dev/ttyACM0`, `COM3`) |
+| `--baud <rate>` | Baud rate (default: 115200) |
+| `--headless` | No GUI — raw serial data to stdout, stdin forwarded to serial |
+| `--log <file>` | Tee serial data to file (headless mode only). Creates parent dirs. |
+| `--kill-port <path>` | Force-release a serial port held by another process (`fuser -k` on Linux) |
+
 ## Usage
 
 1. Connect a Teensy board via USB
@@ -139,6 +163,70 @@ cd fc_tool && npx tauri build
 ```
 
 Note: System dependencies must be installed first (see Quick Start above).
+
+## Testing
+
+All testing is done via bash scripts in `tests/`. See [scope.md Testing Policy](scope.md#testing-policy) for rationale.
+
+### Prerequisites
+
+```bash
+# socat — creates virtual serial port pairs for testing without hardware
+sudo apt-get install socat
+
+# System deps — needed for cargo build (see Quick Start above)
+sudo ./dev_setup/linux/install-system-deps.sh
+```
+
+### Running Tests
+
+```bash
+cd fc_tool
+
+# Run all plotter tests (simulator scenarios, format checks, stress test)
+./tests/test_plotter.sh
+
+# Run all monitor tests (ANSI, dashboard format, headless echo)
+./tests/test_monitor.sh
+
+# Run both suites
+./tests/test_plotter.sh && ./tests/test_monitor.sh
+```
+
+Tests that require socat or a compiled binary will skip gracefully if dependencies are missing.
+
+### Data Simulator
+
+The simulator generates fake serial data in all supported protocol formats:
+
+```bash
+# List available scenarios
+python3 tests/simulate_serial.py --help
+
+# Run a scenario to stdout (useful for eyeball checks)
+python3 tests/simulate_serial.py --scenario imu
+python3 tests/simulate_serial.py --scenario sine
+python3 tests/simulate_serial.py --scenario ansi
+
+# Write to a virtual serial port (socat)
+socat -d -d pty,raw,echo=0 pty,raw,echo=0   # note the two PTY paths it prints
+python3 tests/simulate_serial.py --scenario imu --port /dev/pts/X
+```
+
+Available scenarios: `imu`, `sine`, `mixed`, `ansi`, `stress`, `dashboard`, `protocol`, `noise`
+
+### Verifying Rust Changes
+
+After modifying Rust code, verify it compiles before committing:
+
+```bash
+cd fc_tool/src-tauri
+cargo check     # fast syntax + type check (no binary produced)
+cargo build     # full debug build
+cargo build --release   # optimized release build
+```
+
+Note: `cargo check` / `cargo build` require system deps installed (see Prerequisites above).
 
 ## Project Structure
 

@@ -43,10 +43,64 @@ PASS_COUNT=0
 FAIL_COUNT=0
 SOCAT_PID=""
 
-pass() { echo -e "  ${GREEN}PASS${NC}: $1"; PASS_COUNT=$((PASS_COUNT + 1)); }
-fail() { echo -e "  ${RED}FAIL${NC}: $1"; FAIL_COUNT=$((FAIL_COUNT + 1)); }
+test_pass() { echo -e "  ${GREEN}PASS${NC}: $1"; PASS_COUNT=$((PASS_COUNT + 1)); }
+test_fail() { echo -e "  ${RED}FAIL${NC}: $1"; FAIL_COUNT=$((FAIL_COUNT + 1)); }
 info() { echo -e "${YELLOW}INFO${NC}: $1"; }
 section() { echo -e "\n${CYAN}=== $1 ===${NC}"; }
+
+# Check output contains expected patterns (case-insensitive, regex alternation)
+# Dumps captured output on failure for debugging.
+# Args: file description expected_pattern1 expected_pattern2 ...
+check_output() {
+    local file="$1"
+    local desc="$2"
+    shift 2
+
+    if [ ! -s "$file" ]; then
+        test_fail "$desc — no output captured (file empty)"
+        return 1
+    fi
+
+    local line_count
+    line_count=$(wc -l < "$file")
+    if [ "$line_count" -lt 3 ]; then
+        info "$desc — WARNING: only $line_count lines captured (possible timeout)"
+    fi
+
+    local all_found=true
+    for pattern in "$@"; do
+        if grep -qiE "$pattern" "$file"; then
+            test_pass "$desc — found '$pattern'"
+        else
+            test_fail "$desc — missing '$pattern'"
+            all_found=false
+        fi
+    done
+
+    if ! $all_found; then
+        echo -e "  ${YELLOW}--- Captured output (first 15 lines) ---${NC}"
+        head -15 "$file" | sed 's/^/    /'
+        echo -e "  ${YELLOW}--- (end) ---${NC}"
+    fi
+
+    $all_found
+}
+
+# Check output does NOT contain a pattern (negative assertion)
+# Args: file description pattern
+check_absent() {
+    local file="$1"
+    local desc="$2"
+    local pattern="$3"
+
+    if grep -qiE "$pattern" "$file"; then
+        test_fail "$desc — unexpected '$pattern' found"
+        return 1
+    else
+        test_pass "$desc — correctly absent '$pattern'"
+        return 0
+    fi
+}
 
 start_socat() {
     stop_socat 2>/dev/null || true
@@ -56,7 +110,7 @@ start_socat() {
     SOCAT_PID=$!
     sleep 1
     if ! kill -0 "$SOCAT_PID" 2>/dev/null; then
-        fail "socat failed to start"
+        test_fail "socat failed to start"
         return 1
     fi
 }
@@ -88,43 +142,40 @@ test_ansi_generation() {
     python3 "$SIMULATOR" --stdout --scenario ansi --rate 5 --duration 2 \
         > "$outfile" 2>/dev/null
 
-    # Verify various ANSI SGR codes
+    # Verify various ANSI SGR codes using check_output
+    # (grep -P for ANSI isn't compatible with check_output's -iE, so manual checks)
     if grep -qP '\x1b\[1;32m' "$outfile"; then
-        pass "Bold green (\\033[1;32m) present"
+        test_pass "ANSI — bold green (\\033[1;32m) present"
     else
-        fail "Bold green not found"
+        test_fail "ANSI — bold green not found"
     fi
 
     if grep -qP '\x1b\[1;31m' "$outfile"; then
-        pass "Bold red (\\033[1;31m) present"
+        test_pass "ANSI — bold red (\\033[1;31m) present"
     else
-        fail "Bold red not found"
+        test_fail "ANSI — bold red not found"
     fi
 
     if grep -qP '\x1b\[0m' "$outfile"; then
-        pass "Reset code (\\033[0m) present"
+        test_pass "ANSI — reset code (\\033[0m) present"
     else
-        fail "Reset code not found"
+        test_fail "ANSI — reset code not found"
     fi
 
     if grep -qP '\x1b\[2m' "$outfile"; then
-        pass "Dim (\\033[2m) present"
+        test_pass "ANSI — dim (\\033[2m) present"
     else
-        fail "Dim not found"
+        test_fail "ANSI — dim not found"
     fi
 
     if grep -qP '\x1b\[4m' "$outfile"; then
-        pass "Underline (\\033[4m) present"
+        test_pass "ANSI — underline (\\033[4m) present"
     else
-        fail "Underline not found"
+        test_fail "ANSI — underline not found"
     fi
 
     # Check that non-ANSI lines also exist
-    if grep -q "Plain text line" "$outfile"; then
-        pass "Plain text (no ANSI) lines present"
-    else
-        fail "No plain text lines found"
-    fi
+    check_output "$outfile" "ANSI mixed" "Plain text line"
 }
 
 # ============================================================================
@@ -138,23 +189,10 @@ test_dashboard_format() {
     python3 "$SIMULATOR" --stdout --scenario dashboard --rate 10 --duration 2 \
         > "$outfile" 2>/dev/null
 
-    if grep -qE "battery=[0-9]+\.[0-9]+" "$outfile"; then
-        pass "battery=X.XX format present"
-    else
-        fail "battery key=value not found"
-    fi
-
-    if grep -qE "loop=[0-9]+" "$outfile"; then
-        pass "loop=XXXus format present"
-    else
-        fail "loop key=value not found"
-    fi
-
-    if grep -qE "armed=(YES|NO)" "$outfile"; then
-        pass "armed=YES/NO format present"
-    else
-        fail "armed key=value not found"
-    fi
+    check_output "$outfile" "Dashboard" \
+        "battery=[0-9]+\.[0-9]+" \
+        "loop=[0-9]+" \
+        "armed=(YES|NO)"
 }
 
 # ============================================================================
@@ -194,9 +232,14 @@ test_headless_echo() {
     stop_socat
 
     if grep -q "$test_msg" "$outfile"; then
-        pass "Echo round-trip: sent and received '$test_msg'"
+        test_pass "Echo round-trip: sent and received '$test_msg'"
     else
-        fail "Echo round-trip failed — message not received"
+        test_fail "Echo round-trip failed — message not received"
+        if [ -s "$outfile" ]; then
+            echo -e "  ${YELLOW}--- Captured output ---${NC}"
+            head -5 "$outfile" | sed 's/^/    /'
+            echo -e "  ${YELLOW}--- (end) ---${NC}"
+        fi
     fi
 }
 
@@ -237,16 +280,16 @@ test_headless_ansi() {
     local lines
     lines=$(wc -l < "$outfile" 2>/dev/null || echo 0)
     if [ "$lines" -gt 0 ]; then
-        pass "Received $lines lines of ANSI data through headless mode"
+        test_pass "Received $lines lines of ANSI data through headless mode"
     else
-        fail "No ANSI data received"
+        test_fail "No ANSI data received"
     fi
 
     # Verify ANSI codes pass through (headless is raw)
     if grep -qP '\x1b\[' "$outfile"; then
-        pass "ANSI codes preserved in headless output"
+        test_pass "ANSI codes preserved in headless output"
     else
-        fail "ANSI codes stripped (should be raw passthrough)"
+        test_fail "ANSI codes stripped (should be raw passthrough)"
     fi
 }
 

@@ -1,6 +1,6 @@
 # floppi - Roadmap
 
-> Last updated: 2026-02-11
+> Last updated: 2026-02-17
 
 ## Overview
 
@@ -36,7 +36,7 @@ All three configurations use the same codebase. Platform and command source are 
 
 ## Project Status
 
-**Firmware** (`flight_controller/`): ~90% of target features implemented. Feature development paused. All calibration routines, command sources, and platform support complete. WiFi now supports WPA2-Personal, Open, WPA2-Enterprise PEAP/TLS with optional certificates. Current focus: hardware bench testing, calibration on real hardware, PID tuning, and first flight.
+**Firmware** (`flight_controller/`): ~90% of target features implemented. Feature development paused. All calibration routines, command sources, and platform support complete. Calibration tooling complete: `calibrate.sh` (menu-driven wrapper), `serial_monitor.py` (raw termios backend), `test_calibration.sh` (19 automated tests). Current focus: hardware bench testing, calibration on real hardware, PID tuning, and first flight.
 
 **fc_tool** (`fc_tool/`): Functional. Serial monitor with ANSI rendering, dynamic multi-graph plotter, board detection, auto-reconnect, CLI arguments (`--port`/`--baud`), and headless mode (`--headless`) all working. Plotter enhancements (cursors, signal analysis) are lower priority.
 

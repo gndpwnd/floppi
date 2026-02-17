@@ -65,6 +65,21 @@ Each platform has three scripts with the same names and roles:
 - Produces: `.dmg`, `.app` bundle
 - No `sudo` needed for any script
 
+## After Building: Testing
+
+Once the build environment is set up, run the test suites:
+
+```bash
+# Install virtual serial port tool (Linux, once)
+sudo apt-get install socat
+
+# Run test suites
+cd fc_tool
+./tests/test_plotter.sh && ./tests/test_monitor.sh
+```
+
+See [docs/README.md Testing section](../docs/README.md#testing) for full details (simulator usage, CLI reference, etc.).
+
 ## Automated Releases
 
 For automated multi-platform builds, see `.github/workflows/fc_tool-release.yml`.

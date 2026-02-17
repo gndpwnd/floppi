@@ -306,7 +306,7 @@ Complete problem-solving guide for common flight controller issues.
 
 **Solutions:**
 
-1. **Re-run calibration:**
+1. **Re-run calibration** (`./tools/calibrate.sh`, option 7, or type `i`):
    - Must be perfectly still
    - Must be perfectly level
    - Temperature stable (wait 5min after power-on)
@@ -332,27 +332,26 @@ Complete problem-solving guide for common flight controller issues.
 
 **Cause:** IMU mounted rotated or upside-down
 
-**Solution:** Apply axis transformation in `getIMUdata()`:
+**Recommended solution:** Use the automatic orientation detection command:
+
+```bash
+# Using calibrate.sh (option 9):
+./tools/calibrate.sh /dev/ttyACM0 orientation
+
+# Or type 'o' in the serial monitor
+```
+
+This auto-detects your IMU mounting and generates the correct axis transformation code. See [2_calibration_guide.md](2_calibration_guide.md) Part 3 for details.
+
+**Manual solution** (if auto-detection isn't available): Apply axis transformation in `getIMUdata()`:
 
 ```cpp
-// After reading and filtering sensor data, add:
-
 // For 90° clockwise rotation:
 float AccX_temp = AccY;
 float AccY_temp = -AccX;
 AccX = AccX_temp;
 AccY = AccY_temp;
 // (and same for GyroX/GyroY)
-
-// For 180° rotation:
-AccX = -AccX;
-AccY = -AccY;
-// (and same for GyroX/GyroY)
-
-// For upside-down mounting:
-AccX = -AccX;
-AccZ = -AccZ;
-// (and same for GyroX/GyroZ)
 ```
 
 ---
@@ -846,10 +845,9 @@ When asking for help, include:
 - Reddit r/Multicopter
 
 **Documentation:**
-- [QUICKSTART.md](./QUICKSTART.md)
-- [HARDWARE_SETUP.md](./HARDWARE_SETUP.md)
-- [CALIBRATION_GUIDE.md](./CALIBRATION_GUIDE.md)
-- [PID tuning guide](./PID_TUNING_GUIDE.md)
+- [Quickstart Guide](0_quickstart.md)
+- [Hardware Setup](1_hardware_setup.md)
+- [Calibration Guide](2_calibration_guide.md)
 
 ---
 

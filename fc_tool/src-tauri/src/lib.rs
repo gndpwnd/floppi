@@ -1,6 +1,8 @@
 use serde::Serialize;
 use serialport::SerialPort;
+use std::fs;
 use std::io::{BufRead, BufReader, Write};
+use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -304,10 +306,59 @@ pub fn run_gui(port: Option<String>, baud: Option<u32>) {
 }
 
 // ============================================================================
+// Force-Release Serial Port
+// ============================================================================
+
+/// Force-release a serial port held by stale processes.
+/// Uses `fuser -k` on Linux. On other platforms, prints an error.
+pub fn kill_port(port_path: &str) {
+    eprintln!("fc_tool: force-releasing {}", port_path);
+
+    // Check if port exists
+    if !std::path::Path::new(port_path).exists() {
+        eprintln!("Port {} does not exist", port_path);
+        std::process::exit(1);
+    }
+
+    // Check who holds the port
+    match Command::new("fuser").arg(port_path).output() {
+        Ok(output) => {
+            let holders = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if holders.is_empty() {
+                eprintln!("Port {} is not held by any process", port_path);
+                return;
+            }
+            eprintln!("Port {} held by PIDs: {}", port_path, holders);
+
+            // Kill holders
+            match Command::new("fuser").arg("-k").arg(port_path).output() {
+                Ok(_) => {
+                    // Wait for processes to die
+                    thread::sleep(Duration::from_secs(1));
+                    eprintln!("Released {}", port_path);
+                }
+                Err(e) => {
+                    eprintln!("Failed to release port: {}", e);
+                    std::process::exit(1);
+                }
+            }
+        }
+        Err(e) => {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                eprintln!("'fuser' not found. Install psmisc: sudo apt-get install psmisc");
+            } else {
+                eprintln!("Failed to check port holders: {}", e);
+            }
+            std::process::exit(1);
+        }
+    }
+}
+
+// ============================================================================
 // Headless Mode (no GUI, serial → stdout)
 // ============================================================================
 
-pub fn run_headless(port: Option<String>, baud: Option<u32>) {
+pub fn run_headless(port: Option<String>, baud: Option<u32>, log_file: Option<String>) {
     let port_name = match port {
         Some(p) => p,
         None => {
@@ -338,6 +389,24 @@ pub fn run_headless(port: Option<String>, baud: Option<u32>) {
         }
     };
     let baud_rate = baud.unwrap_or(115200);
+
+    // Set up log file if requested
+    let mut log_writer: Option<fs::File> = None;
+    if let Some(ref log_path) = log_file {
+        // Create parent dirs if needed
+        if let Some(parent) = std::path::Path::new(log_path).parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        match fs::File::create(log_path) {
+            Ok(f) => {
+                eprintln!("Logging to: {}", log_path);
+                log_writer = Some(f);
+            }
+            Err(e) => {
+                eprintln!("Warning: Failed to open log file {}: {}", log_path, e);
+            }
+        }
+    }
 
     eprintln!("fc_tool headless: {} @ {} baud", port_name, baud_rate);
     eprintln!("Press Ctrl+C to exit\n");
@@ -389,6 +458,10 @@ pub fn run_headless(port: Option<String>, baud: Option<u32>) {
             Ok(_) => {
                 // Raw serial data to stdout (verbose — includes all telemetry/plotter data)
                 let _ = out.write_all(line.as_bytes());
+                // Also write to log file if active
+                if let Some(ref mut lw) = log_writer {
+                    let _ = lw.write_all(line.as_bytes());
+                }
             }
             Err(e) => {
                 if e.kind() == std::io::ErrorKind::TimedOut {

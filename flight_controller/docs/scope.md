@@ -1,6 +1,6 @@
 # Flight Controller Firmware - Scope
 
-> Last updated: 2026-02-10
+> Last updated: 2026-02-17
 > Status: Active
 
 ---
@@ -256,7 +256,7 @@ This is a separate project. The FC firmware just exposes the WiFi API endpoints.
 | Primary receiver | iBUS/SBUS (FlySky FS-iA6B) | iBUS recommended (non-inverted, 115200, direct microseconds). SBUS also supported. | 2026-02-10 |
 | Calibration storage | Hard-coded in config.h | No SD cards, no EEPROM in live builds, simple and reliable | 2026-02-05 |
 | Firmware states | Calibration mode vs Live mode | Separate debug/test from production flight | 2026-02-05 |
-| Testing approach | Built into firmware + Python serial tools | Calibration routines validate own results. Test harness uses `serial_monitor.py` (pyserial) + `pio device monitor`. No fc_tool dependency. NEVER use raw bash for serial (cat/stty/echo). | 2026-02-13 |
+| Testing approach | Built into firmware + Python serial tools | Calibration routines validate own results. Test harness uses `serial_monitor.py` (raw termios) + `pio device monitor`. `calibrate.sh` is the primary user-facing tool. No fc_tool dependency. NEVER use raw bash for serial (cat/stty/echo). | 2026-02-17 |
 | Build separation | PlatformIO `extends` + `-D CALIBRATION_MODE` | Each board gets a `_calibration` variant. Clean, DRY, no code duplication. | 2026-02-05 |
 | Attitude filter | Madgwick 6DOF | Better noise rejection than complementary, simpler than EKF, single tuning parameter | Pre-2026 |
 | WiFi architecture | STA mode (connect to existing) | Swarm coordination — drones on same network, API to centralized computers | 2026-02-07 |

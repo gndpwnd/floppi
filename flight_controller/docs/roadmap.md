@@ -1,6 +1,6 @@
 # Flight Controller Firmware - Roadmap
 
-> Last updated: 2026-02-13
+> Last updated: 2026-02-17
 
 ## Overview
 
@@ -193,8 +193,8 @@ This roadmap tracks project-level features and milestones for the flight control
 > **Serial tools**: `tools/serial_monitor.py` (Python/pyserial — works for ESP32 and Teensy), `pio device monitor` (PlatformIO built-in). No dependency on fc_tool for testing.
 
 - [x] Calibration test suite for Teensy — `tests/test_calibration.sh`
-  - Completed: 2026-02-12, rewritten 2026-02-13
-  - Notes: Rewritten to use `serial_monitor.py` instead of fc_tool. 11 test functions, all using Python serial backend. No fc_tool dependency.
+  - Completed: 2026-02-12, rewritten 2026-02-13, expanded 2026-02-17
+  - Notes: 19 test functions covering all calibration commands. Uses `serial_monitor.py` backend. Tightened assertions, failure diagnostics, `check_absent()` negative helper. No fc_tool dependency.
 
 - [x] Rewrite test harness to use Python serial (drop fc_tool dependency)
   - Completed: 2026-02-13
@@ -387,10 +387,10 @@ Files: `ota.h`, `ota.cpp`.
 
 > **Plan**: [docs/plans/calibrate-sh-plan.md](plans/calibrate-sh-plan.md)
 
-- [ ] `tools/calibrate.sh` — Menu-driven calibration wrapper for Linux/Mac
-  - Priority: High
-  - Description: Interactive bash wrapper around `serial_monitor.py`. Menu-driven terminal UI for all calibration commands. Handles prerequisites (ModemManager, port detection). Display commands show output and return to menu. Interactive calibrations (orientation, radio, ESC) use serial pass-through mode — user types y/n directly to firmware, Ctrl+C returns to menu. CLI mode for scriptable access (`./calibrate.sh PORT imu`).
-  - Backend: `serial_monitor.py` with `--send CMD --wait N --interactive` — no changes to Python script needed.
+- [x] `tools/calibrate.sh` — Menu-driven calibration wrapper for Linux/Mac
+  - Completed: 2026-02-17
+  - Description: Interactive bash wrapper around `serial_monitor.py`. 17 menu options (6 display, 6 calibration, 4 tuning, 1 guided workflow). Handles prerequisites (ModemManager, port detection, Python check). CLI mode for scriptable access (`./calibrate.sh PORT imu`).
+  - Backend: `serial_monitor.py` with `--send CMD --wait N --interactive`.
   - Pattern: Follows `build.sh` conventions (colors, menu loop, CLI args).
 
 - [ ] `tools/calibrate.bat` — Windows equivalent
@@ -672,13 +672,19 @@ Files: `ota.h`, `ota.cpp`.
 - [x] RadioComm library modularization (663 lines → 3 files: core, rc protocols, external sources) — 2026-02-11
 - [x] OLED startup build info (platform + receiver + mode tags, no delay) — 2026-02-11
 - [x] LED_BUILTIN → LED_PIN fix in calibration.cpp (ESP32 build fix) — 2026-02-11
+- [x] IMU calibration bug fixes from bench testing (variance-based stability check, relaxed thresholds) — 2026-02-12
+- [x] Serial monitor rewritten with raw termios (dropped pyserial, POSIX termios matching serialport-rs) — 2026-02-13
+- [x] Calibration test suite rewritten to use serial_monitor.py (11 tests, no fc_tool dependency) — 2026-02-13
+- [x] `tools/calibrate.sh` menu-driven calibration wrapper (17 options, CLI mode, auto port detection) — 2026-02-17
+- [x] Test suite expanded to 19 tests, tightened assertions, failure diagnostics — 2026-02-17
+- [x] `waitForConfirmation()` dead parameter removed (~45 call sites across 7 files) — 2026-02-17
 
 ---
 
 ## Notes
 
 - **Testing is hardware-based**: Tests are baked into the firmware as calibration modes and debug builds, not as separate test files. The firmware itself is the test harness. Each calibration routine validates its own results with quality checks and retry logic.
-- **Serial tools**: `tools/serial_monitor.py` (Python, raw termios) is the primary serial tool. Works with Teensy USB CDC and ESP32 USB-UART. `pio device monitor` (PlatformIO) as fallback. Planned: `tools/calibrate.sh` as menu-driven wrapper (see [plans/calibrate-sh-plan.md](plans/calibrate-sh-plan.md)). No fc_tool dependency. **NEVER use raw bash for serial** (cat, stty, echo > /dev) — always use the Python scripts, calibrate.sh wrapper, or PlatformIO.
+- **Serial tools**: `tools/calibrate.sh` (primary, menu-driven) wraps `tools/serial_monitor.py` (Python, raw termios). `pio device monitor` (PlatformIO) as fallback. No fc_tool dependency. **NEVER use raw bash for serial** (cat, stty, echo > /dev) — always use calibrate.sh, serial_monitor.py, or PlatformIO.
 - **Calibration workflow**: Flash calibration build → run auto-calibration routines → copy `#define` values to config.h → flash live build → fly. This is by design — thorough automated calibration upfront means lean runtime.
 - **Calibration automation goal**: Every hardware-dependent value in config.h should have a guided auto-calibration routine. No manual guesswork. The serial command interface in calibration builds is the primary calibration tool.
 - **VTOL generality**: Always design features to work across vehicle types, not just quadcopters. The mixer pattern from dRehmFlight supports this well.

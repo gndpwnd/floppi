@@ -16,8 +16,9 @@ Get your flight controller working in under 60 minutes.
 
 ### Software
 
-- PlatformIO installed (VS Code extension)
-- USB drivers for Teensy (Teensy Loader)
+- PlatformIO installed (VS Code extension or CLI)
+- Python 3 (for calibration tools)
+- USB drivers for Teensy (Teensy Loader), or run `sudo ./setup_permissions.sh`
 
 ---
 
@@ -25,32 +26,28 @@ Get your flight controller working in under 60 minutes.
 
 ### Wire the MPU6050
 
-```
-MPU6050 GY-521    →    Teensy 4.0
-─────────────────────────────────
-VCC               →    3.3V
-GND               →    GND
-SDA               →    Pin 18
-SCL               →    Pin 19
-```
+| MPU6050 GY-521 | Teensy 4.0 |
+|----------------|------------|
+| VCC | 3.3V |
+| GND | GND |
+| SDA | Pin 18 |
+| SCL | Pin 19 |
 
 ### Wire the FS-iA6B Receiver
 
 **First, set transmitter to SBUS mode:**
 
 1. Power ON transmitter
-2. Menu → System → RX Setup → Serial Mode → **SBUS**
+2. Menu -> System -> RX Setup -> Serial Mode -> **SBUS**
 3. Save and power cycle
 
 **Then wire receiver:**
 
-```
-FS-iA6B SBUS Port    →    Teensy 4.0
-──────────────────────────────────
-GND (Black wire)     →    GND
-+5V (Red wire)       →    VIN
-SBUS (White wire)    →    Pin 21 (RX5)
-```
+| FS-iA6B SBUS Port | Teensy 4.0 |
+|--------------------|------------|
+| GND (Black wire) | GND |
+| +5V (Red wire) | VIN |
+| SBUS (White wire) | Pin 21 (RX5) |
 
 ### Bind Receiver
 
@@ -83,10 +80,10 @@ Open `include/config.h` and verify:
 #define USE_ANGLE_CONTROLLER // Beginner-friendly mode
 ```
 
-### Upload Live Build
+### Upload Calibration Build
 
 ```bash
-pio run -e teensy40 -t upload
+pio run -e teensy40_calibration -t upload
 ```
 
 Teensy LED should blink 3 times, then 1Hz blinking.
@@ -95,29 +92,34 @@ Teensy LED should blink 3 times, then 1Hz blinking.
 
 ## Part 3: Calibration (15 minutes)
 
-### Flash Calibration Build
+### Launch Calibration Tool
+
+**Recommended** -- use the interactive calibration wrapper:
 
 ```bash
-pio run -e teensy40_calibration -t upload
+./tools/calibrate.sh
+```
+
+This provides a menu-driven interface with all 17 calibration commands, auto port detection, and ModemManager handling.
+
+**Alternative** -- direct serial monitor:
+
+```bash
+python3 tools/serial_monitor.py /dev/ttyACM0
+```
+
+**Fallback** -- PlatformIO monitor:
+
+```bash
 pio device monitor
-```
-
-You'll see:
-
-```
-=== CALIBRATION MODE ===
-Serial commands (type in monitor):
-  r - Radio calibration
-  i - IMU calibration
-  o - IMU + Orientation
-  s - Status
-  h - Help
 ```
 
 ### Run IMU Calibration
 
+Using calibrate.sh, select option **7** (IMU single-position), or from serial monitor type `i`:
+
 1. Place aircraft **flat and level** on desk
-2. Type `i` in serial monitor and press Enter
+2. Confirm when prompted
 3. Wait for calibration (~10 seconds)
 4. **Copy the printed `#define` lines**
 
@@ -132,13 +134,16 @@ Example output:
 #define IMU_GYRO_ERROR_Z 0.123456f
 ```
 
+### Run Orientation Detection (if IMU is not flat)
+
+If your IMU is mounted at an angle (e.g., sideways, rotated), use calibrate.sh option **9** or type `o`. This auto-detects mounting orientation and generates axis transformation code.
+
 ### Run Radio Calibration (Optional)
 
-If your channel mapping is non-standard:
+If your channel mapping is non-standard, use calibrate.sh option **10** or type `r`:
 
-1. Type `r` in serial monitor
-2. Follow the prompts to move sticks
-3. Copy the output to config.h
+1. Follow the prompts to move sticks
+2. Copy the output to config.h
 
 ### Apply Calibration
 
@@ -171,19 +176,26 @@ pio run -e teensy40 -t upload
 
 ### Test Motor Direction (No Props!)
 
-```
-    Front
-     ↑
-  1     2    ← CCW  CW
-    \ /
-    / \
-  4     3    ← CW   CCW
+```mermaid
+graph TD
+    subgraph "Quad X Motor Layout (top view)"
+        direction TB
+        FRONT["Front"]
+        M1["Motor 1<br/>CCW"]
+        M2["Motor 2<br/>CW"]
+        M4["Motor 4<br/>CW"]
+        M3["Motor 3<br/>CCW"]
+    end
+    FRONT --- M1
+    FRONT --- M2
+    M1 --- M4
+    M2 --- M3
 ```
 
 1. Arm system
 2. Slowly raise throttle to 30%
 3. Verify motor rotation matches diagram
-4. Swap wires if wrong
+4. Swap any 2 of 3 motor wires to reverse direction
 
 ---
 
@@ -228,22 +240,40 @@ pio run -e teensy40 -t upload
 
 ---
 
-## Build Commands Reference
+## Commands Reference
+
+### Build & Flash
 
 | Command | Purpose |
 |---------|---------|
-| `pio run -e teensy40` | Build live firmware |
-| `pio run -e teensy40 -t upload` | Upload live firmware |
-| `pio run -e teensy40_calibration` | Build calibration firmware |
 | `pio run -e teensy40_calibration -t upload` | Upload calibration firmware |
-| `pio device monitor` | Open serial monitor |
+| `pio run -e teensy40 -t upload` | Upload live firmware |
+| `pio run -e teensy40` | Build live firmware (no upload) |
+
+### Calibration & Serial Tools
+
+| Command | Purpose |
+|---------|---------|
+| `./tools/calibrate.sh` | Interactive calibration menu (recommended) |
+| `./tools/calibrate.sh /dev/ttyACM0 imu` | Run specific calibration directly |
+| `python3 tools/serial_monitor.py /dev/ttyACM0` | Raw serial monitor |
+| `pio device monitor` | PlatformIO serial monitor (fallback) |
+| `./tools/flash_and_run.sh` | Build + flash + open serial monitor |
+| `python3 tools/calibration_reset.py` | Reset config.h calibration values |
+
+### Testing
+
+| Command | Purpose |
+|---------|---------|
+| `./tests/test_calibration.sh /dev/ttyACM0` | Run automated test suite (19 tests) |
+| `./tests/test_calibration.sh /dev/ttyACM0 imu` | Run single test |
 
 ---
 
 ## Next Steps
 
-1. [Calibration Guide](2_calibration_guide.md) — Detailed calibration procedures
-2. [Hardware Setup](1_hardware_setup.md) — Detailed wiring diagrams
-3. [Troubleshooting](3_troubleshooting.md) — Problem solving
+1. [Calibration Guide](2_calibration_guide.md) -- Detailed calibration procedures (all 17 commands)
+2. [Hardware Setup](1_hardware_setup.md) -- Detailed wiring diagrams
+3. [Troubleshooting](3_troubleshooting.md) -- Problem solving
 
 **Happy flying!**

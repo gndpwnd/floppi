@@ -11,8 +11,17 @@
 
 ## Up Next
 
+- [ ] Install system deps and verify Rust compiles:
+  ```bash
+  sudo ./dev_setup/linux/install-system-deps.sh
+  cd src-tauri && cargo check
+  ```
+- [ ] Install socat and run full test suite (including headless+virtual serial tests):
+  ```bash
+  sudo apt-get install socat
+  ./tests/test_plotter.sh && ./tests/test_monitor.sh
+  ```
 - [ ] Test with real Teensy hardware (serial + plotter visualization) — hardware available but not on current machine
-- [ ] Run test suite with socat virtual serial ports (need `sudo apt-get install socat`)
 - [ ] Validate cross-platform builds (Windows, macOS)
 
 ## Backlog (Post-v0.1)
@@ -45,13 +54,10 @@
 - [ ] Live Dashboard Mode — fixed-position panel showing key=value data updating in place (not scrolling)
 - [ ] Companion Arduino library (floppi_serial) — plotVar(), ANSI macros, atomic line buffering
 
-### Scripting & Automation
-
-- [ ] Raw data logging to file from headless mode
-
 ### Serial Features
 
-- [ ] Raw data logging to file (timestamped, from headless or GUI)
+- [ ] Raw data logging from GUI mode (currently only headless `--log` is implemented)
+- [ ] Timestamped log lines (prefix each line with ISO timestamp)
 
 ### Platform Validation
 

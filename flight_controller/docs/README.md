@@ -31,15 +31,29 @@ Open-source VTOL flight controller firmware for Teensy 4.0/4.1, based on dRehmFl
 
 ```bash
 cd flight_controller
-pio run -e teensy40 -t upload
+pio run -e teensy40_calibration -t upload   # Flash calibration firmware
+./tools/calibrate.sh                        # Launch calibration menu
+# Copy values to config.h, then:
+pio run -e teensy40 -t upload               # Flash live firmware
 ```
 
 See [0_quickstart.md](0_quickstart.md) for the full guide.
 
+## Tools
+
+| Tool | Description |
+|------|-------------|
+| [calibrate.sh](../tools/calibrate.sh) | Menu-driven calibration wrapper (primary) |
+| [serial_monitor.py](../tools/serial_monitor.py) | Raw serial monitor (scripting backend) |
+| [flash_and_run.sh](../tools/flash_and_run.sh) | Build + flash + serial monitor |
+| [calibration_reset.py](../tools/calibration_reset.py) | Reset config.h to factory defaults |
+| [test_calibration.sh](../tests/test_calibration.sh) | Automated test suite (19 tests) |
+
 ## Related Projects
 
-- **[fc_tool](/fc_tool/)** — Desktop app for serial monitoring, IMU visualization, and calibration interface
-- **[engineering360](https://github.com/yourusername/engineering360)** — Physical drone design, frame construction, component selection
+- **[fc_tool](/fc_tool/)** — Desktop app for serial monitoring and data visualization
+- **[swarm_api](/swarm_api/)** — Python FastAPI server for ESP32 fleet control over WiFi
+- **engineering360** (separate repo) — Physical drone design, frame construction, component selection
 
 ---
 

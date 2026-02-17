@@ -58,12 +58,14 @@ This roadmap tracks project-level features and milestones. For immediate tasks, 
   - Completed: 2026-02-11
   - Description: `--headless` flag runs fc_tool without the GUI window. Prints all serial data (including plotter data) to stdout. Supports stdin→serial forwarding for interactive use.
   - Implementation: Bypasses Tauri entirely — pure Rust serial loop. Lists available ports if --port not specified.
-- [ ] Force-release serial connections
-  - Priority: High
-  - Description: Ability to forcibly close/release serial port connections (e.g., `--kill-port /dev/ttyACM0`). USB CDC serial ports can become stale when connections are killed uncleanly, leaving the port locked. fc_tool should detect this and offer to force-release before connecting.
-  - Notes: On Linux, use `fuser -k` equivalent. Also detect stale ports on startup and warn the user.
-- [ ] Raw data logging
-  - Description: Save serial output to file for offline analysis
+- [x] Force-release serial connections
+  - Completed: 2026-02-17
+  - Description: `--kill-port /dev/ttyACM0` forcibly releases a serial port held by stale processes. Uses `fuser -k` on Linux.
+  - Implementation: `kill_port()` in lib.rs. Checks port exists, identifies holder PIDs, kills them, waits for release.
+- [x] Raw data logging
+  - Completed: 2026-02-17
+  - Description: `--log <file>` in headless mode tees all serial data to a file while also printing to stdout.
+  - Implementation: Optional `log_writer` in `run_headless()`. Creates parent dirs automatically.
 
 ### Serial Monitor Enhancements (future)
 
@@ -233,6 +235,7 @@ Each build script sources the required env vars before compiling.
 
 > Features moved here when done, for historical reference.
 
+- [x] Force-release serial port (`--kill-port`), raw data logging (`--log`), stale Hz fix — 2026-02-17
 - [x] Test infrastructure: simulator, plotter tests, monitor tests, virtual serial via socat — 2026-02-17
 - [x] Max plots cap (10), removed unused tokio dep, code review fixes — 2026-02-17
 - [x] Plotter polish: Y-axis zoom, data rate display, auto-fit grid, origin line, legend toggle — 2026-02-10
@@ -258,6 +261,8 @@ Each build script sources the required env vars before compiling.
 - The serial plotter uses a flexible protocol parser that handles `name@plotId:value`, `name:value`, `name=value`, and plain CSV/space-separated numbers
 - MVP focuses on serial + plotter — ship it before adding more features
 - Firmware compilation and flashing are handled via existing PlatformIO scripts (`pio run`), not fc_tool
+- **Testing policy:** All testing via bash scripts in `tests/`, never manual terminal commands. LLM/agents must use test scripts, not ad-hoc hardware commands. See scope.md Testing Policy for details.
+- **Test commands:** `sudo apt-get install socat` (once), then `./tests/test_plotter.sh && ./tests/test_monitor.sh`. See [README.md Testing](README.md#testing) for full reference.
 - See [flight_controller/docs/scope.md](/flight_controller/docs/scope.md) and [flight_controller/docs/roadmap.md](/flight_controller/docs/roadmap.md) for firmware context
 
 ---

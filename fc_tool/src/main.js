@@ -53,6 +53,7 @@ let totalSamples = 0;
 let rateCounter = 0;
 let lastRateTime = 0;
 let currentRate = 0;
+let rateStaleTimer = null;
 
 plotterToggleBtn.addEventListener("click", () => {
   plotterVisible = !plotterVisible;
@@ -97,6 +98,15 @@ function processSerialForPlotter(data) {
     rateCounter = 0;
     lastRateTime = now;
   }
+
+  // Reset Hz display to 0 if data stops for 2 seconds
+  clearTimeout(rateStaleTimer);
+  rateStaleTimer = setTimeout(() => {
+    currentRate = 0;
+    rateCounter = 0;
+    plotterStatusText.textContent =
+      `${plotter.plots.size} plot(s) | ${totalSamples} samples`;
+  }, 2000);
 
   if (totalSamples % 10 < lines.length) {
     const rateStr = currentRate > 0 ? ` | ${currentRate} Hz` : "";

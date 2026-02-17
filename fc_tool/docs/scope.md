@@ -1,6 +1,6 @@
 # fc_tool - Scope
 
-> Last updated: 2026-02-09
+> Last updated: 2026-02-17
 > Status: Active
 
 ---
@@ -183,10 +183,37 @@ Scripts for unvalidated platforms include `# TODO: UNTESTED` comments at the top
 
 - [ ] Should fc_tool support multiple simultaneous serial connections?
 
+## Testing Policy
+
+- **All testing MUST be done via bash scripts** in `tests/`, never manual terminal commands
+- Tests use `simulate_serial.py` to generate fake data and `socat` for virtual serial ports
+- LLM/agents must never run ad-hoc hardware commands — they will fail and get stuck on serial timing, port locking, and USB enumeration issues
+- Test scripts are the source of truth: if it doesn't have a test, it's not verified
+- Test output goes to `tests/results/` (gitignored)
+- Tests vs diagnostics: **tests** simulate fake data for development validation; **diagnostics** are built-in features for users to troubleshoot the live application
+
+### Quick reference
+
+```bash
+# Prerequisites (once)
+sudo apt-get install socat              # virtual serial ports
+sudo ./dev_setup/linux/install-system-deps.sh   # Tauri build deps
+
+# Run tests
+./tests/test_plotter.sh                 # plotter test suite
+./tests/test_monitor.sh                 # monitor test suite
+
+# Verify Rust compiles
+cd src-tauri && cargo check
+```
+
+See [README.md Testing section](README.md#testing) for full details.
+
 ## Critical Notes
 
 - The serial plotter protocol (`name@plotId:value`) is flexible enough that firmware doesn't need a strict contract — any key-value or CSV output works
-- Cross-platform builds require building locally on each platform.
+- Cross-platform builds require building locally on each platform
+- Max 10 simultaneous plots (configurable in PlotterManager, default cap prevents runaway DOM creation)
 
 ---
 
@@ -194,6 +221,7 @@ Scripts for unvalidated platforms include `# TODO: UNTESTED` comments at the top
 
 | Date | Changes | By |
 |------|---------|-----|
+| 2026-02-17 | Added Testing Policy section (bash scripts only, no manual commands), max plots cap, tests vs diagnostics distinction | LLM + User |
 | 2026-02-10 | Removed PlatformIO integration and Calibration UI from scope (handled externally via scripts) | LLM + User |
 | 2026-02-09 | Updated for dynamic plotter (replaced IMU-specific references), auto-reconnect, Chart.js decisions, verified assumptions | LLM + User |
 | 2026-02-05 | Updated integration points with flight_controller calibration workflow context, promoted to Active status | LLM + User |

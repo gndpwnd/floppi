@@ -48,10 +48,64 @@ PASS_COUNT=0
 FAIL_COUNT=0
 SOCAT_PID=""
 
-pass() { echo -e "  ${GREEN}PASS${NC}: $1"; PASS_COUNT=$((PASS_COUNT + 1)); }
-fail() { echo -e "  ${RED}FAIL${NC}: $1"; FAIL_COUNT=$((FAIL_COUNT + 1)); }
+test_pass() { echo -e "  ${GREEN}PASS${NC}: $1"; PASS_COUNT=$((PASS_COUNT + 1)); }
+test_fail() { echo -e "  ${RED}FAIL${NC}: $1"; FAIL_COUNT=$((FAIL_COUNT + 1)); }
 info() { echo -e "${YELLOW}INFO${NC}: $1"; }
 section() { echo -e "\n${CYAN}=== $1 ===${NC}"; }
+
+# Check output contains expected patterns (case-insensitive, regex alternation)
+# Dumps captured output on failure for debugging.
+# Args: file description expected_pattern1 expected_pattern2 ...
+check_output() {
+    local file="$1"
+    local desc="$2"
+    shift 2
+
+    if [ ! -s "$file" ]; then
+        test_fail "$desc — no output captured (file empty)"
+        return 1
+    fi
+
+    local line_count
+    line_count=$(wc -l < "$file")
+    if [ "$line_count" -lt 3 ]; then
+        info "$desc — WARNING: only $line_count lines captured (possible timeout)"
+    fi
+
+    local all_found=true
+    for pattern in "$@"; do
+        if grep -qiE "$pattern" "$file"; then
+            test_pass "$desc — found '$pattern'"
+        else
+            test_fail "$desc — missing '$pattern'"
+            all_found=false
+        fi
+    done
+
+    if ! $all_found; then
+        echo -e "  ${YELLOW}--- Captured output (first 15 lines) ---${NC}"
+        head -15 "$file" | sed 's/^/    /'
+        echo -e "  ${YELLOW}--- (end) ---${NC}"
+    fi
+
+    $all_found
+}
+
+# Check output does NOT contain a pattern (negative assertion)
+# Args: file description pattern
+check_absent() {
+    local file="$1"
+    local desc="$2"
+    local pattern="$3"
+
+    if grep -qiE "$pattern" "$file"; then
+        test_fail "$desc — unexpected '$pattern' found"
+        return 1
+    else
+        test_pass "$desc — correctly absent '$pattern'"
+        return 0
+    fi
+}
 
 # ============================================================================
 # Virtual serial port management
@@ -68,12 +122,12 @@ start_socat() {
     sleep 1
 
     if ! kill -0 "$SOCAT_PID" 2>/dev/null; then
-        fail "socat failed to start"
+        test_fail "socat failed to start"
         return 1
     fi
 
     if [ ! -e "$VSERIAL_A" ] || [ ! -e "$VSERIAL_B" ]; then
-        fail "Virtual serial ports not created"
+        test_fail "Virtual serial ports not created"
         stop_socat
         return 1
     fi
@@ -115,9 +169,9 @@ test_simulator_stdout() {
     local lines
     lines=$(wc -l < "$outfile")
     if [ "$lines" -gt 0 ]; then
-        pass "Produced $lines lines of output"
+        test_pass "Produced $lines lines of output"
     else
-        fail "No output produced"
+        test_fail "No output produced"
         return 1
     fi
 }
@@ -135,30 +189,16 @@ test_protocol_formats() {
     python3 "$SIMULATOR" --stdout --scenario protocol --rate 20 --duration 3 \
         > "$outfile" 2>/dev/null
 
-    # Check all 4 formats appear
-    if grep -qE "named_plot@0:" "$outfile"; then
-        pass "name@plotId:value format present"
-    else
-        fail "name@plotId:value format missing"
-    fi
+    check_output "$outfile" "Protocol formats" \
+        "named_plot@0:" \
+        "colon_fmt:" \
+        "equals_fmt="
 
-    if grep -qE "colon_fmt:" "$outfile"; then
-        pass "name:value format present"
-    else
-        fail "name:value format missing"
-    fi
-
-    if grep -qE "equals_fmt=" "$outfile"; then
-        pass "name=value format present"
-    else
-        fail "name=value format missing"
-    fi
-
-    # Plain number (just a float on its own line)
+    # Plain number (just a float on its own line) — check separately (case-sensitive exact match)
     if grep -qE "^-?[0-9]+\.[0-9]+$" "$outfile"; then
-        pass "Plain number format present"
+        test_pass "Protocol formats — plain number format present"
     else
-        fail "Plain number format missing"
+        test_fail "Protocol formats — plain number format missing"
     fi
 }
 
@@ -177,17 +217,20 @@ test_ansi_output() {
 
     # Check ANSI escape sequences present
     if grep -qP '\x1b\[' "$outfile"; then
-        pass "ANSI escape sequences present"
+        test_pass "ANSI escape sequences present"
     else
-        fail "No ANSI escape sequences found"
+        test_fail "No ANSI escape sequences found"
     fi
 
     # Check interleaved plotter data
     if grep -qE "@0:" "$outfile"; then
-        pass "Interleaved plotter data present"
+        test_pass "Interleaved plotter data present"
     else
-        fail "No interleaved plotter data"
+        test_fail "No interleaved plotter data"
     fi
+
+    # Verify no corrupted escape sequences (incomplete or malformed)
+    check_absent "$outfile" "ANSI output" "\\\\033"
 }
 
 # ============================================================================
@@ -207,10 +250,13 @@ test_stress_format() {
     local plots
     plots=$(grep -oE "@[0-9]+:" "$outfile" | sort -u | wc -l)
     if [ "$plots" -ge 10 ]; then
-        pass "Multiple plot IDs present ($plots unique IDs)"
+        test_pass "Multiple plot IDs present ($plots unique IDs)"
     else
-        fail "Expected 10+ plot IDs, found $plots"
+        test_fail "Expected 10+ plot IDs, found $plots"
     fi
+
+    # Verify data lines have expected structure
+    check_output "$outfile" "Stress data" "ch0@0:.*ch1@1:"
 }
 
 # ============================================================================
@@ -251,9 +297,9 @@ test_headless_with_socat() {
     local lines
     lines=$(wc -l < "$outfile" 2>/dev/null || echo 0)
     if [ "$lines" -gt 0 ]; then
-        pass "fc_tool received $lines lines via virtual serial"
+        test_pass "fc_tool received $lines lines via virtual serial"
     else
-        fail "fc_tool received no data"
+        test_fail "fc_tool received no data"
     fi
 }
 
