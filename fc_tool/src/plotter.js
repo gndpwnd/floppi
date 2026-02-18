@@ -172,6 +172,9 @@ class PlotterManager {
     this.maxPlots = 10;
     this.paused = false;
     this.enabled = false;
+    this.showPoints = false;
+    this.keepRecording = false;
+    this._buffer = [];       // buffered lines while paused with keepRecording
     this._registered = false;
   }
 
@@ -187,7 +190,25 @@ class PlotterManager {
    * @param {string} line
    */
   processLine(line) {
-    if (!this.enabled || this.paused) return;
+    if (!this.enabled) return;
+
+    // When paused: buffer if keepRecording, otherwise drop
+    if (this.paused) {
+      if (this.keepRecording) {
+        this._buffer.push(line);
+        // Cap buffer to prevent unbounded memory growth
+        if (this._buffer.length > this.maxDataPoints * 2) {
+          this._buffer.splice(0, this._buffer.length - this.maxDataPoints * 2);
+        }
+      }
+      return;
+    }
+
+    this._ingestLine(line);
+  }
+
+  /** Internal: parse and route a single line to charts. */
+  _ingestLine(line) {
     const points = parseLine(line);
     if (!points) return;
 
@@ -223,6 +244,7 @@ class PlotterManager {
       }
 
       plot.chart.update('none');
+      this._updateStatsBar(plot);
     }
   }
 
@@ -260,6 +282,10 @@ class PlotterManager {
     readoutText.textContent = '\u2014';
     readout.appendChild(readoutText);
     wrapper.appendChild(readout);
+
+    const statsBar = document.createElement('div');
+    statsBar.className = 'plot-stats';
+    wrapper.appendChild(statsBar);
 
     this.container.appendChild(wrapper);
 
@@ -313,8 +339,10 @@ class PlotterManager {
       canvas,
       readoutText,
       titleEl,
+      statsBar,
       plotId,
       datasets: new Map(), // name -> dataset index
+      stats: new Map(),    // name -> { min, max, sum, count }
       colorIdx: 0,
       sampleCount: 0,
       yAuto: true,
@@ -359,7 +387,7 @@ class PlotterManager {
         borderColor: color.border,
         backgroundColor: color.bg,
         borderWidth: 1.5,
-        pointRadius: 0,
+        pointRadius: this.showPoints ? 2.5 : 0,
         pointHitRadius: 10,
         tension: 0.2,
         fill: false,
@@ -383,6 +411,31 @@ class PlotterManager {
     }
 
     chart.data.datasets[datasets.get(name)].data[labels.length - 1] = value;
+
+    // Update running statistics
+    if (!plot.stats.has(name)) {
+      plot.stats.set(name, { min: value, max: value, sum: value, count: 1 });
+    } else {
+      const s = plot.stats.get(name);
+      if (value < s.min) s.min = value;
+      if (value > s.max) s.max = value;
+      s.sum += value;
+      s.count++;
+    }
+  }
+
+  /** Render stats bar for a plot (called after chart update). */
+  _updateStatsBar(plot) {
+    if (plot.stats.size === 0) return;
+    const parts = [];
+    for (const [name, s] of plot.stats) {
+      const mean = s.sum / s.count;
+      parts.push(
+        `<span class="stat-label">${name}:</span> ` +
+        `<span class="stat-value">min ${s.min.toFixed(2)} max ${s.max.toFixed(2)} avg ${mean.toFixed(2)}</span>`
+      );
+    }
+    plot.statsBar.innerHTML = parts.join(' &nbsp; ');
   }
 
   /** Clear all plots and destroy chart instances. */
@@ -392,12 +445,40 @@ class PlotterManager {
       plot.wrapper.remove();
     }
     this.plots.clear();
+    this._buffer.length = 0;
   }
 
-  /** Toggle pause. Returns new paused state. */
+  /** Reset running statistics for all plots. */
+  resetStats() {
+    for (const [, plot] of this.plots) {
+      plot.stats.clear();
+      plot.statsBar.innerHTML = '';
+    }
+  }
+
+  /** Toggle pause. On unpause, flushes buffered data if keepRecording was on. Returns new paused state. */
   togglePause() {
     this.paused = !this.paused;
+    if (!this.paused && this._buffer.length > 0) {
+      // Flush buffered lines
+      for (const line of this._buffer) {
+        this._ingestLine(line);
+      }
+      this._buffer.length = 0;
+    }
     return this.paused;
+  }
+
+  /** Toggle data point visibility on all plots. */
+  setShowPoints(show) {
+    this.showPoints = show;
+    const radius = show ? 2.5 : 0;
+    for (const [, plot] of this.plots) {
+      for (const ds of plot.chart.data.datasets) {
+        ds.pointRadius = radius;
+      }
+      plot.chart.update('none');
+    }
   }
 
   destroy() {

@@ -1,6 +1,6 @@
 # fc_tool - Todo
 
-> Last updated: 2026-02-17
+> Last updated: 2026-02-17 (session 3)
 
 ## In Progress
 
@@ -11,26 +11,18 @@
 
 ## Up Next
 
-- [ ] Install system deps and verify Rust compiles:
-  ```bash
-  sudo ./dev_setup/linux/install-system-deps.sh
-  cd src-tauri && cargo check
-  ```
-- [ ] Install socat and run full test suite (including headless+virtual serial tests):
-  ```bash
-  sudo apt-get install socat
-  ./tests/test_plotter.sh && ./tests/test_monitor.sh
-  ```
-- [ ] Test with real Teensy hardware (serial + plotter visualization) — hardware available but not on current machine
+- [x] ~~Install system deps and verify Rust compiles~~ — DONE (cargo check passes, rustc 1.93.0)
+- [x] ~~Install socat and run full test suite~~ — DONE (29/29 tests pass)
+- [ ] Test with real Teensy hardware (serial + plotter visualization) — USB ports occupied
 - [ ] Validate cross-platform builds (Windows, macOS)
 
 ## Backlog (Post-v0.1)
 
-### Enhanced Plotter — Decided Features (ready to implement)
+### Enhanced Plotter — Decided Features
 
-- [ ] Pause/freeze mode — stop collecting by default, "Keep recording" toggle
-- [ ] Font size controls — [+] [-] for serial monitor
-- [ ] Show data points toggle — circles at actual data points
+- [x] Pause/freeze mode — "Keep recording" toggle buffers data while paused, flushes on unpause — **DONE** 2026-02-17
+- [x] Font size controls — [+] [-] buttons for serial monitor (8–24px range) — **DONE** 2026-02-17
+- [x] Show data points toggle — "Points" checkbox toggles circles at sample points — **DONE** 2026-02-17
 - [ ] Measurement cursors — 2 yellow verticals + 2 blue horizontals, draggable + input fields
 - [ ] Per-plot mode selector — Continuous / Period Mode (N) / Single period / Frozen
 
@@ -39,7 +31,7 @@
 - [ ] Period Mode — detect repetitive data, show N periods standing still
 - [ ] Period detection algorithms — zero-crossing, autocorrelation, FFT (see findings)
 - [ ] Anomaly detection overlay — EMA, CUSUM, peak/trough tracking (see findings)
-- [ ] Signal statistics readout — period, frequency, min, max, RMS
+- [x] Signal statistics readout — min, max, avg per variable per plot — **DONE** 2026-02-17
 - [ ] Sparkline mini-graphs — trend display for peak/mean/trough
 
 ### Modular Architecture
@@ -51,12 +43,12 @@
 ### Serial Monitor Enhancements (research complete)
 
 - [x] ANSI escape code rendering — bold, dim, underline, 16 colors as styled HTML spans — **DONE** 2026-02-11
-- [ ] Live Dashboard Mode — fixed-position panel showing key=value data updating in place (not scrolling)
+- [x] Live Dashboard Mode — fixed-position panel showing key=value data updating in place (not scrolling) — **DONE** 2026-02-17
 - [ ] Companion Arduino library (floppi_serial) — plotVar(), ANSI macros, atomic line buffering
 
 ### Serial Features
 
-- [ ] Raw data logging from GUI mode (currently only headless `--log` is implemented)
+- [x] Raw data logging from GUI mode — "Log" button starts/stops logging to timestamped file — **DONE** 2026-02-17
 - [ ] Timestamped log lines (prefix each line with ISO timestamp)
 
 ### Platform Validation
@@ -72,6 +64,17 @@
 
 ## Recently Completed
 
+- [x] New features — 2026-02-17 (session 3)
+  - Live Dashboard Mode — toggleable `key=value` grid panel, updates in place, change flash highlight, Ctrl+Shift+D shortcut
+  - Signal statistics readout — min/max/avg per variable displayed below each plot
+  - GUI-mode logging — "Log" button in terminal controls, writes serial data to `fc_tool_<timestamp>.log`
+  - Backend: `start_log` / `stop_log` Tauri commands, reader thread writes to log file when active
+  - All 29/29 tests passing after implementation
+- [x] Plotter enhancements — 2026-02-17 (session 2)
+  - Font size controls [+] [-] for terminal (8–24px, default 12px)
+  - Show data points toggle — "Points" checkbox in plotter toolbar
+  - Pause with "Keep recording" — buffer data while paused, flush on unpause (capped at 2x window size)
+  - All 29/29 tests passing after implementation
 - [x] Test infrastructure — 2026-02-17
   - `tests/simulate_serial.py` — Python data simulator with 8 scenarios (imu, sine, mixed, ansi, stress, dashboard, protocol, noise)
   - `tests/test_plotter.sh` — Plotter test suite (12 tests: format verification, stress test, headless+socat)

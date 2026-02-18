@@ -66,6 +66,16 @@ reboot_teensy() {
             test_fail "Port $PORT not found after reboot"
             return 1
         fi
+        # Wait for firmware to finish booting (IMU warmup takes 5-10s).
+        # Drain boot output so first test gets clean command responses.
+        info "Waiting for firmware boot (IMU warmup)..."
+        python3 "$SERIAL_MON" "$PORT" --no-dtr-reset --boot-wait 0 \
+            --send "" --wait 12 --output "$RESULTS_DIR/boot_drain.txt" 2>/dev/null
+        if grep -q "CALIBRATION MODE\|FLIGHT CONTROLLER READY" "$RESULTS_DIR/boot_drain.txt" 2>/dev/null; then
+            info "Firmware booted OK"
+        else
+            info "WARNING: boot drain did not see READY marker (may still work)"
+        fi
     else
         info "teensy_reboot not found, skipping board reset"
     fi
@@ -82,8 +92,18 @@ run_serial() {
         send_args+=(--send "$cmd")
     done
 
+    # Brief pause to let the kernel release the port from any previous connection
+    sleep 0.3
+
     python3 "$SERIAL_MON" "$PORT" --no-dtr-reset --boot-wait 1 \
         "${send_args[@]}" --wait "$wait_secs" --output "$outfile" 2>/dev/null
+
+    # If output file is empty, retry once with a longer pause
+    if [ ! -s "$outfile" ]; then
+        sleep 1
+        python3 "$SERIAL_MON" "$PORT" --no-dtr-reset --boot-wait 1 \
+            "${send_args[@]}" --wait "$wait_secs" --output "$outfile" 2>/dev/null
+    fi
 }
 
 # Check output contains expected patterns (case-insensitive, regex alternation)
@@ -336,7 +356,8 @@ test_sequential_start() {
     info "Verifying sequential workflow starts correctly..."
     local outfile="$RESULTS_DIR/test_sequential_start.txt"
 
-    run_serial "$outfile" 10 "a" "n"
+    # Sequential workflow asks two questions (6-pos? then single-pos?), send 'n' to both
+    run_serial "$outfile" 10 "a" "n" "n"
     check_output "$outfile" "Sequential start" \
         "SEQUENTIAL|sequential|workflow" \
         "Stage|stage"
@@ -348,7 +369,7 @@ test_unknown_command() {
     local outfile="$RESULTS_DIR/test_unknown.txt"
 
     # Send garbage, then a known command to verify firmware is still alive
-    run_serial "$outfile" 1 "z" "h"
+    run_serial "$outfile" 2 "z" "h"
     check_output "$outfile" "Unknown command recovery" \
         "CALIBRATION COMMANDS"
 }

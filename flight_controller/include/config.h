@@ -90,7 +90,7 @@
 // Uncomment ONE RC receiver protocol for manual flying:
 //#define USE_PWM_RECEIVER       // Individual PWM channels
 //#define USE_PPM_RECEIVER       // PPM (single wire, 8 channels)
-#define USE_SBUS_RECEIVER        // SBUS (Futaba/FrSky standard)
+//#define USE_SBUS_RECEIVER      // SBUS (Futaba/FrSky standard) — commented for bench testing without receiver
 //#define USE_IBUS_RECEIVER      // iBUS (FlySky standard, 115200 baud)
 //#define USE_DSM_RECEIVER       // DSM/DSM2/DSMX (Spektrum)
 //

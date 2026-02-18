@@ -27,6 +27,8 @@ pub struct SerialState {
     port: Arc<Mutex<Option<Box<dyn SerialPort + Send>>>>,
     reader_running: Arc<AtomicBool>,
     connected_port: Arc<Mutex<Option<String>>>,
+    log_writer: Arc<Mutex<Option<fs::File>>>,
+    log_path: Arc<Mutex<Option<String>>>,
 }
 
 impl Default for SerialState {
@@ -35,6 +37,8 @@ impl Default for SerialState {
             port: Arc::new(Mutex::new(None)),
             reader_running: Arc::new(AtomicBool::new(false)),
             connected_port: Arc::new(Mutex::new(None)),
+            log_writer: Arc::new(Mutex::new(None)),
+            log_path: Arc::new(Mutex::new(None)),
         }
     }
 }
@@ -175,6 +179,7 @@ fn open_serial_port(
     let running = state.reader_running.clone();
     let port_arc = state.port.clone();
     let connected_arc = state.connected_port.clone();
+    let log_writer_arc = state.log_writer.clone();
     let port_name_for_thread = port_name.clone();
 
     thread::spawn(move || {
@@ -190,6 +195,12 @@ fn open_serial_port(
                 }
                 Ok(_) => {
                     let _ = app.emit("serial-data", SerialDataEvent { data: line.clone() });
+                    // Write to log file if active
+                    if let Ok(mut lw) = log_writer_arc.lock() {
+                        if let Some(ref mut f) = *lw {
+                            let _ = f.write_all(line.as_bytes());
+                        }
+                    }
                 }
                 Err(e) => {
                     if e.kind() != std::io::ErrorKind::TimedOut {
@@ -281,6 +292,52 @@ fn get_startup_args(state: State<'_, StartupArgs>) -> StartupArgs {
     state.inner().clone()
 }
 
+/// Start logging serial data to a file. Returns the log file path.
+#[tauri::command]
+fn start_log(file_path: Option<String>, state: State<'_, SerialState>) -> Result<String, String> {
+    let path = file_path.unwrap_or_else(|| {
+        let secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        format!("fc_tool_{}.log", secs)
+    });
+
+    // Create parent dirs if needed
+    if let Some(parent) = std::path::Path::new(&path).parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+
+    let file = fs::File::create(&path)
+        .map_err(|e| format!("Failed to create log file {}: {}", path, e))?;
+
+    {
+        let mut lw = state.log_writer.lock().map_err(|e| e.to_string())?;
+        *lw = Some(file);
+    }
+    {
+        let mut lp = state.log_path.lock().map_err(|e| e.to_string())?;
+        *lp = Some(path.clone());
+    }
+
+    Ok(path)
+}
+
+/// Stop logging serial data. Returns the path of the closed log file.
+#[tauri::command]
+fn stop_log(state: State<'_, SerialState>) -> Result<Option<String>, String> {
+    let path;
+    {
+        let mut lp = state.log_path.lock().map_err(|e| e.to_string())?;
+        path = lp.take();
+    }
+    {
+        let mut lw = state.log_writer.lock().map_err(|e| e.to_string())?;
+        *lw = None;
+    }
+    Ok(path)
+}
+
 // ============================================================================
 // GUI Mode (Tauri window)
 // ============================================================================
@@ -299,7 +356,9 @@ pub fn run_gui(port: Option<String>, baud: Option<u32>) {
             close_serial_port,
             send_serial_data,
             get_connection_status,
-            get_startup_args
+            get_startup_args,
+            start_log,
+            stop_log
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

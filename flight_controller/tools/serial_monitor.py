@@ -22,6 +22,9 @@ Usage:
     # Skip DTR reset (don't reboot the board on connect)
     python3 serial_monitor.py /dev/ttyACM0 --no-dtr-reset
 
+    # Wait for specific pattern in output (useful for boot detection)
+    python3 serial_monitor.py /dev/ttyACM0 --wait-for "READY" --timeout 15
+
 Teensy USB CDC notes:
     Standard pyserial in_waiting polling doesn't work with Teensy USB CDC
     because TIOCINQ queries the tty buffer, not the USB endpoint buffer.
@@ -88,15 +91,12 @@ def open_serial(port, baud=115200, dtr_reset=True):
         # Set baud rate
         baud_const = getattr(termios, f"B{baud}", None)
         if baud_const is None:
-            # Try custom baud via BOTHER (not all systems support this)
             print(f"Warning: non-standard baud {baud}, trying anyway", file=sys.stderr)
             baud_const = baud
         attrs[4] = baud_const  # ispeed
         attrs[5] = baud_const  # ospeed
 
         # VMIN=1, VTIME=0: block in read() until at least 1 byte arrives.
-        # This is critical for USB CDC — it lets the kernel wait for the USB
-        # transfer instead of us polling TIOCINQ (which misses USB-buffered data).
         attrs[6][termios.VMIN] = 1
         attrs[6][termios.VTIME] = 0
 
@@ -106,6 +106,9 @@ def open_serial(port, baud=115200, dtr_reset=True):
         # Clear O_NONBLOCK for normal blocking reads
         flags = fcntl.fcntl(fd, fcntl.F_GETFL)
         fcntl.fcntl(fd, fcntl.F_SETFL, flags & ~os.O_NONBLOCK)
+
+        # Flush any stale data in kernel buffers
+        termios.tcflush(fd, termios.TCIOFLUSH)
 
         # DTR handling
         TIOCMBIS = 0x5416  # Set modem bits
@@ -144,6 +147,42 @@ def write_serial(fd, data):
     if isinstance(data, str):
         data = data.encode()
     os.write(fd, data)
+
+
+def drain_until_quiet(fd, output_lines, quiet_time=0.5, max_time=5.0):
+    """Read serial data until silence for quiet_time seconds or max_time elapsed.
+
+    Returns the text captured during the drain.
+    """
+    captured = []
+    start = time.monotonic()
+    last_data = start
+
+    while True:
+        now = time.monotonic()
+        if now - start > max_time:
+            break
+        if now - last_data > quiet_time:
+            break
+
+        remaining = min(quiet_time - (now - last_data), 0.1)
+        ready, _, _ = select.select([fd], [], [], max(remaining, 0.01))
+        if ready:
+            try:
+                data = os.read(fd, 4096)
+                if data:
+                    text = data.decode("utf-8", errors="replace")
+                    sys.stdout.write(text)
+                    sys.stdout.flush()
+                    output_lines.append(text)
+                    captured.append(text)
+                    last_data = time.monotonic()
+                else:
+                    break  # EOF
+            except OSError:
+                break
+
+    return "".join(captured)
 
 
 def reader_thread(fd, output_lines, stop_event):
@@ -205,6 +244,22 @@ def main():
         action="store_true",
         help="Don't toggle DTR to reset the board",
     )
+    parser.add_argument(
+        "--wait-for",
+        help="Wait until output contains this pattern (regex), then exit",
+    )
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=30.0,
+        help="Max seconds to wait with --wait-for (default: 30)",
+    )
+    parser.add_argument(
+        "--quiet",
+        "-q",
+        action="store_true",
+        help="Suppress stdout output (still saves to --output file)",
+    )
     args = parser.parse_args()
 
     # Force-release if requested
@@ -229,6 +284,11 @@ def main():
     output_lines = []
     stop_event = threading.Event()
 
+    # Suppress stdout if --quiet
+    original_stdout = sys.stdout
+    if args.quiet:
+        sys.stdout = open(os.devnull, "w")
+
     # Start reader thread
     reader = threading.Thread(
         target=reader_thread, args=(fd, output_lines, stop_event), daemon=True
@@ -236,30 +296,61 @@ def main():
     reader.start()
 
     try:
-        # Wait for board to boot
-        print(f"Waiting {args.boot_wait}s for boot...", file=sys.stderr)
-        time.sleep(args.boot_wait)
+        if args.wait_for:
+            # Wait-for-pattern mode: read until pattern found or timeout
+            import re
 
-        if args.send:
+            pattern = re.compile(args.wait_for)
+            print(
+                f"Waiting for pattern: '{args.wait_for}' (timeout: {args.timeout}s)",
+                file=sys.stderr,
+            )
+            start = time.monotonic()
+            while time.monotonic() - start < args.timeout:
+                time.sleep(0.2)
+                full = "".join(output_lines)
+                if pattern.search(full):
+                    print(f"Pattern found after {time.monotonic()-start:.1f}s", file=sys.stderr)
+                    # Drain remaining output
+                    time.sleep(0.5)
+                    break
+            else:
+                print(f"Timeout waiting for pattern", file=sys.stderr)
+        elif args.send:
+            # Wait for board to boot
+            if args.boot_wait > 0:
+                print(f"Waiting {args.boot_wait}s for boot...", file=sys.stderr)
+                time.sleep(args.boot_wait)
+
             # Scripted mode: send commands with delays
             for cmd in args.send:
                 print(f"\n>>> Sending: '{cmd}'", file=sys.stderr)
                 write_serial(fd, cmd + "\n")
                 time.sleep(args.wait)
 
-            if not args.interactive:
-                # Give a bit more time for final output
-                time.sleep(0.5)
-                stop_event.set()
-            else:
+            if args.interactive:
                 print(
                     "\n--- Interactive mode (Ctrl+C to exit) ---", file=sys.stderr
                 )
+                if args.quiet:
+                    sys.stdout = original_stdout
                 while True:
                     line = input()
                     write_serial(fd, line + "\n")
+            else:
+                # Drain until quiet — captures any remaining response data
+                stop_event.set()
+                reader.join(timeout=1)
+                drain_until_quiet(fd, output_lines, quiet_time=0.5, max_time=2.0)
         else:
+            # Wait for board to boot
+            if args.boot_wait > 0:
+                print(f"Waiting {args.boot_wait}s for boot...", file=sys.stderr)
+                time.sleep(args.boot_wait)
+
             # Interactive mode
+            if args.quiet:
+                sys.stdout = original_stdout
             print("Interactive mode (Ctrl+C to exit)", file=sys.stderr)
             while True:
                 line = input()
@@ -272,13 +363,22 @@ def main():
         reader.join(timeout=1)
         os.close(fd)
 
+    # Restore stdout if suppressed
+    if args.quiet:
+        sys.stdout = original_stdout
+
     # Save output if requested
     if args.output:
         os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
         full_output = "".join(output_lines)
         with open(args.output, "w") as f:
             f.write(full_output)
-        print(f"Output saved to {args.output}", file=sys.stderr)
+        print(f"Output saved to {args.output} ({len(full_output)} bytes)", file=sys.stderr)
+
+    # Exit with error if no output was captured (helps test scripts)
+    if args.send and not output_lines:
+        print("WARNING: no output captured", file=sys.stderr)
+        sys.exit(2)
 
 
 if __name__ == "__main__":

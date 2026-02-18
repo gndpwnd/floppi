@@ -40,6 +40,95 @@ let activeFilter = "";
 let userSelecting = false;  // Pause autoscroll during text selection
 const ansiCheckbox = document.getElementById("ansi-checkbox");
 
+// Font size controls
+const fontSizeDecBtn = document.getElementById("font-size-dec");
+const fontSizeIncBtn = document.getElementById("font-size-inc");
+const fontSizeLabel = document.getElementById("font-size-label");
+const FONT_SIZE_MIN = 8;
+const FONT_SIZE_MAX = 24;
+let terminalFontSize = 12;
+
+// Plotter enhancement controls
+const plotterPointsCheckbox = document.getElementById("plotter-points-checkbox");
+const plotterKeepRecordingCheckbox = document.getElementById("plotter-keep-recording-checkbox");
+
+// DOM Elements - Dashboard
+const dashboardToggleBtn = document.getElementById("dashboard-toggle-btn");
+const dashboardSection = document.getElementById("dashboard-section");
+const dashboardGrid = document.getElementById("dashboard-grid");
+const dashboardClearBtn = document.getElementById("dashboard-clear-btn");
+const dashboardStatusText = document.getElementById("dashboard-status-text");
+
+// ============================================================================
+// Live Dashboard
+// ============================================================================
+
+let dashboardVisible = false;
+const dashboardValues = new Map(); // key -> { value, el }
+
+const DASHBOARD_KV_RE = /([\w.]+)=(\S+)/g;
+
+dashboardToggleBtn.addEventListener("click", () => {
+  dashboardVisible = !dashboardVisible;
+  dashboardSection.style.display = dashboardVisible ? "" : "none";
+  dashboardToggleBtn.textContent = dashboardVisible ? "Hide Dashboard" : "Show Dashboard";
+});
+
+dashboardClearBtn.addEventListener("click", () => {
+  dashboardValues.clear();
+  dashboardGrid.innerHTML = "";
+  dashboardStatusText.textContent = "Cleared";
+});
+
+function processSerialForDashboard(data) {
+  if (!dashboardVisible) return;
+  const lines = data.split("\n").filter(l => l.trim());
+  let updated = false;
+
+  for (const line of lines) {
+    DASHBOARD_KV_RE.lastIndex = 0;
+    let match;
+    while ((match = DASHBOARD_KV_RE.exec(line)) !== null) {
+      const key = match[1];
+      const value = match[2];
+      updated = true;
+
+      if (dashboardValues.has(key)) {
+        const entry = dashboardValues.get(key);
+        if (entry.value !== value) {
+          entry.value = value;
+          entry.el.textContent = value;
+          // Brief highlight on change
+          entry.el.classList.add("changed");
+          clearTimeout(entry.flashTimer);
+          entry.flashTimer = setTimeout(() => entry.el.classList.remove("changed"), 300);
+        }
+      } else {
+        // Create new cell
+        const cell = document.createElement("div");
+        cell.className = "dashboard-cell";
+
+        const keyEl = document.createElement("span");
+        keyEl.className = "dashboard-key";
+        keyEl.textContent = key;
+        cell.appendChild(keyEl);
+
+        const valEl = document.createElement("span");
+        valEl.className = "dashboard-value";
+        valEl.textContent = value;
+        cell.appendChild(valEl);
+
+        dashboardGrid.appendChild(cell);
+        dashboardValues.set(key, { value, el: valEl, flashTimer: null });
+      }
+    }
+  }
+
+  if (updated) {
+    dashboardStatusText.textContent = `${dashboardValues.size} key(s)`;
+  }
+}
+
 // ============================================================================
 // Plotter
 // ============================================================================
@@ -356,6 +445,7 @@ function appendRx(data) {
   autoScroll();
 
   processSerialForPlotter(data);
+  processSerialForDashboard(data);
 }
 
 function appendTx(data) {
@@ -443,6 +533,54 @@ copyMonitorBtn.addEventListener("click", async () => {
   }
 });
 
+// Font size controls
+function setTerminalFontSize(size) {
+  terminalFontSize = Math.max(FONT_SIZE_MIN, Math.min(FONT_SIZE_MAX, size));
+  terminalOutput.style.fontSize = terminalFontSize + "px";
+  fontSizeLabel.textContent = terminalFontSize;
+}
+
+fontSizeDecBtn.addEventListener("click", () => setTerminalFontSize(terminalFontSize - 1));
+fontSizeIncBtn.addEventListener("click", () => setTerminalFontSize(terminalFontSize + 1));
+
+// Show data points toggle
+plotterPointsCheckbox.addEventListener("change", () => {
+  plotter.setShowPoints(plotterPointsCheckbox.checked);
+});
+
+// Keep recording while paused
+plotterKeepRecordingCheckbox.addEventListener("change", () => {
+  plotter.keepRecording = plotterKeepRecordingCheckbox.checked;
+});
+
+// GUI-mode logging
+const logToggleBtn = document.getElementById("log-toggle-btn");
+let logActive = false;
+
+logToggleBtn.addEventListener("click", async () => {
+  if (!logActive) {
+    try {
+      const path = await invoke("start_log", { filePath: null });
+      logActive = true;
+      logToggleBtn.textContent = `Log: ${path}`;
+      logToggleBtn.classList.add("active");
+      appendSystem(`Logging to ${path}`);
+    } catch (e) {
+      appendSystem(`Log failed: ${e}`);
+    }
+  } else {
+    try {
+      const path = await invoke("stop_log");
+      logActive = false;
+      logToggleBtn.textContent = "Log";
+      logToggleBtn.classList.remove("active");
+      appendSystem(`Log saved: ${path || "unknown"}`);
+    } catch (e) {
+      appendSystem(`Stop log failed: ${e}`);
+    }
+  }
+});
+
 // Keyboard shortcuts
 document.addEventListener("keydown", (e) => {
   // Ctrl+L — clear terminal
@@ -459,6 +597,11 @@ document.addEventListener("keydown", (e) => {
   if (e.ctrlKey && e.shiftKey && e.key === " ") {
     e.preventDefault();
     if (plotterVisible) plotterPauseBtn.click();
+  }
+  // Ctrl+Shift+D — toggle dashboard
+  if (e.ctrlKey && e.shiftKey && e.key === "D") {
+    e.preventDefault();
+    dashboardToggleBtn.click();
   }
   // Ctrl+F — focus filter input
   if (e.ctrlKey && !e.shiftKey && e.key === "f") {

@@ -1,6 +1,6 @@
 # fc_tool - Roadmap
 
-> Last updated: 2026-02-17
+> Last updated: 2026-02-17 (session 3)
 
 ## Overview
 
@@ -64,8 +64,8 @@ This roadmap tracks project-level features and milestones. For immediate tasks, 
   - Implementation: `kill_port()` in lib.rs. Checks port exists, identifies holder PIDs, kills them, waits for release.
 - [x] Raw data logging
   - Completed: 2026-02-17
-  - Description: `--log <file>` in headless mode tees all serial data to a file while also printing to stdout.
-  - Implementation: Optional `log_writer` in `run_headless()`. Creates parent dirs automatically.
+  - Description: `--log <file>` in headless mode tees all serial data to a file while also printing to stdout. GUI mode: "Log" button starts/stops logging to `fc_tool_<timestamp>.log`.
+  - Implementation: Headless: optional `log_writer` in `run_headless()`. GUI: `start_log`/`stop_log` Tauri commands, `log_writer` in SerialState, reader thread writes when active.
 
 ### Serial Monitor Enhancements (future)
 
@@ -75,10 +75,10 @@ This roadmap tracks project-level features and milestones. For immediate tasks, 
   - Notes: Regex-based parser in appendRx(). CSS classes for each color, optimized for dark terminal theme. Zero overhead when no ANSI codes present.
 - [x] CLI arguments for port and baud — **DONE** (2026-02-11, see Serial Communication above)
 - [x] Headless mode — **DONE** (2026-02-11, see Serial Communication above)
-- [ ] Live Dashboard Mode
-  - Description: A fixed-position panel that shows key=value data updating in place (not scrolling). Like an oscilloscope readout or a car dashboard — values change but the layout stays static.
-  - Notes: Parses the existing `name=value` / `name:value` format. Each unique key gets a row in the dashboard. Values update live. Can coexist alongside the scrolling terminal (split view or toggle). Analogous to the plotter's "continuous vs period" modes but for text data.
-  - Implementation ideas: fc_tool parses key=value pairs, maintains a Map of latest values, renders in a CSS grid with key labels and value cells that update in place. Optional: firmware can also use ANSI cursor control (`\033[H` cursor home) for terminals that support it.
+- [x] Live Dashboard Mode
+  - Completed: 2026-02-17
+  - Description: Toggleable panel showing key=value data updating in place (not scrolling). Each unique key gets a cell in a responsive CSS grid. Values update live with brief white flash on change. Coexists alongside scrolling terminal.
+  - Implementation: `processSerialForDashboard()` in main.js. Regex parser `([\w.]+)=(\S+)` matches `key=value` pairs. Dashboard Map tracks latest values. Toggle via "Show Dashboard" button or Ctrl+Shift+D.
 - [ ] Companion Arduino library (floppi_serial)
   - Description: Lightweight Arduino library providing helpers for fc_tool's protocol features — multi-graph plotting (`plotVar()`), ANSI color macros, structured telemetry output, atomic line buffering
   - Notes: Not required — fc_tool works with raw `Serial.print()`. The library just makes it more convenient. Must be <5KB flash, zero-allocation. Compile-time ANSI toggle. See research findings.
@@ -116,18 +116,21 @@ This roadmap tracks project-level features and milestones. For immediate tasks, 
 - [ ] Trigger Mode — place neon yellow vertical (Y-intercept) and neon blue horizontal (X-intercept) lines for measurement
 - [ ] Axis toggle — [Axis: ON/OFF] per plot; right-click switches Y-intercept/X-intercept mode
 - [ ] Measurement readout — dedicated panel showing mouse position + delta between placed lines
-- [ ] Show data points toggle — small circles at actual data points on/off
+- [x] Show data points toggle — "Points" checkbox in plotter toolbar, toggles circles at sample points
+  - Completed: 2026-02-17
 - [ ] Measurement cursors — 2 yellow verticals + 2 blue horizontals per plot, draggable AND input fields
 
 Reference: [cursor-interaction-discussion.md](cursor-interaction-discussion.md)
 
 **Plot controls & modes (future):**
 
-- [ ] Pause/freeze mode — stop collecting by default; "Keep recording when paused" toggle (global)
+- [x] Pause/freeze mode — "Keep recording when paused" toggle buffers data, flushes on unpause
+  - Completed: 2026-02-17
 - [x] Y-axis zoom controls — [+] [-] [A] per plot, zoom in/out/auto-fit
 - [ ] X-axis scaling — independent zoom/pan for time axis
 - [ ] Per-plot mode selector — Continuous / Period Mode (N) / Single period / Frozen
-- [ ] Font size controls — [+] [-] for serial monitor text size
+- [x] Font size controls — [+] [-] buttons for serial monitor text size (8–24px)
+  - Completed: 2026-02-17
 
 Reference: [plotter_discussion.md](plotter_discussion.md)
 
@@ -137,7 +140,8 @@ Reference: [plotter_discussion.md](plotter_discussion.md)
 - [ ] Per-plot mode selection — each plot independently: continuous, period, single, frozen
 - [ ] Period detection algorithms — zero-crossing, autocorrelation, FFT
 - [ ] Anomaly detection overlay — track max/min/critical points, detect signal changes over time
-- [ ] Signal statistics readout — period, frequency, min, max, RMS below each plot
+- [x] Signal statistics readout — min, max, avg per variable below each plot
+  - Completed: 2026-02-17
 
 Reference: [signal-analysis-discussion.md](signal-analysis-discussion.md)
 
@@ -235,6 +239,8 @@ Each build script sources the required env vars before compiling.
 
 > Features moved here when done, for historical reference.
 
+- [x] Live Dashboard Mode, signal statistics readout, GUI-mode logging — 2026-02-17
+- [x] Plotter enhancements: font size controls, show data points toggle, pause with keep-recording — 2026-02-17
 - [x] Force-release serial port (`--kill-port`), raw data logging (`--log`), stale Hz fix — 2026-02-17
 - [x] Test infrastructure: simulator, plotter tests, monitor tests, virtual serial via socat — 2026-02-17
 - [x] Max plots cap (10), removed unused tokio dep, code review fixes — 2026-02-17

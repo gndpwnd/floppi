@@ -45,6 +45,7 @@
       <section id="monitor-section">
         <div class="section-header">
           <h2>Serial Monitor</h2>
+          <button id="dashboard-toggle-btn" type="button">Show Dashboard</button>
           <button id="plotter-toggle-btn" type="button">Show Plotter</button>
         </div>
         <div id="terminal-container">
@@ -61,7 +62,13 @@
         <div class="terminal-controls">
           <button id="clear-monitor-btn" type="button">Clear</button>
           <button id="copy-monitor-btn" type="button">Copy All</button>
+          <button id="log-toggle-btn" type="button" title="Log serial data to file">Log</button>
           <input type="text" id="filter-input" placeholder="Filter..." />
+          <div class="font-size-controls" title="Terminal font size">
+            <button id="font-size-dec" type="button">&minus;</button>
+            <span id="font-size-label">12</span>
+            <button id="font-size-inc" type="button">+</button>
+          </div>
           <label class="checkbox-label">
             <input type="checkbox" id="autoscroll-checkbox" checked />
             Auto-scroll
@@ -73,6 +80,17 @@
         </div>
       </section>
 
+      <section id="dashboard-section" style="display: none;">
+        <div class="section-header">
+          <h2>Live Dashboard</h2>
+          <button id="dashboard-clear-btn" type="button" title="Clear all values">Clear</button>
+        </div>
+        <div id="dashboard-grid"></div>
+        <div class="dashboard-status">
+          <span id="dashboard-status-text">Waiting for key=value data...</span>
+        </div>
+      </section>
+
       <section id="plotter-section" style="display: none;">
         <div class="section-header">
           <h2>Serial Plotter</h2>
@@ -81,7 +99,15 @@
               Window:
               <input type="number" id="plotter-window-input" value="200" min="50" max="5000" step="50" />
             </label>
+            <label class="checkbox-label" title="Show circles at data sample points">
+              <input type="checkbox" id="plotter-points-checkbox" />
+              Points
+            </label>
             <button id="plotter-pause-btn" type="button" title="Pause/Resume">&#x23F8;</button>
+            <label class="checkbox-label" title="Keep recording data while paused">
+              <input type="checkbox" id="plotter-keep-recording-checkbox" />
+              Record
+            </label>
             <button id="plotter-clear-btn" type="button" title="Clear all plots">Clear</button>
           </div>
         </div>
