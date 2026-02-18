@@ -416,6 +416,12 @@ button:active {
   border-color: #4fc3f7;
 }
 
+.zoom-label {
+  font-size: 0.65em;
+  color: #555;
+  padding: 0 2px;
+}
+
 .plot-canvas {
   width: 100% !important;
   height: 250px !important;
@@ -482,6 +488,42 @@ button:active {
   margin-top: 8px;
   font-size: 0.8em;
   color: #555;
+}
+
+/* Measurement Trigger Button */
+.plot-trigger-btn {
+  min-width: 50px;
+  padding: 1px 6px;
+  font-size: 0.7em;
+  line-height: 1;
+  border-color: #555;
+  color: #888;
+  margin-right: 6px;
+}
+
+.plot-trigger-btn:hover {
+  color: #FFFF00;
+  border-color: #FFFF00;
+}
+
+.plot-trigger-btn.active {
+  color: #FFFF00;
+  border-color: #FFFF00;
+  background-color: #FFFF0015;
+}
+
+/* Measurement Delta Readout */
+.plot-delta-readout {
+  padding: 3px 8px;
+  margin-top: 2px;
+  font-size: 0.7em;
+  font-variant-numeric: tabular-nums;
+  color: #FFFF00;
+  min-height: 1em;
+}
+
+.plot-delta-readout:empty {
+  display: none;
 }
 
 /* Plot Statistics */

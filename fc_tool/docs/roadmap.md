@@ -1,6 +1,6 @@
 # fc_tool - Roadmap
 
-> Last updated: 2026-02-17 (session 3)
+> Last updated: 2026-02-17 (session 4)
 
 ## Overview
 
@@ -66,8 +66,12 @@ This roadmap tracks project-level features and milestones. For immediate tasks, 
   - Completed: 2026-02-17
   - Description: `--log <file>` in headless mode tees all serial data to a file while also printing to stdout. GUI mode: "Log" button starts/stops logging to `fc_tool_<timestamp>.log`.
   - Implementation: Headless: optional `log_writer` in `run_headless()`. GUI: `start_log`/`stop_log` Tauri commands, `log_writer` in SerialState, reader thread writes when active.
+- [x] Timestamped log lines
+  - Completed: 2026-02-17
+  - Description: All log file lines prefixed with `[epoch.millis]` timestamp (e.g., `[1740000000.123] data...`). Uses `std::time::SystemTime` (no chrono dependency).
+  - Implementation: `format_timestamp()` in lib.rs. Applied in both GUI reader thread and headless mode.
 
-### Serial Monitor Enhancements (future)
+### Serial Monitor Enhancements
 
 - [x] ANSI escape code rendering
   - Completed: 2026-02-11
@@ -111,23 +115,33 @@ This roadmap tracks project-level features and milestones. For immediate tasks, 
   - Description: Independent clear for plots vs serial monitor
   - Implementation: Two separate clear buttons in their respective sections
 
-**Plot interaction & measurement (future):**
+**Plot interaction & measurement:**
 
-- [ ] Trigger Mode — place neon yellow vertical (Y-intercept) and neon blue horizontal (X-intercept) lines for measurement
-- [ ] Axis toggle — [Axis: ON/OFF] per plot; right-click switches Y-intercept/X-intercept mode
-- [ ] Measurement readout — dedicated panel showing mouse position + delta between placed lines
+- [x] Trigger Mode — place neon yellow vertical (Y-intercept) and neon blue horizontal (X-intercept) lines for measurement
+  - Completed: 2026-02-17
+  - Implementation: "Trigger" toggle button per plot. Click to place cursor lines (max 2 per axis). Right-click toggles between vertical/horizontal mode. Lines are draggable with 8px grab threshold.
+- [x] Axis toggle — right-click switches Y-intercept/X-intercept mode
+  - Completed: 2026-02-17
+- [x] Measurement readout — dedicated panel showing cursor positions + delta between placed lines
+  - Completed: 2026-02-17
+  - Implementation: Delta readout below crosshair readout. Shows Y1/Y2/ΔY (yellow) and X1/X2/ΔX (blue).
 - [x] Show data points toggle — "Points" checkbox in plotter toolbar, toggles circles at sample points
   - Completed: 2026-02-17
-- [ ] Measurement cursors — 2 yellow verticals + 2 blue horizontals per plot, draggable AND input fields
+- [x] Measurement cursors — 2 yellow verticals + 2 blue horizontals per plot, draggable
+  - Completed: 2026-02-17
+  - Implementation: cursors.js module (createMeasurementState, createMeasurementPlugin, attachMeasurementEvents). Chart.js inline plugin + native DOM events. Colors: yellow (#FFFF00) vertical, blue (#00BFFF) horizontal.
 
 Reference: [cursor-interaction-discussion.md](cursor-interaction-discussion.md)
 
-**Plot controls & modes (future):**
+**Plot controls & modes:**
 
 - [x] Pause/freeze mode — "Keep recording when paused" toggle buffers data, flushes on unpause
   - Completed: 2026-02-17
-- [x] Y-axis zoom controls — [+] [-] [A] per plot, zoom in/out/auto-fit
-- [ ] X-axis scaling — independent zoom/pan for time axis
+- [x] Y-axis zoom/pan controls — [Y +] [-] [A] [▲] [▼] per plot: zoom in/out/auto-fit/pan up/pan down
+  - Updated: 2026-02-17 — added pan up/down buttons for symmetric X/Y controls
+- [x] X-axis zoom/pan controls — [X +] [−] [A] [◀] [▶] per plot: zoom in/out/auto-fit/pan left/pan right
+  - Completed: 2026-02-17
+  - Implementation: xZoom (fraction of data window visible), xPan (offset from right edge). Applied via Chart.js x scale min/max. Pan disabled when auto-fit.
 - [ ] Per-plot mode selector — Continuous / Period Mode (N) / Single period / Frozen
 - [x] Font size controls — [+] [-] buttons for serial monitor text size (8–24px)
   - Completed: 2026-02-17
@@ -145,9 +159,12 @@ Reference: [plotter_discussion.md](plotter_discussion.md)
 
 Reference: [signal-analysis-discussion.md](signal-analysis-discussion.md)
 
-**Modular architecture (future):**
+**Modular architecture:**
 
-- [ ] Dedicated JS modules for plot analytics (chart-manager, cursor-system, readout-panel, period-detector, anomaly-tracker, trigger-mode, color-palette)
+- [x] JS module split — main.js split into focused modules
+  - Completed: 2026-02-17
+  - Implementation: ansi.js (ANSI parser), dashboard.js (Dashboard class), connection.js (Connection class), cursors.js (measurement cursors), plotter.js (PlotterManager), main.js (coordinator)
+- [ ] Dedicated JS modules for advanced plot analytics (period-detector, anomaly-tracker)
 
 ### Board Management
 
@@ -164,9 +181,10 @@ Reference: [signal-analysis-discussion.md](signal-analysis-discussion.md)
 - [x] Board info display
   - Description: Show connected board type, port, status in dropdown
   - Implementation: Port dropdown shows "portname — BoardName" format
-- [ ] USB hot-plug detection
+- [x] USB hot-plug detection
+  - Completed: 2026-02-17
   - Description: Detect device connect/disconnect without manual refresh
-  - Notes: Use libudev on Linux, IOKit on macOS, WMI/SetupAPI on Windows
+  - Implementation: Polling-based (2s interval). Background Rust thread compares `serialport::available_ports()` snapshots, emits `ports-changed` event with added/removed arrays. Frontend auto-refreshes port list and shows system messages. Cross-platform, no extra dependencies.
 - [ ] Port activity monitoring
   - Description: Show which ports have active data (activity indicator)
 
@@ -239,6 +257,7 @@ Each build script sources the required env vars before compiling.
 
 > Features moved here when done, for historical reference.
 
+- [x] Measurement cursors, X/Y zoom+pan, USB hot-plug, timestamped logs, JS module split — 2026-02-17 (session 4)
 - [x] Live Dashboard Mode, signal statistics readout, GUI-mode logging — 2026-02-17
 - [x] Plotter enhancements: font size controls, show data points toggle, pause with keep-recording — 2026-02-17
 - [x] Force-release serial port (`--kill-port`), raw data logging (`--log`), stale Hz fix — 2026-02-17

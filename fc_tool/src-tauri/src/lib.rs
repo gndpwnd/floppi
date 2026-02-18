@@ -9,6 +9,15 @@ use std::thread;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, State};
 
+/// Format current time as ISO-ish timestamp (UTC seconds + millis, no chrono dep).
+/// Output: "1740000000.123"
+fn format_timestamp() -> String {
+    let d = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default();
+    format!("{}.{:03}", d.as_secs(), d.subsec_millis())
+}
+
 // ============================================================================
 // Startup Args (passed from CLI → managed state → frontend)
 // ============================================================================
@@ -195,10 +204,11 @@ fn open_serial_port(
                 }
                 Ok(_) => {
                     let _ = app.emit("serial-data", SerialDataEvent { data: line.clone() });
-                    // Write to log file if active
+                    // Write to log file if active (with timestamp prefix)
                     if let Ok(mut lw) = log_writer_arc.lock() {
                         if let Some(ref mut f) = *lw {
-                            let _ = f.write_all(line.as_bytes());
+                            let ts = format_timestamp();
+                            let _ = write!(f, "[{}] {}", ts, line);
                         }
                     }
                 }
@@ -339,6 +349,61 @@ fn stop_log(state: State<'_, SerialState>) -> Result<Option<String>, String> {
 }
 
 // ============================================================================
+// USB Hot-Plug Detection (polling)
+// ============================================================================
+
+#[derive(Clone, Serialize)]
+pub struct PortsChangedEvent {
+    pub added: Vec<String>,
+    pub removed: Vec<String>,
+}
+
+/// Start a background thread that polls for USB port changes every 2 seconds.
+fn start_port_watcher(app: AppHandle) {
+    thread::spawn(move || {
+        let mut known_ports: Vec<String> = serialport::available_ports()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|p| p.port_name)
+            .collect();
+        known_ports.sort();
+
+        loop {
+            thread::sleep(Duration::from_secs(2));
+
+            let mut current: Vec<String> = serialport::available_ports()
+                .unwrap_or_default()
+                .into_iter()
+                .map(|p| p.port_name)
+                .collect();
+            current.sort();
+
+            if current != known_ports {
+                let added: Vec<String> = current
+                    .iter()
+                    .filter(|p| !known_ports.contains(p))
+                    .cloned()
+                    .collect();
+                let removed: Vec<String> = known_ports
+                    .iter()
+                    .filter(|p| !current.contains(p))
+                    .cloned()
+                    .collect();
+
+                if !added.is_empty() || !removed.is_empty() {
+                    let _ = app.emit(
+                        "ports-changed",
+                        PortsChangedEvent { added, removed },
+                    );
+                }
+
+                known_ports = current;
+            }
+        }
+    });
+}
+
+// ============================================================================
 // GUI Mode (Tauri window)
 // ============================================================================
 
@@ -360,6 +425,10 @@ pub fn run_gui(port: Option<String>, baud: Option<u32>) {
             start_log,
             stop_log
         ])
+        .setup(|app| {
+            start_port_watcher(app.handle().clone());
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
@@ -517,9 +586,10 @@ pub fn run_headless(port: Option<String>, baud: Option<u32>, log_file: Option<St
             Ok(_) => {
                 // Raw serial data to stdout (verbose — includes all telemetry/plotter data)
                 let _ = out.write_all(line.as_bytes());
-                // Also write to log file if active
+                // Also write to log file if active (with timestamp)
                 if let Some(ref mut lw) = log_writer {
-                    let _ = lw.write_all(line.as_bytes());
+                    let ts = format_timestamp();
+                    let _ = write!(lw, "[{}] {}", ts, line);
                 }
             }
             Err(e) => {

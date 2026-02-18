@@ -1,6 +1,6 @@
 # fc_tool - Todo
 
-> Last updated: 2026-02-17 (session 3)
+> Last updated: 2026-02-17 (session 4)
 
 ## In Progress
 
@@ -23,7 +23,8 @@
 - [x] Pause/freeze mode — "Keep recording" toggle buffers data while paused, flushes on unpause — **DONE** 2026-02-17
 - [x] Font size controls — [+] [-] buttons for serial monitor (8–24px range) — **DONE** 2026-02-17
 - [x] Show data points toggle — "Points" checkbox toggles circles at sample points — **DONE** 2026-02-17
-- [ ] Measurement cursors — 2 yellow verticals + 2 blue horizontals, draggable + input fields
+- [x] Measurement cursors — 2 yellow verticals + 2 blue horizontals, draggable, per-plot trigger button — **DONE** 2026-02-17
+- [x] X/Y axis zoom + pan — symmetric controls for both axes (+/−/A/pan) — **DONE** 2026-02-17
 - [ ] Per-plot mode selector — Continuous / Period Mode (N) / Single period / Frozen
 
 ### Signal Analysis Features (research complete, needs discussion)
@@ -49,7 +50,7 @@
 ### Serial Features
 
 - [x] Raw data logging from GUI mode — "Log" button starts/stops logging to timestamped file — **DONE** 2026-02-17
-- [ ] Timestamped log lines (prefix each line with ISO timestamp)
+- [x] Timestamped log lines — `[epoch.millis]` prefix on all log file lines — **DONE** 2026-02-17
 
 ### Platform Validation
 
@@ -64,6 +65,13 @@
 
 ## Recently Completed
 
+- [x] Session 4 features — 2026-02-17 (session 4)
+  - Measurement cursors — cursors.js module: 2 yellow verticals + 2 blue horizontals per plot, draggable, "Trigger" toggle button, right-click axis switch, delta readout
+  - X/Y axis symmetric zoom + pan — both axes: [+] [−] [A] + directional pan buttons (▲▼ for Y, ◀▶ for X)
+  - USB hot-plug detection — polling-based port watcher (2s interval), auto-refresh port list, system messages for connect/disconnect
+  - Timestamped log lines — `[epoch.millis]` prefix in both GUI and headless log files
+  - Modular JS split — main.js (674 lines) → ansi.js + dashboard.js + connection.js + cursors.js + main.js coordinator (331 lines)
+  - All 29/29 tests passing
 - [x] New features — 2026-02-17 (session 3)
   - Live Dashboard Mode — toggleable `key=value` grid panel, updates in place, change flash highlight, Ctrl+Shift+D shortcut
   - Signal statistics readout — min/max/avg per variable displayed below each plot

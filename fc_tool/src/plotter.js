@@ -5,6 +5,13 @@
  * Creates Chart.js instances dynamically as new plot IDs arrive in the data stream.
  */
 
+import {
+  createMeasurementState,
+  createMeasurementPlugin,
+  attachMeasurementEvents,
+  updateDeltaReadout,
+} from './cursors.js';
+
 // ============================================================================
 // Theme
 // ============================================================================
@@ -243,6 +250,7 @@ class PlotterManager {
         }
       }
 
+      this._applyXScale(plot);
       plot.chart.update('none');
       this._updateStatsBar(plot);
     }
@@ -261,13 +269,34 @@ class PlotterManager {
     titleEl.textContent = `Plot ${plotId}`;
     header.appendChild(titleEl);
 
+    const triggerBtn = document.createElement('button');
+    triggerBtn.type = 'button';
+    triggerBtn.className = 'plot-trigger-btn';
+    triggerBtn.textContent = 'Trigger';
+    triggerBtn.title = 'Toggle measurement cursors (right-click plot to switch axis)';
+    header.appendChild(triggerBtn);
+
     const zoomControls = document.createElement('div');
     zoomControls.className = 'plot-zoom';
     zoomControls.innerHTML =
+      '<span class="zoom-label">Y</span>' +
       '<button type="button" data-zoom="in" title="Zoom in Y">+</button>' +
       '<button type="button" data-zoom="out" title="Zoom out Y">\u2212</button>' +
-      '<button type="button" data-zoom="auto" title="Auto-fit Y">A</button>';
+      '<button type="button" data-zoom="auto" title="Auto-fit Y">A</button>' +
+      '<button type="button" data-zoom="up" title="Pan up">\u25B2</button>' +
+      '<button type="button" data-zoom="down" title="Pan down">\u25BC</button>';
     header.appendChild(zoomControls);
+
+    const xZoomControls = document.createElement('div');
+    xZoomControls.className = 'plot-zoom';
+    xZoomControls.innerHTML =
+      '<span class="zoom-label">X</span>' +
+      '<button type="button" data-xzoom="in" title="Zoom in X (fewer samples)">+</button>' +
+      '<button type="button" data-xzoom="out" title="Zoom out X (more samples)">\u2212</button>' +
+      '<button type="button" data-xzoom="auto" title="Auto-fit X">A</button>' +
+      '<button type="button" data-xzoom="left" title="Pan left">\u25C0</button>' +
+      '<button type="button" data-xzoom="right" title="Pan right">\u25B6</button>';
+    header.appendChild(xZoomControls);
 
     wrapper.appendChild(header);
 
@@ -283,6 +312,10 @@ class PlotterManager {
     readout.appendChild(readoutText);
     wrapper.appendChild(readout);
 
+    const deltaReadout = document.createElement('div');
+    deltaReadout.className = 'plot-delta-readout';
+    wrapper.appendChild(deltaReadout);
+
     const statsBar = document.createElement('div');
     statsBar.className = 'plot-stats';
     wrapper.appendChild(statsBar);
@@ -290,6 +323,8 @@ class PlotterManager {
     this.container.appendChild(wrapper);
 
     const crosshairPlugin = createCrosshairPlugin(readoutText);
+    const measureState = createMeasurementState();
+    const measurePlugin = createMeasurementPlugin(measureState, deltaReadout);
 
     const chart = new Chart(canvas.getContext('2d'), {
       type: 'line',
@@ -330,8 +365,10 @@ class PlotterManager {
           },
         },
       },
-      plugins: [zeroLinePlugin, crosshairPlugin],
+      plugins: [zeroLinePlugin, crosshairPlugin, measurePlugin],
     });
+
+    attachMeasurementEvents(canvas, chart, measureState, deltaReadout);
 
     const plotState = {
       chart,
@@ -340,15 +377,33 @@ class PlotterManager {
       readoutText,
       titleEl,
       statsBar,
+      deltaReadout,
+      measureState,
       plotId,
       datasets: new Map(), // name -> dataset index
       stats: new Map(),    // name -> { min, max, sum, count }
       colorIdx: 0,
       sampleCount: 0,
       yAuto: true,
+      xAuto: true,
+      xZoom: 1.0,  // fraction of maxDataPoints visible (1.0 = all)
+      xPan: 0,     // samples offset from right edge
     };
 
-    // Zoom button handler
+    // Trigger (measurement cursor) toggle
+    triggerBtn.addEventListener('click', () => {
+      measureState.enabled = !measureState.enabled;
+      triggerBtn.classList.toggle('active', measureState.enabled);
+      if (!measureState.enabled) {
+        measureState.verticalLines.length = 0;
+        measureState.horizontalLines.length = 0;
+        measureState.dragging = null;
+      }
+      updateDeltaReadout(measureState, deltaReadout);
+      chart.update('none');
+    });
+
+    // Y-axis zoom/pan button handler
     zoomControls.addEventListener('click', (e) => {
       const btn = e.target.closest('[data-zoom]');
       if (!btn) return;
@@ -359,7 +414,7 @@ class PlotterManager {
         yScale.min = undefined;
         yScale.max = undefined;
         plotState.yAuto = true;
-      } else {
+      } else if (action === 'in' || action === 'out') {
         const currentMin = chart.scales.y.min;
         const currentMax = chart.scales.y.max;
         const center = (currentMin + currentMax) / 2;
@@ -368,11 +423,74 @@ class PlotterManager {
         yScale.min = center - halfRange * factor;
         yScale.max = center + halfRange * factor;
         plotState.yAuto = false;
+      } else if (action === 'up' || action === 'down') {
+        const currentMin = chart.scales.y.min;
+        const currentMax = chart.scales.y.max;
+        const range = currentMax - currentMin;
+        const step = range * 0.25;
+        const shift = action === 'up' ? step : -step;
+        yScale.min = currentMin + shift;
+        yScale.max = currentMax + shift;
+        plotState.yAuto = false;
       }
       chart.update('none');
     });
 
+    // X-axis zoom/pan button handler
+    xZoomControls.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-xzoom]');
+      if (!btn) return;
+      const action = btn.dataset.xzoom;
+
+      if (action === 'auto') {
+        plotState.xAuto = true;
+        plotState.xZoom = 1.0;
+        plotState.xPan = 0;
+        chart.options.scales.x.min = undefined;
+        chart.options.scales.x.max = undefined;
+      } else if (action === 'in') {
+        plotState.xZoom = Math.max(0.05, plotState.xZoom * 0.5);
+        plotState.xAuto = false;
+      } else if (action === 'out') {
+        plotState.xZoom = Math.min(1.0, plotState.xZoom * 2);
+        if (plotState.xZoom >= 1.0) {
+          plotState.xAuto = true;
+          plotState.xPan = 0;
+          chart.options.scales.x.min = undefined;
+          chart.options.scales.x.max = undefined;
+        }
+      } else if (action === 'left' || action === 'right') {
+        if (plotState.xAuto) return; // no pan when auto
+        const visibleCount = Math.max(10, Math.round(this.maxDataPoints * plotState.xZoom));
+        const step = Math.max(1, Math.round(visibleCount / 4));
+        if (action === 'left') {
+          plotState.xPan = Math.min(this.maxDataPoints - visibleCount, plotState.xPan + step);
+        } else {
+          plotState.xPan = Math.max(0, plotState.xPan - step);
+        }
+      }
+      this._applyXScale(plotState);
+      chart.update('none');
+    });
+
     this.plots.set(plotId, plotState);
+  }
+
+  /** Apply X-axis min/max based on zoom/pan state. */
+  _applyXScale(plot) {
+    if (plot.xAuto) {
+      plot.chart.options.scales.x.min = undefined;
+      plot.chart.options.scales.x.max = undefined;
+      return;
+    }
+    const labels = plot.chart.data.labels;
+    if (labels.length === 0) return;
+    const visibleCount = Math.max(10, Math.round(this.maxDataPoints * plot.xZoom));
+    const lastIdx = labels.length - 1;
+    const endIdx = Math.max(0, lastIdx - plot.xPan);
+    const startIdx = Math.max(0, endIdx - visibleCount);
+    plot.chart.options.scales.x.min = labels[startIdx];
+    plot.chart.options.scales.x.max = labels[endIdx];
   }
 
   _addDataPoint(plot, name, value) {
