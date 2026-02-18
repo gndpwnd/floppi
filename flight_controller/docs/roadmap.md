@@ -194,7 +194,7 @@ This roadmap tracks project-level features and milestones for the flight control
 
 - [x] Calibration test suite for Teensy — `tests/test_calibration.sh`
   - Completed: 2026-02-12, rewritten 2026-02-13, expanded 2026-02-17
-  - Notes: 19 test functions covering all calibration commands. Uses `serial_monitor.py` backend. Tightened assertions, failure diagnostics, `check_absent()` negative helper. No fc_tool dependency.
+  - Notes: 18 test functions, **42 checks**, covering all calibration commands. Uses `serial_monitor.py` backend. Includes boot drain after `reboot_teensy()`, automatic CDC recovery (`teensy_reboot` on empty output), silence-based output drain, `check_absent()` negative helper. No fc_tool dependency. See [archive/bench-test-2026-02-17.md](archive/bench-test-2026-02-17.md).
 
 - [x] Rewrite test harness to use Python serial (drop fc_tool dependency)
   - Completed: 2026-02-13
@@ -676,8 +676,12 @@ Files: `ota.h`, `ota.cpp`.
 - [x] Serial monitor rewritten with raw termios (dropped pyserial, POSIX termios matching serialport-rs) — 2026-02-13
 - [x] Calibration test suite rewritten to use serial_monitor.py (11 tests, no fc_tool dependency) — 2026-02-13
 - [x] `tools/calibrate.sh` menu-driven calibration wrapper (17 options, CLI mode, auto port detection) — 2026-02-17
-- [x] Test suite expanded to 19 tests, tightened assertions, failure diagnostics — 2026-02-17
+- [x] Test suite expanded to 18 tests (42 checks), tightened assertions, failure diagnostics — 2026-02-17
 - [x] `waitForConfirmation()` dead parameter removed (~45 call sites across 7 files) — 2026-02-17
+- [x] serial_monitor.py reliability fixes (kernel flush, silence-based drain, `--wait-for`, `--quiet`, exit code 2) — 2026-02-17
+- [x] Test suite boot drain (wait for "READY" after `reboot_teensy`) — 2026-02-17
+- [x] Test suite CDC recovery (auto `teensy_reboot` on empty output from USB CDC degradation) — 2026-02-17
+- [x] Bench test: OLED SSD1306 128x32, IMU MPU6050, telemetry, all serial commands — 42/42 pass — 2026-02-17
 
 ---
 

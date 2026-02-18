@@ -8,13 +8,17 @@ _Focus: Get everything working on real hardware. Feature development is paused �
 
 > **SERIAL POLICY**: Always use `tools/serial_monitor.py` (Python) or `pio device monitor` (PlatformIO) for serial communication. NEVER use raw bash commands (cat, stty, echo > /dev). Improve the Python scripts as needed. No fc_tool dependency.
 
-### Current Hardware: Teensy 4.0 + MPU6050 + SSD1306 OLED + SBUS Receiver
+### Current Hardware: Teensy 4.0 + MPU6050 + SSD1306 OLED (no receiver)
 
-- [ ] Run orientation detection (`o` command) — auto-detect MPU6050 mounting, generate axis transforms. AccZ=-0.08g indicates sideways mount.
+- [ ] Run orientation detection (`o` command) — auto-detect MPU6050 mounting, generate axis transforms. AccX≈1.02g confirms X-axis pointing down. **Requires physical board manipulation.** Use `calibrate.sh` interactively.
 - [ ] Complete IMU calibration (`i` command) with orientation correction — verify corrected AccZ ≈ 1.0g
+- [ ] Verify OLED displays correct status during calibration (armed/idle/calibrating states) — user visual check
+
+### Blocked Until Receiver Available
+
 - [ ] Verify radio receiver (`s` command) — confirm all 6 channels respond to transmitter input
 - [ ] Radio calibration (`r` command) — full channel mapping with transmitter
-- [ ] Verify OLED displays correct status during calibration (armed/idle/calibrating states)
+- [ ] Re-enable `USE_SBUS_RECEIVER` in config.h (currently commented out for bench testing)
 
 ## Up Next
 
@@ -30,15 +34,28 @@ _Test every calibration command with the hardware we have. Use `serial_monitor.p
 - [x] `o` — orientation detection start + cancel verified (full test needs physical board manipulation)
 - [x] `t` — telemetry output streams correctly (IMU ~50Hz, FULL ~20Hz)
 - [x] `g` — PID gains display + set (kp_roll 0.2→0.25 round-trip verified)
-- [x] `p` — filter/limits display
+- [x] `p` — filter/limits display + set (b_accel 0.14→0.12 round-trip verified)
 - [x] `d` — dump outputs all calibration values in config.h format
 - [x] `a` — sequential workflow starts, shows stages, offers 6-pos/single-pos choice
 - [x] `s` — channel status shows CH1-6 values
-- [ ] `r` — radio calibration (BLOCKED: needs transmitter powered on)
-- [ ] `f` — failsafe detection (BLOCKED: needs transmitter power-off cycle)
-- [ ] `e` — ESC endpoint calibration (BLOCKED: needs ESCs/motors connected)
+- [x] `n` — network diagnostics (correctly reports ESP32-only on Teensy)
+- [x] `m` — 6-position IMU calibration start/cancel verified
+- [x] `e` — ESC calibration start/cancel verified
+- [x] `f` — failsafe detection start/cancel verified
+- [x] `r` — radio calibration start/cancel verified
+- [ ] `r` — radio calibration full flow (BLOCKED: needs transmitter powered on)
+- [ ] `f` — failsafe detection full flow (BLOCKED: needs transmitter power-off cycle)
+- [ ] `e` — ESC endpoint calibration full flow (BLOCKED: needs ESCs/motors connected)
 
-### Immediate: Calibration Wrapper Script
+### Test Infrastructure — Completed This Session
+
+- [x] Full test suite: 18 tests, **42/42 checks pass** — 2026-02-17
+- [x] Boot drain fix — `reboot_teensy()` now waits for "FLIGHT CONTROLLER READY" before starting tests
+- [x] CDC recovery — `run_serial()` auto-recovers from Teensy USB CDC degradation via `teensy_reboot`
+- [x] Sequential cancel fix — sends two `n` to fully exit the multi-question workflow
+- [x] serial_monitor.py improvements — kernel buffer flush, silence-based drain, `--wait-for`, `--quiet`, exit code 2
+
+### Calibration Wrapper Script
 
 - [x] Create `tools/calibrate.sh` — menu-driven wrapper for serial_monitor.py — 2026-02-17
 - [x] Update `docs/2_calibration_guide.md` to reference calibrate.sh as primary method — 2026-02-17
@@ -46,8 +63,6 @@ _Test every calibration command with the hardware we have. Use `serial_monitor.p
 
 ### Future: Test Infrastructure
 
-- [x] Rewrite `test_calibration.sh` to use `serial_monitor.py` instead of fc_tool headless — 2026-02-13
-- [x] Improve `test_calibration.sh` — rename pass/fail builtins, add 8 missing tests, tighten assertions, add failure diagnostics — 2026-02-17
 - [ ] Modular test runner — harness + suites pattern (see roadmap)
 - [ ] Auto-flash-and-test — `./test_runner.sh --board teensy40 --suite imu --flash`
 
@@ -72,45 +87,44 @@ _Lower priority, do when time permits_
 _Tasks waiting on something (include reason)_
 
 - Motor/ESC testing — **no motors/ESCs connected**
-- Failsafe calibration (`f`) — **needs transmitter power-off cycle**
+- Failsafe calibration (`f` full flow) — **needs transmitter power-off cycle**
+- Radio calibration (`r` full flow) — **needs transmitter powered on**
+- SBUS re-enable — **commented out in config.h for bench testing without receiver**
 
 ## Recently Completed
 
 _For context; clear periodically_
 
-- [x] IMU calibration bug fixes from bench testing — 2026-02-12
-  - Stability check rewritten: variance-based (was absolute bias, always failed on uncalibrated MPU6050)
-  - Gyro quality thresholds relaxed: 2.0 → 15.0°/s (MPU6050 datasheet allows ±20°/s)
-  - No-receiver calibration builds: `#error` skipped in CALIBRATION_MODE
-  - Quality check now shows actual bias values in output
-  - See [findings/calibration-test-results-2026-02-12.md](/docs/findings/calibration-test-results-2026-02-12.md)
-- [x] Calibration test suite rewritten to use serial_monitor.py — 2026-02-13
-  - 11 test functions (help, status, channels, pid, pid_set, params, dump, telemetry, imu, orientation, sequential)
-  - No fc_tool dependency — uses serial_monitor.py backend
-- [x] Serial monitor rewritten with raw termios — 2026-02-13
-  - Dropped pyserial dependency. Uses raw POSIX termios matching Rust serialport-rs behavior.
-  - Works with both Teensy USB CDC and ESP32 USB-UART.
-  - 10/13 calibration commands verified (3 blocked by hardware)
-- [x] calibrate.sh plan documented — 2026-02-13
-  - Plan: [plans/calibrate-sh-plan.md](plans/calibrate-sh-plan.md)
-  - Menu-driven wrapper, interactive pass-through, CLI mode
+- [x] Bench test session — 2026-02-17
+  - See [archive/bench-test-2026-02-17.md](archive/bench-test-2026-02-17.md)
+  - OLED, IMU, telemetry, all serial commands verified
+  - 42/42 automated test checks pass
+  - IMU mounting confirmed (X-axis down, needs orientation detection)
+  - SBUS noise issue documented (comment out when no receiver)
+  - USB CDC degradation issue found and fixed (auto-recovery in test harness)
+- [x] serial_monitor.py improvements — 2026-02-17
+  - Kernel buffer flush on connect (`tcflush`)
+  - Silence-based drain (replaces fixed 0.5s timer)
+  - `--wait-for` pattern matching, `--quiet` flag, exit code 2
+- [x] test_calibration.sh fixes — 2026-02-17
+  - Boot drain after `reboot_teensy()` (waits for firmware READY)
+  - CDC recovery (auto-recovery via `teensy_reboot` on empty output)
+  - Sequential cancel sends two `n` for multi-question workflow
+  - `|| true` on serial_monitor.py calls (tolerate exit code 2 under `set -euo pipefail`)
 - [x] calibrate.sh implemented — 2026-02-17
-  - 17 menu options: 6 display, 6 calibration, 4 tuning, 1 workflow
-  - CLI mode: `./calibrate.sh /dev/ttyACM0 imu`
-  - Auto port detection, ModemManager check, prerequisite handling
 - [x] waitForConfirmation() dead parameter removed — 2026-02-17
-  - Cleaned up unused `int timeoutSeconds` parameter across 7 files (~45 call sites)
-- [x] Calibration library modularization — 2026-02-10
-- [x] RadioComm library modularization + command arbitration — 2026-02-11
-- [x] All feature tiers implemented (base, optimization, racing) — 2026-02-09
-- [x] All calibration routines implemented (IMU, radio, orientation, failsafe, ESC, mag, PID, filters) — 2026-02-09
+- [x] IMU calibration bug fixes from bench testing — 2026-02-12
+- [x] Calibration test suite rewritten to use serial_monitor.py — 2026-02-13
+- [x] Serial monitor rewritten with raw termios — 2026-02-13
 
 ## Notes
 
 - **Serial tools**: `tools/calibrate.sh` (primary, menu-driven), `tools/serial_monitor.py` (backend/scripting), `pio device monitor` (fallback). No fc_tool dependency.
-- **Teensy quirk**: Stop ModemManager first (`sudo systemctl stop ModemManager`), use `teensy_reboot` for board reset
-- **MPU6050 mounting**: AccX≈1.02g, AccZ≈-0.08g → X-axis points down. Roll≈128° confirms non-standard mounting.
-- **SBUS noise**: Floating serial pin produces random channel values when no receiver connected. Comment out USE_SBUS_RECEIVER for bench testing without receiver.
+- **Teensy quirks**: Stop ModemManager (`sudo systemctl stop ModemManager`). Use `teensy_reboot` for board reset (DTR toggle doesn't reboot Teensy 4.0). USB CDC degrades after ~15 rapid open/close cycles — only `teensy_reboot` or physical unplug recovers.
+- **MPU6050 mounting**: AccX≈1.02g, AccY≈0.05g, AccZ≈-0.10g → X-axis points down. Roll≈130° (drifting due to uncalibrated gyro). Needs orientation detection (`o` command) to fix.
+- **SBUS noise**: Floating serial pin produces random channel values when no receiver connected. Comment out `USE_SBUS_RECEIVER` in config.h for bench testing without receiver. Currently commented out.
+- **Gyro bias**: Uncalibrated biases: GX≈-4°/s, GY≈-11°/s, GZ≈-2°/s. Causes attitude drift. Will be zeroed by IMU calibration (`i` command).
+- **Motor outputs**: PID outputs pegged at extremes (1000/2000) due to perceived 130° roll. Will normalize after orientation + IMU calibration.
 
 ---
 

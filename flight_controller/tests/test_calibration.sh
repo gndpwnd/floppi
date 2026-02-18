@@ -95,14 +95,28 @@ run_serial() {
     # Brief pause to let the kernel release the port from any previous connection
     sleep 0.3
 
+    # Note: serial_monitor.py may return non-zero (exit 2 = no output). The test
+    # harness checks output files separately via check_output(), so we tolerate
+    # non-zero exits here with "|| true".
     python3 "$SERIAL_MON" "$PORT" --no-dtr-reset --boot-wait 1 \
-        "${send_args[@]}" --wait "$wait_secs" --output "$outfile" 2>/dev/null
+        "${send_args[@]}" --wait "$wait_secs" --output "$outfile" 2>/dev/null || true
 
-    # If output file is empty, retry once with a longer pause
+    # If output file is empty, the USB CDC may be in a bad state.
+    # Teensy USB CDC degrades after many rapid open/close cycles.
+    # Recovery: teensy_reboot to restore CDC, then retry.
     if [ ! -s "$outfile" ]; then
-        sleep 1
+        info "Empty output — attempting CDC recovery (teensy_reboot)..."
+        if [ -x "$TEENSY_REBOOT" ]; then
+            "$TEENSY_REBOOT" 2>/dev/null || true
+            sleep 5
+            # Wait for firmware to fully boot (IMU warmup)
+            python3 "$SERIAL_MON" "$PORT" --no-dtr-reset --boot-wait 0 \
+                --send "" --wait 12 --output "$RESULTS_DIR/_cdc_recovery.txt" 2>/dev/null || true
+        else
+            sleep 2
+        fi
         python3 "$SERIAL_MON" "$PORT" --no-dtr-reset --boot-wait 1 \
-            "${send_args[@]}" --wait "$wait_secs" --output "$outfile" 2>/dev/null
+            "${send_args[@]}" --wait "$wait_secs" --output "$outfile" 2>/dev/null || true
     fi
 }
 
