@@ -31,6 +31,52 @@ class Connection {
     this.lastBaud = null;
     this._reconnectTimer = null;
     this._reconnectAttempts = 0;
+    this.startupPorts = null; // Set<string> — filled on first scan
+    this._portList = [];      // Full port data from last scan (for serial number lookup)
+
+    // Auto-populate baud when port selection changes
+    this.portSelect.addEventListener('change', () => {
+      this._applyDeviceSettings();
+    });
+  }
+
+  // =========================================================================
+  // Device session persistence (localStorage)
+  // =========================================================================
+
+  /** Save baud rate for a device identified by serial number. */
+  _saveDeviceSettings(serialNumber, baud) {
+    if (!serialNumber) return;
+    try {
+      localStorage.setItem(`fc_tool_device_${serialNumber}`,
+        JSON.stringify({ baud, lastUsed: Date.now() }));
+    } catch { /* localStorage might be unavailable */ }
+  }
+
+  /** Load saved baud rate for a device by serial number. */
+  _loadDeviceSettings(serialNumber) {
+    if (!serialNumber) return null;
+    try {
+      const data = localStorage.getItem(`fc_tool_device_${serialNumber}`);
+      return data ? JSON.parse(data) : null;
+    } catch { return null; }
+  }
+
+  /** Look up serial number for the currently selected port and apply saved baud. */
+  _applyDeviceSettings() {
+    const selectedPort = this.portSelect.value;
+    const portInfo = this._portList.find(p => p.name === selectedPort);
+    if (!portInfo || !portInfo.serial_number) return;
+
+    const saved = this._loadDeviceSettings(portInfo.serial_number);
+    if (saved && saved.baud) {
+      for (const opt of this.baudSelect.options) {
+        if (parseInt(opt.value, 10) === saved.baud) {
+          opt.selected = true;
+          break;
+        }
+      }
+    }
   }
 
   get isConnected() { return this.connected; }
@@ -49,14 +95,61 @@ class Connection {
         return;
       }
 
+      // Store full port data for serial number lookups
+      this._portList = ports;
+
+      // Track startup ports on first scan
+      if (this.startupPorts === null) {
+        this.startupPorts = new Set(ports.map(p => p.name));
+      }
+
+      // Build options with ranking for auto-select
+      let bestRank = -2;
+      let bestPort = null;
+
       ports.forEach((p) => {
+        const isNew = !this.startupPorts.has(p.name);
         const option = document.createElement("option");
         option.value = p.name;
-        option.textContent = p.board_name
-          ? `${p.name} — ${p.board_name} — ${p.port_type}`
-          : `${p.name} — ${p.port_type}`;
+
+        // Build label: name — board/manufacturer — type
+        let label = p.name;
+        if (p.board_name) {
+          label += ` \u2014 ${p.board_name}`;
+        } else if (p.manufacturer) {
+          label += ` \u2014 ${p.manufacturer}`;
+        }
+        label += ` \u2014 ${p.port_type}`;
+        if (isNew) label += " [NEW]";
+        option.textContent = label;
+
+        // Bold new ports
+        if (isNew) option.style.fontWeight = "bold";
+
         this.portSelect.appendChild(option);
+
+        // Rank for auto-select (higher = better)
+        let rank = -1; // non-USB: never auto-select
+        if (p.is_usb) {
+          if (isNew && p.board_name) rank = 3;
+          else if (p.board_name) rank = 2;
+          else if (isNew) rank = 1;
+          else rank = 0;
+        }
+        if (rank > bestRank) {
+          bestRank = rank;
+          bestPort = p.name;
+        }
       });
+
+      // lastPort takes precedence if still present
+      const lastExists = this.lastPort &&
+        [...this.portSelect.options].some(o => o.value === this.lastPort);
+      if (lastExists) {
+        this.portSelect.value = this.lastPort;
+      } else if (bestPort) {
+        this.portSelect.value = bestPort;
+      }
 
       this.portSelect.disabled = false;
       this.connectBtn.disabled = false;
@@ -81,6 +174,10 @@ class Connection {
       this._stopReconnect();
       this._setConnected(true, port);
       this.onSystem(`Connected to ${port} at ${baud} baud`);
+
+      // Save device settings for next time
+      const portInfo = this._portList.find(p => p.name === port);
+      if (portInfo) this._saveDeviceSettings(portInfo.serial_number, baud);
     } catch (e) {
       this.onSystem(`Connection failed: ${e}`);
     }

@@ -251,3 +251,130 @@ def cursor_delta(v1: float, v2: float) -> float:
     Returns the signed difference (v2 - v1), matching cursors.js behavior.
     """
     return v2 - v1
+
+
+# ============================================================================
+# Period detector — ports period-detector.js ThresholdTrigger
+# ============================================================================
+
+@dataclass
+class TriggerResult:
+    """Result returned when ThresholdTrigger has enough complete periods."""
+    periods: list[list[float]]
+    period_samples: int
+    frequency_hz: float
+    period_ms: float
+    trigger_count: int
+
+
+class ThresholdTrigger:
+    """Python port of ThresholdTrigger from period-detector.js.
+
+    Segments a continuous data stream into periods based on edge crossings.
+    """
+
+    def __init__(
+        self,
+        level: float = 0.0,
+        edge: str = 'rising',
+        hysteresis: float = 0.0,
+        periods_needed: int = 1,
+        sample_rate: float = 50.0,
+        min_period_samples: int = 5,
+    ):
+        self.level = level
+        self.edge = edge
+        self.hysteresis = hysteresis
+        self.periods_needed = periods_needed
+        self.sample_rate = sample_rate
+        self.min_period_samples = min_period_samples
+
+        # State
+        self.prev_value: Optional[float] = None
+        self.armed = True
+        self.sample_index = 0
+        self.current_period: list[float] = []
+        self.completed_periods: list[list[float]] = []
+        self.last_trigger_index = 0
+        self.detected_period_samples = 0
+        self.detected_frequency_hz = 0.0
+        self.detected_period_ms = 0.0
+        self.trigger_count = 0
+
+    def add_sample(self, value: float) -> Optional[TriggerResult]:
+        """Feed a sample. Returns TriggerResult when enough periods are ready."""
+        self.sample_index += 1
+        self.current_period.append(value)
+
+        triggered = False
+
+        if self.prev_value is not None:
+            if self.edge == 'rising':
+                crossed = self.prev_value < self.level and value >= self.level
+            else:
+                crossed = self.prev_value >= self.level and value < self.level
+
+            if crossed and self.armed and len(self.current_period) >= self.min_period_samples:
+                triggered = True
+
+                if self.hysteresis > 0:
+                    self.armed = False
+
+                if self.trigger_count > 0:
+                    self.detected_period_samples = self.sample_index - self.last_trigger_index
+                    self.detected_frequency_hz = self.sample_rate / self.detected_period_samples
+                    self.detected_period_ms = (self.detected_period_samples / self.sample_rate) * 1000
+
+                self.last_trigger_index = self.sample_index
+                self.trigger_count += 1
+
+                if len(self.current_period) > 1:
+                    self.completed_periods.append(self.current_period[:-1])
+
+                self.current_period = [value]
+
+                while len(self.completed_periods) > self.periods_needed + 1:
+                    self.completed_periods.pop(0)
+
+        # Re-arm hysteresis
+        if not self.armed and self.hysteresis > 0:
+            dist = abs(value - self.level)
+            if dist >= self.hysteresis:
+                self.armed = True
+
+        self.prev_value = value
+
+        if triggered and len(self.completed_periods) >= self.periods_needed:
+            periods = self.completed_periods[-self.periods_needed:]
+            return TriggerResult(
+                periods=periods,
+                period_samples=self.detected_period_samples,
+                frequency_hz=self.detected_frequency_hz,
+                period_ms=self.detected_period_ms,
+                trigger_count=self.trigger_count,
+            )
+
+        return None
+
+    def auto_level(self, data: list[float]) -> None:
+        """Auto-detect trigger level from recent data (midpoint of range)."""
+        if not data or len(data) < 2:
+            return
+        min_v = min(data)
+        max_v = max(data)
+        range_v = max_v - min_v
+        self.level = min_v + range_v / 2
+        self.hysteresis = range_v * 0.05
+
+    def reset(self) -> None:
+        """Reset all state."""
+        self.prev_value = None
+        self.armed = True
+        self.sample_index = 0
+        self.current_period = []
+        self.completed_periods = []
+        self.last_trigger_index = 0
+        self.detected_period_samples = 0
+        self.detected_frequency_hz = 0.0
+        self.detected_period_ms = 0.0
+        self.trigger_count = 0

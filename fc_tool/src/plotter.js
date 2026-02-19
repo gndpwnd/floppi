@@ -11,6 +11,7 @@ import {
   attachMeasurementEvents,
   updateDeltaReadout,
 } from './cursors.js';
+import { ThresholdTrigger } from './period-detector.js';
 
 // ============================================================================
 // Theme
@@ -165,6 +166,13 @@ function parseLine(line) {
 }
 
 // ============================================================================
+// Shared inline styles for JS-generated controls (dark theme)
+// ============================================================================
+
+const CTRL_STYLE = 'background:#2a2a3e;color:#e0e0e0;border:1px solid #444;' +
+  'border-radius:3px;padding:1px 4px;font-size:11px;font-family:inherit;';
+
+// ============================================================================
 // PlotterManager
 // ============================================================================
 
@@ -234,8 +242,42 @@ class PlotterManager {
         this._createPlot(plotId);
       }
       const plot = this.plots.get(plotId);
+
+      // Frozen mode: silently drop data
+      if (plot.mode === 'frozen') continue;
+
       plot.sampleCount++;
 
+      // Track recent values for auto-level (first variable on this plot)
+      const firstValue = pts[0].value;
+      plot.recentValues.push(firstValue);
+      if (plot.recentValues.length > 500) {
+        plot.recentValues.splice(0, plot.recentValues.length - 500);
+      }
+
+      // Period/Single mode: route through trigger
+      if ((plot.mode === 'period' || plot.mode === 'single') && plot.trigger) {
+        const result = plot.trigger.addSample(firstValue);
+        // Still update stats for all variables
+        for (const pt of pts) {
+          if (!plot.stats.has(pt.name)) {
+            plot.stats.set(pt.name, { min: pt.value, max: pt.value, sum: pt.value, count: 1 });
+          } else {
+            const s = plot.stats.get(pt.name);
+            if (pt.value < s.min) s.min = pt.value;
+            if (pt.value > s.max) s.max = pt.value;
+            s.sum += pt.value;
+            s.count++;
+          }
+        }
+        if (result) {
+          this._displayTriggeredPeriods(plot, result, pts);
+        }
+        this._updateStatsBar(plot);
+        continue;
+      }
+
+      // Continuous mode: existing behavior
       for (const pt of pts) {
         this._addDataPoint(plot, pt.name, pt.value);
       }
@@ -304,6 +346,51 @@ class PlotterManager {
       '<button type="button" data-xzoom="left" title="Pan left">\u25C0</button>' +
       '<button type="button" data-xzoom="right" title="Pan right">\u25B6</button>';
     header.appendChild(xZoomControls);
+
+    // Mode selector
+    const modeSelect = document.createElement('select');
+    modeSelect.className = 'plot-mode-select';
+    modeSelect.title = 'Plot display mode';
+    modeSelect.innerHTML =
+      '<option value="continuous">Continuous</option>' +
+      '<option value="period">Period (N)</option>' +
+      '<option value="single">Single Period</option>' +
+      '<option value="frozen">Frozen</option>';
+    modeSelect.style.cssText = CTRL_STYLE + 'cursor:pointer;';
+    header.appendChild(modeSelect);
+
+    // Period count input (visible only in period mode)
+    const periodInput = document.createElement('input');
+    periodInput.type = 'number';
+    periodInput.className = 'plot-period-input';
+    periodInput.min = '1';
+    periodInput.max = '20';
+    periodInput.value = '1';
+    periodInput.title = 'Number of periods to display';
+    periodInput.style.cssText = 'display:none;width:35px;text-align:center;' + CTRL_STYLE;
+    header.appendChild(periodInput);
+
+    // Trigger controls (visible when mode=period/single)
+    const triggerControlsEl = document.createElement('div');
+    triggerControlsEl.className = 'plot-trigger-controls';
+    triggerControlsEl.style.cssText = 'display:none;align-items:center;gap:4px;';
+    triggerControlsEl.innerHTML =
+      '<label style="color:#888;font-size:10px;">Lvl:</label>' +
+      '<input type="number" class="trigger-level-input" step="0.1" value="0" ' +
+        'style="width:55px;text-align:center;' + CTRL_STYLE + '">' +
+      '<select class="trigger-edge-select" style="' + CTRL_STYLE + 'cursor:pointer;">' +
+        '<option value="rising">Rising</option>' +
+        '<option value="falling">Falling</option>' +
+      '</select>' +
+      '<button type="button" class="trigger-auto-btn" title="Auto-detect trigger level" ' +
+        'style="' + CTRL_STYLE + 'cursor:pointer;padding:1px 6px;">Auto</button>';
+    header.appendChild(triggerControlsEl);
+
+    // Period/frequency readout (shown in period/single modes)
+    const periodReadout = document.createElement('span');
+    periodReadout.className = 'plot-period-readout';
+    periodReadout.style.cssText = 'display:none;color:#888;font-size:10px;font-family:monospace;';
+    header.appendChild(periodReadout);
 
     wrapper.appendChild(header);
 
@@ -395,6 +482,17 @@ class PlotterManager {
       xAuto: true,
       xZoom: 1.0,  // fraction of maxDataPoints visible (1.0 = all)
       xPan: 0,     // samples offset from right edge
+      // Mode state
+      mode: 'continuous', // 'continuous' | 'period' | 'single' | 'frozen'
+      periodCount: 1,
+      trigger: null,      // ThresholdTrigger instance (created when entering period/single mode)
+      // Mode UI references
+      modeSelect,
+      periodInput,
+      triggerControlsEl,
+      periodReadout,
+      // Recent values buffer for auto-level detection
+      recentValues: [],
     };
 
     // Trigger (measurement cursor) toggle
@@ -479,6 +577,75 @@ class PlotterManager {
       this._applyXScale(plotState);
       chart.update('none');
     });
+
+    // Mode selector handler
+    modeSelect.addEventListener('change', () => {
+      const newMode = modeSelect.value;
+      const isPeriodic = newMode === 'period' || newMode === 'single';
+
+      plotState.mode = newMode;
+      periodInput.style.display = newMode === 'period' ? '' : 'none';
+      triggerControlsEl.style.display = isPeriodic ? 'flex' : 'none';
+      periodReadout.style.display = isPeriodic ? '' : 'none';
+
+      if (newMode === 'single') plotState.periodCount = 1;
+
+      if (isPeriodic && !plotState.trigger) {
+        // Create trigger, auto-level from recent data
+        plotState.trigger = new ThresholdTrigger({
+          periodsNeeded: newMode === 'single' ? 1 : plotState.periodCount,
+        });
+        if (plotState.recentValues.length > 10) {
+          plotState.trigger.autoLevel(plotState.recentValues);
+          const lvlInput = triggerControlsEl.querySelector('.trigger-level-input');
+          if (lvlInput) lvlInput.value = plotState.trigger.level.toFixed(2);
+        }
+        periodReadout.textContent = 'Waiting for trigger...';
+      } else if (!isPeriodic) {
+        plotState.trigger = null;
+        periodReadout.textContent = '';
+      }
+    });
+
+    periodInput.addEventListener('change', () => {
+      plotState.periodCount = Math.max(1, Math.min(20, parseInt(periodInput.value, 10) || 1));
+      if (plotState.trigger) {
+        plotState.trigger.periodsNeeded = plotState.periodCount;
+        plotState.trigger.completedPeriods = [];
+      }
+    });
+
+    // Trigger level input
+    triggerControlsEl.querySelector('.trigger-level-input')
+      ?.addEventListener('change', (e) => {
+        if (plotState.trigger) {
+          plotState.trigger.level = parseFloat(e.target.value) || 0;
+          plotState.trigger.reset();
+          periodReadout.textContent = 'Waiting for trigger...';
+        }
+      });
+
+    // Trigger edge selector
+    triggerControlsEl.querySelector('.trigger-edge-select')
+      ?.addEventListener('change', (e) => {
+        if (plotState.trigger) {
+          plotState.trigger.edge = e.target.value;
+          plotState.trigger.reset();
+          periodReadout.textContent = 'Waiting for trigger...';
+        }
+      });
+
+    // Auto-level button
+    triggerControlsEl.querySelector('.trigger-auto-btn')
+      ?.addEventListener('click', () => {
+        if (plotState.trigger && plotState.recentValues.length > 10) {
+          plotState.trigger.autoLevel(plotState.recentValues);
+          const lvlInput = triggerControlsEl.querySelector('.trigger-level-input');
+          if (lvlInput) lvlInput.value = plotState.trigger.level.toFixed(2);
+          plotState.trigger.reset();
+          periodReadout.textContent = 'Waiting for trigger...';
+        }
+      });
 
     this.plots.set(plotId, plotState);
 
@@ -565,6 +732,69 @@ class PlotterManager {
       );
     }
     plot.statsBar.innerHTML = parts.join(' &nbsp; ');
+  }
+
+  /**
+   * Display triggered periods on a plot (replaces chart data with aligned periods).
+   * Called when ThresholdTrigger has collected enough periods.
+   */
+  _displayTriggeredPeriods(plot, triggerResult, pts) {
+    const { chart, datasets, periodReadout } = plot;
+    const { periods, frequencyHz, periodMs, periodSamples } = triggerResult;
+
+    // Concatenate all period arrays into one flat data array
+    const flatData = [];
+    for (const period of periods) {
+      for (const v of period) flatData.push(v);
+    }
+
+    // Ensure the first variable's dataset exists
+    const firstName = pts[0].name;
+    if (!datasets.has(firstName)) {
+      const color = NEON_PALETTE[plot.colorIdx % NEON_PALETTE.length];
+      plot.colorIdx++;
+      chart.data.datasets.push({
+        label: firstName,
+        data: [],
+        borderColor: color.border,
+        backgroundColor: color.bg,
+        borderWidth: 1.5,
+        pointRadius: this.showPoints ? 2.5 : 0,
+        pointHitRadius: 10,
+        tension: 0.2,
+        fill: false,
+      });
+      datasets.set(firstName, chart.data.datasets.length - 1);
+      const names = [...datasets.keys()].join(', ');
+      plot.titleEl.textContent = `Plot ${plot.plotId}: ${names}`;
+    }
+
+    // Replace chart data with aligned period data
+    chart.data.labels = flatData.map((_, i) => i);
+    const dsIdx = datasets.get(firstName);
+    chart.data.datasets[dsIdx].data = flatData;
+
+    // Clear other datasets to match label length (fill with null)
+    for (let i = 0; i < chart.data.datasets.length; i++) {
+      if (i !== dsIdx) {
+        chart.data.datasets[i].data = new Array(flatData.length).fill(null);
+      }
+    }
+
+    // Reset X scale for period view (show all data, no scrolling)
+    chart.options.scales.x.min = undefined;
+    chart.options.scales.x.max = undefined;
+
+    chart.update('none');
+
+    // Update readout with detected frequency/period
+    if (frequencyHz > 0) {
+      periodReadout.textContent =
+        `${frequencyHz.toFixed(1)} Hz | ${periodMs.toFixed(1)} ms | ${periodSamples} smp`;
+      periodReadout.style.display = '';
+    } else {
+      periodReadout.textContent = 'Waiting for trigger...';
+    }
   }
 
   /** Clear all plots and destroy chart instances. */

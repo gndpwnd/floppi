@@ -1,6 +1,6 @@
 # fc_tool - Roadmap
 
-> Last updated: 2026-02-18 (session 5)
+> Last updated: 2026-02-18 (session 11)
 
 ## Overview
 
@@ -147,7 +147,9 @@ Reference: [cursor-interaction-discussion.md](cursor-interaction-discussion.md)
   - Implementation: `removePlot(plotId)` in PlotterManager. Close button in plot header. No blacklist — `_ingestLine` naturally recreates missing plots.
 - [x] Clear all plots keyboard shortcut — Ctrl+Shift+C clears all plots for fresh start with new data
   - Completed: 2026-02-18
-- [ ] Per-plot mode selector — Continuous / Period Mode (N) / Single period / Frozen
+- [x] Per-plot mode selector — Continuous / Period Mode (N) / Single period / Frozen
+  - Completed: 2026-02-18
+  - Implementation: Mode dropdown per plot header. Frozen stops chart updates (data silently dropped). Period/Single routes data through ThresholdTrigger. Mode selector, period count input, trigger controls all in plot header.
 - [x] Font size controls — [+] [-] buttons for serial monitor text size (8–24px)
   - Completed: 2026-02-17
 
@@ -155,9 +157,12 @@ Reference: [plotter_discussion.md](plotter_discussion.md)
 
 **Signal / pattern analysis (future):**
 
-- [ ] Period Mode — detect repetitive data, show N periods "standing still"
-- [ ] Per-plot mode selection — each plot independently: continuous, period, single, frozen
-- [ ] Period detection algorithms — zero-crossing, autocorrelation, FFT
+- [x] Period Mode — detect repetitive data, show N periods "standing still"
+  - Completed: 2026-02-18
+  - Implementation: ThresholdTrigger class in period-detector.js. Oscilloscope-style threshold crossing (rising/falling edge, hysteresis, auto-level). Chart data replaced with N aligned periods. Frequency/period readout below plot.
+- [x] Per-plot mode selection — each plot independently: continuous, period, single, frozen
+  - Completed: 2026-02-18
+- [ ] Period detection algorithms — zero-crossing, autocorrelation, FFT (threshold trigger done, others deferred)
 - [ ] Anomaly detection overlay — track max/min/critical points, detect signal changes over time
 - [x] Signal statistics readout — min, max, avg per variable below each plot
   - Completed: 2026-02-17
@@ -169,7 +174,9 @@ Reference: [signal-analysis-discussion.md](signal-analysis-discussion.md)
 - [x] JS module split — main.js split into focused modules
   - Completed: 2026-02-17
   - Implementation: ansi.js (ANSI parser), dashboard.js (Dashboard class), connection.js (Connection class), cursors.js (measurement cursors), plotter.js (PlotterManager), main.js (coordinator)
-- [ ] Dedicated JS modules for advanced plot analytics (period-detector, anomaly-tracker)
+- [x] Period detector module — period-detector.js (ThresholdTrigger class)
+  - Completed: 2026-02-18
+- [ ] Dedicated JS modules for anomaly-tracker (deferred)
 
 ### Board Management
 
@@ -190,9 +197,10 @@ Reference: [signal-analysis-discussion.md](signal-analysis-discussion.md)
   - Completed: 2026-02-17
   - Description: Detect device connect/disconnect without manual refresh
   - Implementation: Polling-based (2s interval). Background Rust thread compares `serialport::available_ports()` snapshots, emits `ports-changed` event with added/removed arrays. Frontend auto-refreshes port list and shows system messages. Cross-platform, no extra dependencies.
-- [ ] Port activity monitoring / smart port list
-  - Description: Highlight newly-connected ports with [NEW] badge, sort USB ports first, filter macOS tty.* and Bluetooth ports, auto-select best port by interest score (VID/PID recognition + recency)
-  - Notes: Activity detection without opening port is impossible (researched). VID/PID + recency is the industry standard (Arduino IDE, PlatformIO do the same). See research findings.
+- [x] Smart port monitoring / port filtering
+  - Completed: 2026-02-18
+  - Description: [NEW] badge on ports plugged in after launch, bold styling for new ports, sort USB ports first (known boards > unknown USB > non-USB), filter macOS tty.* duplicates and Bluetooth ports, auto-select best port by ranking (new+known board > known board > new USB > USB > non-USB), lastPort takes precedence.
+  - Implementation: Backend `filter_ports()` + `sort_ports()` in lib.rs. Expanded `SerialPortInfo` with manufacturer/serial_number/product/is_usb. Frontend `startupPorts` tracking + ranked auto-select in connection.js.
   - Reference: [serial-port-filtering-research.md](findings/serial-port-filtering-research.md), [serial-port-activity-detection.md](findings/serial-port-activity-detection.md)
 
 ### Multi-Device Support
@@ -200,8 +208,10 @@ Reference: [signal-analysis-discussion.md](signal-analysis-discussion.md)
 - [ ] Multiple simultaneous connections
   - Description: Open multiple serial monitor windows, one per device
   - Implementation: Tauri multi-window or tabbed interface
-- [ ] Device session persistence
-  - Description: Remember port/baud settings per device by serial number
+- [x] Device session persistence
+  - Completed: 2026-02-18
+  - Description: Remember baud rate per device by USB serial number in localStorage. Auto-populates baud when a known device is reconnected.
+  - Implementation: `_saveDeviceSettings()` / `_loadDeviceSettings()` in connection.js. Keys: `fc_tool_device_{serial_number}`. Saved on connect, applied on port selection change.
 - [ ] Device-specific UI state
   - Description: Each connection has its own terminal, charts, and settings
 
@@ -244,10 +254,10 @@ Each build script sources the required env vars before compiling.
   - Description: PlotterManager limits to 10 simultaneous plots. Logs console warning when cap reached.
 - [x] pytest test framework (`tests/`)
   - Completed: 2026-02-18
-  - Description: Comprehensive modular test suite. 240 tests across 3 tiers. Python ports of JS parsers for unit testing without browser. Integration tests via simulate_serial.py. E2E tests via fc_tool headless + socat virtual serial. Performance benchmarks.
+  - Description: Comprehensive modular test suite. 285 tests across 3 tiers. Python ports of JS parsers for unit testing without browser. Integration tests via simulate_serial.py. E2E tests via fc_tool headless + socat virtual serial. Performance benchmarks.
   - Run: `pytest` (all), `pytest -m unit` (fast, <0.2s), `pytest -m e2e` (needs binary + socat)
   - Markers: unit, integration, e2e, performance, edge_case
-  - Files: parsers.py, conftest.py, pytest.ini, 10 test_*.py files
+  - Files: parsers.py (ThresholdTrigger port), conftest.py, pytest.ini, 15 test_*.py files
 
 ### Platform Validation (future)
 
@@ -270,6 +280,12 @@ Each build script sources the required env vars before compiling.
 
 > Features moved here when done, for historical reference.
 
+- [x] Per-plot mode selector + Period mode + Device session persistence — 2026-02-18 (session 11)
+  - Per-plot mode: Continuous/Period/Single/Frozen dropdown per plot header
+  - ThresholdTrigger in period-detector.js: edge detection, hysteresis, auto-level, frequency readout
+  - Device persistence: baud rate saved per USB serial number in localStorage
+  - 45 new ThresholdTrigger tests (285 total pytest tests)
+- [x] Smart port monitoring: [NEW] badge, port filtering, sort, auto-select, expanded SerialPortInfo — 2026-02-18 (session 10)
 - [x] Serial protocol lexicon: definitive protocol reference doc, Arduino IDE compatibility research, port monitoring research — 2026-02-18 (session 9)
 - [x] Dynamic plot management: individual close button, auto-recreate, Ctrl+Shift+C clear all — 2026-02-18 (session 8)
 - [x] Serial protocol simulation expansion: 240 tests, 15 scenarios, modular simulator — 2026-02-18 (session 7)
@@ -304,7 +320,7 @@ Each build script sources the required env vars before compiling.
 - MVP focuses on serial + plotter — ship it before adding more features
 - Firmware compilation and flashing are handled via existing PlatformIO scripts (`pio run`), not fc_tool
 - **Testing policy:** All testing via pytest or bash scripts in `tests/`, never manual terminal commands. LLM/agents must use test scripts, not ad-hoc hardware commands. See scope.md Testing Policy for details.
-- **Test commands:** `sudo apt-get install socat` (once). pytest: `cd tests && pytest` (all 240), `pytest -m unit` (fast). Bash: `./tests/test_plotter.sh && ./tests/test_monitor.sh` (29 tests). See [README.md Testing](README.md#testing) for full reference.
+- **Test commands:** `sudo apt-get install socat` (once). pytest: `cd tests && pytest` (all 285), `pytest -m unit` (fast). Bash: `./tests/test_plotter.sh && ./tests/test_monitor.sh` (29 tests). See [README.md Testing](README.md#testing) for full reference.
 - See [flight_controller/docs/scope.md](/flight_controller/docs/scope.md) and [flight_controller/docs/roadmap.md](/flight_controller/docs/roadmap.md) for firmware context
 
 ---

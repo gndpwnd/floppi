@@ -1,6 +1,6 @@
 # fc_tool - Todo
 
-> Last updated: 2026-02-18 (session 9)
+> Last updated: 2026-02-18 (session 11)
 
 ## Up Next
 
@@ -19,12 +19,12 @@
 - [x] Show data points toggle — "Points" checkbox toggles circles at sample points — **DONE** 2026-02-17
 - [x] Measurement cursors — 2 yellow verticals + 2 blue horizontals, draggable, per-plot trigger button — **DONE** 2026-02-17
 - [x] X/Y axis zoom + pan — symmetric controls for both axes (+/−/A/pan) — **DONE** 2026-02-17
-- [ ] Per-plot mode selector — Continuous / Period Mode (N) / Single period / Frozen
+- [x] Per-plot mode selector — Continuous / Period Mode (N) / Single period / Frozen — **DONE** 2026-02-18
 
-### Signal Analysis Features (research complete, needs discussion)
+### Signal Analysis Features
 
-- [ ] Period Mode — detect repetitive data, show N periods standing still
-- [ ] Period detection algorithms — zero-crossing, autocorrelation, FFT (see findings)
+- [x] Period Mode — detect repetitive data, show N periods standing still — **DONE** 2026-02-18
+- [ ] Period detection algorithms — zero-crossing, autocorrelation, FFT (threshold trigger done, others deferred)
 - [ ] Anomaly detection overlay — EMA, CUSUM, peak/trough tracking (see findings)
 - [x] Signal statistics readout — min, max, avg per variable per plot — **DONE** 2026-02-17
 - [ ] Sparkline mini-graphs — trend display for peak/mean/trough
@@ -33,7 +33,7 @@
 
 - [ ] Extract charting into dedicated JS modules:
   - chart-manager.js, cursor-system.js, readout-panel.js
-  - period-detector.js, anomaly-tracker.js, trigger-mode.js, color-palette.js
+  - ~~period-detector.js~~ (done), anomaly-tracker.js, trigger-mode.js, color-palette.js
 
 ### Serial Monitor Enhancements (research complete)
 
@@ -59,6 +59,22 @@
 
 ## Recently Completed
 
+- [x] Per-plot mode selector + Period mode + Device persistence — 2026-02-18 (session 11)
+  - Per-plot mode dropdown: Continuous / Period (N) / Single Period / Frozen
+  - ThresholdTrigger class in `period-detector.js`: rising/falling edge detection, hysteresis, auto-level, frequency/period readout
+  - Frozen mode: chart stops updating, zoom/pan/cursors still work on snapshot
+  - Period mode: data routed through trigger, chart replaced with N aligned periods
+  - Trigger controls: level input, edge selector (Rising/Falling), Auto-level button
+  - Device session persistence: baud saved per USB serial number in localStorage
+  - 45 new unit tests for ThresholdTrigger (285 total, 246 unit+integration pass)
+  - `cargo check` passes, no Rust backend changes
+- [x] Smart port monitoring — 2026-02-18 (session 10)
+  - Backend: `filter_ports()` (macOS tty.*/Bluetooth), `sort_ports()` (known USB > unknown USB > non-USB)
+  - Expanded `SerialPortInfo` with manufacturer, serial_number, product, is_usb fields
+  - Frontend: `startupPorts` tracking, [NEW] badge + bold for newly-plugged ports
+  - Auto-select ranking: new+known board (3) > known board (2) > new USB (1) > USB (0)
+  - `lastPort` precedence prevents jumping away from user's previous selection
+  - `cargo check` passes, 201/201 tests pass
 - [x] Serial protocol lexicon & port monitoring research — 2026-02-18 (session 9)
   - Rewrote `docs/features/serial-telemetry-protocol.md` as definitive protocol reference
   - Covers all 4 plotter formats, dashboard protocol, ANSI codes, Arduino IDE compatibility

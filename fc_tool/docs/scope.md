@@ -107,7 +107,7 @@ Scripts for unvalidated platforms include `# TODO: UNTESTED` comments at the top
 
 ### Functional Requirements
 
-- [x] Connect to serial ports (auto-detect and manual selection)
+- [x] Connect to serial ports (auto-detect, smart filtering, [NEW] badge for hot-plugged devices)
 - [x] Serial monitor/terminal with send and receive
 - [x] Dynamic multi-graph serial plotter (`name@plotId:value` protocol)
 - [x] Board detection (Teensy, Arduino, ESP32 by VID/PID)
@@ -156,9 +156,12 @@ Scripts for unvalidated platforms include `# TODO: UNTESTED` comments at the top
 - X/Y axis zoom and pan controls
 - Signal statistics readout (min, max, avg per variable)
 - Live dashboard mode (key=value grid updating in place)
+- Per-plot mode selector (Continuous / Period / Single Period / Frozen)
+- Period mode with threshold trigger (oscilloscope-style edge detection, frequency readout)
+- Device session persistence (baud rate remembered per USB serial number)
 - Headless mode, CLI arguments, raw data logging with timestamps
 - USB hot-plug detection
-- Future: period mode, signal analysis
+- Future: additional period detection algorithms, anomaly detection
 
 ### Out of Scope (Exclusions)
 
@@ -192,7 +195,7 @@ Scripts for unvalidated platforms include `# TODO: UNTESTED` comments at the top
 ## Testing Policy
 
 - **All testing via test scripts or pytest** in `tests/`, never manual terminal commands
-- **Two test systems**: pytest (240 tests, modular, preferred) and bash scripts (29 tests, legacy)
+- **Two test systems**: pytest (285 tests, modular, preferred) and bash scripts (29 tests, legacy)
 - Tests use `simulate_serial.py` to generate fake data and `socat` for virtual serial ports
 - pytest fixtures manage socat automatically — no manual port setup needed
 - LLM/agents must never run ad-hoc hardware commands — they will fail and get stuck on serial timing, port locking, and USB enumeration issues
@@ -208,7 +211,7 @@ sudo apt-get install socat              # virtual serial ports
 pip install pytest                       # pytest framework
 sudo ./dev_setup/linux/install-system-deps.sh   # Tauri build deps
 
-# pytest (preferred — modular, 240 tests)
+# pytest (preferred — modular, 285 tests)
 cd tests && pytest                       # all tests
 pytest -m unit                           # fast unit tests (<0.2s)
 pytest -m integration                    # simulator tests (~15s)
@@ -237,6 +240,8 @@ See [README.md Testing section](README.md#testing) for full details.
 
 | Date | Changes | By |
 |------|---------|-----|
+| 2026-02-18 | Per-plot mode selector, period mode (ThresholdTrigger), device session persistence. 285 tests. | LLM + User |
+| 2026-02-18 | Smart port monitoring (filter, sort, [NEW] badge, auto-select). Updated test count to 240. | LLM + User |
 | 2026-02-18 | Updated Testing Policy with pytest framework (183 tests), updated In Scope with completed features (cursors, dashboard, headless, zoom/pan) | LLM + User |
 | 2026-02-17 | Added Testing Policy section (bash scripts only, no manual commands), max plots cap, tests vs diagnostics distinction | LLM + User |
 | 2026-02-10 | Removed PlatformIO integration and Calibration UI from scope (handled externally via scripts) | LLM + User |

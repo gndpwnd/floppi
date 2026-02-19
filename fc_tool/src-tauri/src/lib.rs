@@ -57,6 +57,10 @@ pub struct SerialPortInfo {
     pub name: String,
     pub port_type: String,
     pub board_name: Option<String>,
+    pub manufacturer: Option<String>,
+    pub serial_number: Option<String>,
+    pub product: Option<String>,
+    pub is_usb: bool,
 }
 
 /// Identify board by USB VID/PID
@@ -90,6 +94,52 @@ fn identify_board(vid: u16, pid: u16) -> Option<&'static str> {
     }
 }
 
+/// Filter out ports that are never relevant for flight controllers.
+/// - macOS: remove `/dev/tty.*` duplicates (keep `cu.*` only — tty.* blocks on open)
+/// - All platforms: remove Bluetooth serial ports
+fn filter_ports(ports: Vec<serialport::SerialPortInfo>) -> Vec<serialport::SerialPortInfo> {
+    ports
+        .into_iter()
+        .filter(|p| {
+            // macOS: filter tty.* duplicates (cu.* is the correct one to use)
+            #[cfg(target_os = "macos")]
+            if p.port_name.starts_with("/dev/tty.") {
+                return false;
+            }
+
+            // All platforms: filter Bluetooth ports
+            if matches!(p.port_type, serialport::SerialPortType::BluetoothPort) {
+                return false;
+            }
+
+            // macOS: filter Bluetooth by name (some don't report as BluetoothPort)
+            #[cfg(target_os = "macos")]
+            if p.port_name.contains("Bluetooth") {
+                return false;
+            }
+
+            true
+        })
+        .collect()
+}
+
+/// Sort ports: known USB boards first, then unknown USB, then non-USB.
+/// Alphabetical within each tier.
+fn sort_ports(ports: &mut [SerialPortInfo]) {
+    ports.sort_by(|a, b| {
+        fn rank(p: &SerialPortInfo) -> u8 {
+            if p.is_usb && p.board_name.is_some() {
+                0
+            } else if p.is_usb {
+                1
+            } else {
+                2
+            }
+        }
+        rank(a).cmp(&rank(b)).then(a.name.cmp(&b.name))
+    });
+}
+
 #[derive(Clone, Serialize)]
 pub struct SerialDataEvent {
     pub data: String,
@@ -117,39 +167,62 @@ pub struct ConnectionStatus {
 
 #[tauri::command]
 fn list_serial_ports() -> Result<Vec<SerialPortInfo>, String> {
-    let ports = serialport::available_ports().map_err(|e| e.to_string())?;
-    Ok(ports
+    let raw_ports = serialport::available_ports().map_err(|e| e.to_string())?;
+    let filtered = filter_ports(raw_ports);
+
+    let mut result: Vec<SerialPortInfo> = filtered
         .into_iter()
         .map(|p| {
-            let (port_type, board_name) = match &p.port_type {
-                serialport::SerialPortType::UsbPort(info) => {
-                    let board = identify_board(info.vid, info.pid);
-                    let type_str = if board.is_some() {
-                        format!("{:04X}:{:04X}", info.vid, info.pid)
-                    } else {
-                        format!(
-                            "{:04X}:{:04X}{}",
-                            info.vid,
-                            info.pid,
-                            info.product
-                                .as_deref()
-                                .map(|s| format!(" ({})", s))
-                                .unwrap_or_default()
+            let (port_type, board_name, manufacturer, serial_number, product, is_usb) =
+                match &p.port_type {
+                    serialport::SerialPortType::UsbPort(info) => {
+                        let board = identify_board(info.vid, info.pid);
+                        let type_str = if board.is_some() {
+                            format!("{:04X}:{:04X}", info.vid, info.pid)
+                        } else {
+                            format!(
+                                "{:04X}:{:04X}{}",
+                                info.vid,
+                                info.pid,
+                                info.product
+                                    .as_deref()
+                                    .map(|s| format!(" ({})", s))
+                                    .unwrap_or_default()
+                            )
+                        };
+                        (
+                            type_str,
+                            board.map(|s| s.to_string()),
+                            info.manufacturer.clone(),
+                            info.serial_number.clone(),
+                            info.product.clone(),
+                            true,
                         )
-                    };
-                    (type_str, board.map(|s| s.to_string()))
-                }
-                serialport::SerialPortType::BluetoothPort => ("Bluetooth".to_string(), None),
-                serialport::SerialPortType::PciPort => ("PCI".to_string(), None),
-                serialport::SerialPortType::Unknown => ("Unknown".to_string(), None),
-            };
+                    }
+                    serialport::SerialPortType::PciPort => {
+                        ("PCI".to_string(), None, None, None, None, false)
+                    }
+                    serialport::SerialPortType::BluetoothPort => {
+                        ("Bluetooth".to_string(), None, None, None, None, false)
+                    }
+                    serialport::SerialPortType::Unknown => {
+                        ("Unknown".to_string(), None, None, None, None, false)
+                    }
+                };
             SerialPortInfo {
                 name: p.port_name,
                 port_type,
                 board_name,
+                manufacturer,
+                serial_number,
+                product,
+                is_usb,
             }
         })
-        .collect())
+        .collect();
+
+    sort_ports(&mut result);
+    Ok(result)
 }
 
 #[tauri::command]

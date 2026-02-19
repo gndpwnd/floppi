@@ -64,8 +64,11 @@ floppi is an open-source bare-bones flight controller platform. The flight contr
 - Signal statistics readout (min, max, avg per variable)
 - Live dashboard mode (key=value grid updating in place)
 - Headless mode, CLI arguments, raw data logging
-- pytest test framework (183 tests: unit, integration, e2e, performance)
-- Future: period mode, signal analysis
+- Per-plot mode selector (Continuous / Period / Single Period / Frozen)
+- Period mode with threshold trigger (edge detection, frequency readout)
+- Device session persistence (baud rate per USB serial number)
+- pytest test framework (285 tests: unit, integration, e2e, performance)
+- Future: additional period detection algorithms, anomaly detection
 
 ## Out of Scope
 
