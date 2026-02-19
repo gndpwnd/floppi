@@ -1,6 +1,6 @@
 # Project Scope: floppi
 
-> Last updated: 2026-02-17
+> Last updated: 2026-02-18
 > Status: Active
 
 ## Mission Statement
@@ -12,7 +12,7 @@ floppi is an open-source bare-bones flight controller platform. The flight contr
 | Sub-Project | Purpose | Status | Docs |
 |-------------|---------|--------|------|
 | `flight_controller/` | PlatformIO embedded firmware (Teensy + ESP32) | **Active** — hardware validation phase | [scope](../flight_controller/docs/scope.md), [roadmap](../flight_controller/docs/roadmap.md) |
-| `fc_tool/` | Tauri 2 desktop app (Rust + vanilla JS) — serial monitor, plotter | Paused — not needed for FC development | [scope](../fc_tool/docs/scope.md), [roadmap](../fc_tool/docs/roadmap.md) |
+| `fc_tool/` | Tauri 2 desktop app (Rust + vanilla JS) — serial monitor, plotter | **Active** — feature-rich, pytest test framework | [scope](../fc_tool/docs/scope.md), [roadmap](../fc_tool/docs/roadmap.md) |
 | `swarm_api/` | Python FastAPI ground station for ESP32 drone control over WiFi | Paused — needs ESP32 hardware testing | [scope](../swarm_api/docs/scope.md), [roadmap](../swarm_api/docs/roadmap.md) |
 
 ## Core Philosophy
@@ -59,7 +59,13 @@ floppi is an open-source bare-bones flight controller platform. The flight contr
 - Dynamic multi-graph serial plotter (`name@plotId:value` protocol)
 - Dark theme with neon data palette
 - Auto-reconnect on disconnect
-- Future: measurement cursors, signal analysis
+- Measurement cursors (2 vertical + 2 horizontal per plot, draggable, delta readout)
+- X/Y axis zoom and pan controls
+- Signal statistics readout (min, max, avg per variable)
+- Live dashboard mode (key=value grid updating in place)
+- Headless mode, CLI arguments, raw data logging
+- pytest test framework (183 tests: unit, integration, e2e, performance)
+- Future: period mode, signal analysis
 
 ## Out of Scope
 

@@ -269,6 +269,13 @@ class PlotterManager {
     titleEl.textContent = `Plot ${plotId}`;
     header.appendChild(titleEl);
 
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = 'plot-close-btn';
+    closeBtn.textContent = '\u00D7';
+    closeBtn.title = 'Close this plot (will reappear if data continues)';
+    header.appendChild(closeBtn);
+
     const triggerBtn = document.createElement('button');
     triggerBtn.type = 'button';
     triggerBtn.className = 'plot-trigger-btn';
@@ -474,6 +481,10 @@ class PlotterManager {
     });
 
     this.plots.set(plotId, plotState);
+
+    closeBtn.addEventListener('click', () => {
+      this.removePlot(plotId);
+    });
   }
 
   /** Apply X-axis min/max based on zoom/pan state. */
@@ -564,6 +575,15 @@ class PlotterManager {
     }
     this.plots.clear();
     this._buffer.length = 0;
+  }
+
+  /** Remove a single plot by ID. Auto-recreates if data continues. */
+  removePlot(plotId) {
+    const plot = this.plots.get(plotId);
+    if (!plot) return;
+    plot.chart.destroy();
+    plot.wrapper.remove();
+    this.plots.delete(plotId);
   }
 
   /** Reset running statistics for all plots. */

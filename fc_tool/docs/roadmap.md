@@ -1,6 +1,6 @@
 # fc_tool - Roadmap
 
-> Last updated: 2026-02-17 (session 4)
+> Last updated: 2026-02-18 (session 5)
 
 ## Overview
 
@@ -142,6 +142,11 @@ Reference: [cursor-interaction-discussion.md](cursor-interaction-discussion.md)
 - [x] X-axis zoom/pan controls — [X +] [−] [A] [◀] [▶] per plot: zoom in/out/auto-fit/pan left/pan right
   - Completed: 2026-02-17
   - Implementation: xZoom (fraction of data window visible), xPan (offset from right edge). Applied via Chart.js x scale min/max. Pan disabled when auto-fit.
+- [x] Individual plot close — "×" button per plot header, closes single plot. Auto-recreates when data returns.
+  - Completed: 2026-02-18
+  - Implementation: `removePlot(plotId)` in PlotterManager. Close button in plot header. No blacklist — `_ingestLine` naturally recreates missing plots.
+- [x] Clear all plots keyboard shortcut — Ctrl+Shift+C clears all plots for fresh start with new data
+  - Completed: 2026-02-18
 - [ ] Per-plot mode selector — Continuous / Period Mode (N) / Single period / Frozen
 - [x] Font size controls — [+] [-] buttons for serial monitor text size (8–24px)
   - Completed: 2026-02-17
@@ -185,8 +190,10 @@ Reference: [signal-analysis-discussion.md](signal-analysis-discussion.md)
   - Completed: 2026-02-17
   - Description: Detect device connect/disconnect without manual refresh
   - Implementation: Polling-based (2s interval). Background Rust thread compares `serialport::available_ports()` snapshots, emits `ports-changed` event with added/removed arrays. Frontend auto-refreshes port list and shows system messages. Cross-platform, no extra dependencies.
-- [ ] Port activity monitoring
-  - Description: Show which ports have active data (activity indicator)
+- [ ] Port activity monitoring / smart port list
+  - Description: Highlight newly-connected ports with [NEW] badge, sort USB ports first, filter macOS tty.* and Bluetooth ports, auto-select best port by interest score (VID/PID recognition + recency)
+  - Notes: Activity detection without opening port is impossible (researched). VID/PID + recency is the industry standard (Arduino IDE, PlatformIO do the same). See research findings.
+  - Reference: [serial-port-filtering-research.md](findings/serial-port-filtering-research.md), [serial-port-activity-detection.md](findings/serial-port-activity-detection.md)
 
 ### Multi-Device Support
 
@@ -235,6 +242,12 @@ Each build script sources the required env vars before compiling.
 - [x] Max plots cap (10)
   - Completed: 2026-02-17
   - Description: PlotterManager limits to 10 simultaneous plots. Logs console warning when cap reached.
+- [x] pytest test framework (`tests/`)
+  - Completed: 2026-02-18
+  - Description: Comprehensive modular test suite. 240 tests across 3 tiers. Python ports of JS parsers for unit testing without browser. Integration tests via simulate_serial.py. E2E tests via fc_tool headless + socat virtual serial. Performance benchmarks.
+  - Run: `pytest` (all), `pytest -m unit` (fast, <0.2s), `pytest -m e2e` (needs binary + socat)
+  - Markers: unit, integration, e2e, performance, edge_case
+  - Files: parsers.py, conftest.py, pytest.ini, 10 test_*.py files
 
 ### Platform Validation (future)
 
@@ -257,6 +270,10 @@ Each build script sources the required env vars before compiling.
 
 > Features moved here when done, for historical reference.
 
+- [x] Serial protocol lexicon: definitive protocol reference doc, Arduino IDE compatibility research, port monitoring research — 2026-02-18 (session 9)
+- [x] Dynamic plot management: individual close button, auto-recreate, Ctrl+Shift+C clear all — 2026-02-18 (session 8)
+- [x] Serial protocol simulation expansion: 240 tests, 15 scenarios, modular simulator — 2026-02-18 (session 7)
+- [x] pytest test framework: 183 tests (unit/integration/e2e/performance) — 2026-02-18 (session 5)
 - [x] Measurement cursors, X/Y zoom+pan, USB hot-plug, timestamped logs, JS module split — 2026-02-17 (session 4)
 - [x] Live Dashboard Mode, signal statistics readout, GUI-mode logging — 2026-02-17
 - [x] Plotter enhancements: font size controls, show data points toggle, pause with keep-recording — 2026-02-17
@@ -286,8 +303,8 @@ Each build script sources the required env vars before compiling.
 - The serial plotter uses a flexible protocol parser that handles `name@plotId:value`, `name:value`, `name=value`, and plain CSV/space-separated numbers
 - MVP focuses on serial + plotter — ship it before adding more features
 - Firmware compilation and flashing are handled via existing PlatformIO scripts (`pio run`), not fc_tool
-- **Testing policy:** All testing via bash scripts in `tests/`, never manual terminal commands. LLM/agents must use test scripts, not ad-hoc hardware commands. See scope.md Testing Policy for details.
-- **Test commands:** `sudo apt-get install socat` (once), then `./tests/test_plotter.sh && ./tests/test_monitor.sh`. See [README.md Testing](README.md#testing) for full reference.
+- **Testing policy:** All testing via pytest or bash scripts in `tests/`, never manual terminal commands. LLM/agents must use test scripts, not ad-hoc hardware commands. See scope.md Testing Policy for details.
+- **Test commands:** `sudo apt-get install socat` (once). pytest: `cd tests && pytest` (all 240), `pytest -m unit` (fast). Bash: `./tests/test_plotter.sh && ./tests/test_monitor.sh` (29 tests). See [README.md Testing](README.md#testing) for full reference.
 - See [flight_controller/docs/scope.md](/flight_controller/docs/scope.md) and [flight_controller/docs/roadmap.md](/flight_controller/docs/roadmap.md) for firmware context
 
 ---

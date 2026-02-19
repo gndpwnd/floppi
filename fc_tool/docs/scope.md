@@ -1,6 +1,6 @@
 # fc_tool - Scope
 
-> Last updated: 2026-02-17
+> Last updated: 2026-02-18
 > Status: Active
 
 ---
@@ -152,7 +152,13 @@ Scripts for unvalidated platforms include `# TODO: UNTESTED` comments at the top
 - Auto-reconnect on device disconnect
 - Board detection (Teensy, Arduino, ESP32)
 - Connection management (port selection, baud rate)
-- Measurement cursors and signal analysis (future)
+- Measurement cursors (2 vertical + 2 horizontal per plot, draggable, delta readout)
+- X/Y axis zoom and pan controls
+- Signal statistics readout (min, max, avg per variable)
+- Live dashboard mode (key=value grid updating in place)
+- Headless mode, CLI arguments, raw data logging with timestamps
+- USB hot-plug detection
+- Future: period mode, signal analysis
 
 ### Out of Scope (Exclusions)
 
@@ -185,8 +191,10 @@ Scripts for unvalidated platforms include `# TODO: UNTESTED` comments at the top
 
 ## Testing Policy
 
-- **All testing MUST be done via bash scripts** in `tests/`, never manual terminal commands
+- **All testing via test scripts or pytest** in `tests/`, never manual terminal commands
+- **Two test systems**: pytest (240 tests, modular, preferred) and bash scripts (29 tests, legacy)
 - Tests use `simulate_serial.py` to generate fake data and `socat` for virtual serial ports
+- pytest fixtures manage socat automatically — no manual port setup needed
 - LLM/agents must never run ad-hoc hardware commands — they will fail and get stuck on serial timing, port locking, and USB enumeration issues
 - Test scripts are the source of truth: if it doesn't have a test, it's not verified
 - Test output goes to `tests/results/` (gitignored)
@@ -197,9 +205,17 @@ Scripts for unvalidated platforms include `# TODO: UNTESTED` comments at the top
 ```bash
 # Prerequisites (once)
 sudo apt-get install socat              # virtual serial ports
+pip install pytest                       # pytest framework
 sudo ./dev_setup/linux/install-system-deps.sh   # Tauri build deps
 
-# Run tests
+# pytest (preferred — modular, 240 tests)
+cd tests && pytest                       # all tests
+pytest -m unit                           # fast unit tests (<0.2s)
+pytest -m integration                    # simulator tests (~15s)
+pytest -m e2e                            # needs fc_tool binary + socat (~43s)
+pytest test_parse_line.py::TestNamedPlotFormat::test_single_named_plot  # single test
+
+# bash scripts (legacy — 29 tests)
 ./tests/test_plotter.sh                 # plotter test suite
 ./tests/test_monitor.sh                 # monitor test suite
 
@@ -221,6 +237,7 @@ See [README.md Testing section](README.md#testing) for full details.
 
 | Date | Changes | By |
 |------|---------|-----|
+| 2026-02-18 | Updated Testing Policy with pytest framework (183 tests), updated In Scope with completed features (cursors, dashboard, headless, zoom/pan) | LLM + User |
 | 2026-02-17 | Added Testing Policy section (bash scripts only, no manual commands), max plots cap, tests vs diagnostics distinction | LLM + User |
 | 2026-02-10 | Removed PlatformIO integration and Calibration UI from scope (handled externally via scripts) | LLM + User |
 | 2026-02-09 | Updated for dynamic plotter (replaced IMU-specific references), auto-reconnect, Chart.js decisions, verified assumptions | LLM + User |

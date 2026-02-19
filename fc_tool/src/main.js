@@ -290,6 +290,10 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault();
     if (plotterVisible) plotterPauseBtn.click();
   }
+  if (e.ctrlKey && e.shiftKey && e.key === "C") {
+    e.preventDefault();
+    if (plotterVisible) plotterClearBtn.click();
+  }
   if (e.ctrlKey && e.shiftKey && e.key === "D") {
     e.preventDefault();
     dashboard.toggle();

@@ -1,22 +1,16 @@
 # fc_tool - Todo
 
-> Last updated: 2026-02-17 (session 4)
-
-## In Progress
-
-- [ ] Plotter discussion — partially complete (low priority, not blocking)
-  - Decisions captured: cursor system, scaling controls, pause mode, visual style, trigger vs period mode
-  - Open questions remain: Q6, Q7, Q11-Q14, Q16, Q18-Q20, Q23-Q25, plus cursor/visual Qs
-  - See [plotter_discussion.md](plotter_discussion.md), [cursor-interaction-discussion.md](cursor-interaction-discussion.md), [signal-analysis-discussion.md](signal-analysis-discussion.md)
+> Last updated: 2026-02-18 (session 9)
 
 ## Up Next
 
-- [x] ~~Install system deps and verify Rust compiles~~ — DONE (cargo check passes, rustc 1.93.0)
-- [x] ~~Install socat and run full test suite~~ — DONE (29/29 tests pass)
 - [ ] Test with real Teensy hardware (serial + plotter visualization) — USB ports occupied
 - [ ] Validate cross-platform builds (Windows, macOS)
 
 ## Backlog (Post-v0.1)
+
+- [ ] Plotter discussion — partially complete (low priority, not blocking)
+  - See [plotter_discussion.md](plotter_discussion.md), [cursor-interaction-discussion.md](cursor-interaction-discussion.md), [signal-analysis-discussion.md](signal-analysis-discussion.md)
 
 ### Enhanced Plotter — Decided Features
 
@@ -65,6 +59,35 @@
 
 ## Recently Completed
 
+- [x] Serial protocol lexicon & port monitoring research — 2026-02-18 (session 9)
+  - Rewrote `docs/features/serial-telemetry-protocol.md` as definitive protocol reference
+  - Covers all 4 plotter formats, dashboard protocol, ANSI codes, Arduino IDE compatibility
+  - Web research: Arduino Serial Plotter official spec, Teleplot, IDE 1.x vs 2.x differences
+  - Port monitoring research: `docs/findings/serial-port-filtering-research.md` (serialport-rs internals, platform differences, how Arduino IDE/PlatformIO filter ports)
+  - Port activity research: `docs/findings/serial-port-activity-detection.md` (cannot detect activity without opening port — VID/PID + recency is industry standard)
+  - Arduino compatibility research: `docs/findings/arduino-serial-plotter-compatibility.md`
+  - Decision: modes/colors via GUI only (not serial protocol). Protocol stays data-only.
+  - Decision: no axis specification needed — X is always time, Y label = variable name
+- [x] Dynamic plot management — 2026-02-18 (session 8)
+  - Individual plot close button (×) in each plot header
+  - `removePlot(plotId)` method in PlotterManager — auto-recreates when data returns
+  - Ctrl+Shift+C keyboard shortcut to clear all plots
+- [x] Serial protocol simulation & testing expansion — 2026-02-18 (session 7)
+  - **240 tests** total (up from 183): unit (156), integration (45), e2e (33), performance (6)
+  - **Phase 1**: Modularized `simulate_serial.py` into `tests/simulator/` package (core.py, __init__.py, __main__.py, 8 scenario modules)
+  - **Phase 2**: 7 new scenarios — ramp, intermittent, burst, calibration, multi_plot, mixed_dashboard, high_channel (15 scenarios total)
+  - **Phase 3**: 3 new test files — test_simulator_new.py (25 integration), test_serial_pipeline.py (8 e2e), test_serial_resilience.py (4 e2e)
+  - **Phase 4**: `RunningStats` class + `cursor_delta()` in parsers.py, test_statistics.py (20 unit tests)
+  - Old bash tests (29/29) still pass alongside pytest
+  - New markers: `slow` for long-running tests (>10s)
+- [x] pytest test framework — 2026-02-18 (session 5-6)
+  - **183 tests** across 3 tiers: unit (136), integration (20), e2e (21), performance (6)
+  - `parsers.py` — Python ports of JS regexes (parse_line, parse_ansi, parse_dashboard_line, format_val)
+  - `conftest.py` — shared fixtures: fc_tool_bin discovery, socat_pair, run_simulator_stdout, run_headless
+  - 10 test files: test_parse_line, test_parse_ansi, test_parse_dashboard, test_cursors, test_simulator, test_edge_cases, test_headless, test_headless_log, test_cli_args, test_performance
+  - Markers: `unit` (<0.2s), `integration` (~15s), `e2e` (~43s), `performance` (~4s), `edge_case`
+  - Run: `pytest` (all), `pytest -m unit` (fast), `pytest test_parse_line.py::TestNamedPlotFormat::test_single_named_plot` (single)
+  - Old bash tests (29/29) continue working alongside pytest
 - [x] Session 4 features — 2026-02-17 (session 4)
   - Measurement cursors — cursors.js module: 2 yellow verticals + 2 blue horizontals per plot, draggable, "Trigger" toggle button, right-click axis switch, delta readout
   - X/Y axis symmetric zoom + pan — both axes: [+] [−] [A] + directional pan buttons (▲▼ for Y, ◀▶ for X)
@@ -169,6 +192,9 @@ All in `fc_tool/docs/findings/`:
 | multi-graph-plotter-research.md | Complete | Protocol design, Arduino compatibility |
 | board-vid-pid-reference.md | Complete | USB VID/PID reference |
 | serial-formatting-libraries-research.md | Complete | Arduino libs, MSP/MAVLink/Firmata, protocol design patterns, ESP32/Teensy specifics |
+| serial-port-filtering-research.md | Complete | serialport-rs internals, platform differences (Linux/Win/macOS), port list best practices |
+| serial-port-activity-detection.md | Complete | Cannot detect activity without opening port, VID/PID + recency approach, industry comparison |
+| arduino-serial-plotter-compatibility.md | Complete | Arduino IDE protocol spec, IDE 1.x vs 2.x, fc_tool compatibility matrix, Teleplot comparison |
 
 Also in `docs/literature/findings/`:
 

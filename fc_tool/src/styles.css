@@ -512,6 +512,22 @@ button:active {
   background-color: #FFFF0015;
 }
 
+/* Plot Close Button */
+.plot-close-btn {
+  min-width: 22px;
+  padding: 1px 6px;
+  font-size: 0.85em;
+  line-height: 1;
+  border-color: #555;
+  color: #888;
+  margin-left: 6px;
+}
+
+.plot-close-btn:hover {
+  color: #ff4444;
+  border-color: #ff4444;
+}
+
 /* Measurement Delta Readout */
 .plot-delta-readout {
   padding: 3px 8px;
