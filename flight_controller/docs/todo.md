@@ -1,6 +1,6 @@
 # Flight Controller Firmware - Todo
 
-> Last updated: 2026-02-17
+> Last updated: 2026-02-20
 
 ## In Progress
 
@@ -95,6 +95,18 @@ _Tasks waiting on something (include reason)_
 
 _For context; clear periodically_
 
+- [x] Unified dev workflow script (`tools/dev.sh`) — 2026-02-20
+  - Single CLI: build, flash, monitor, go, test, calibrate, envs, build-all, diagnose
+  - Dynamic platformio.ini parsing — no hardcoded environment names
+  - Auto port detection, ModemManager check, Teensy CDC recovery
+- [x] Acrobatics command architecture research — 2026-02-20
+  - See [findings/acrobatics-command-architecture.md](findings/acrobatics-command-architecture.md)
+  - Confirmed: rate mode + air mode + serial/I2C commands already supports all acrobatic maneuvers
+  - Flight computer sends rate setpoints, FC tracks them — no firmware changes needed
+- [x] Build verification (all environments) — 2026-02-20
+  - 7/10 pass: all calibration envs + all ESP32 envs
+  - 3 expected failures: teensy40, teensy41, teensy36 (SBUS commented out, live builds require a command source)
+  - Will be 10/10 when receiver is re-enabled
 - [x] Bench test session — 2026-02-17
   - See [archive/bench-test-2026-02-17.md](archive/bench-test-2026-02-17.md)
   - OLED, IMU, telemetry, all serial commands verified
@@ -119,7 +131,8 @@ _For context; clear periodically_
 
 ## Notes
 
-- **Serial tools**: `tools/calibrate.sh` (primary, menu-driven), `tools/serial_monitor.py` (backend/scripting), `pio device monitor` (fallback). No fc_tool dependency.
+- **Dev workflow**: `tools/dev.sh` is the primary entry point — `dev.sh go` (build+flash+monitor), `dev.sh build`, `dev.sh flash`, `dev.sh monitor`, `dev.sh test`, `dev.sh calibrate`, `dev.sh diagnose`. Dynamically parses platformio.ini.
+- **Serial tools**: `tools/calibrate.sh` (menu-driven calibration), `tools/serial_monitor.py` (backend/scripting), `pio device monitor` (fallback). No fc_tool dependency.
 - **Teensy quirks**: Stop ModemManager (`sudo systemctl stop ModemManager`). Use `teensy_reboot` for board reset (DTR toggle doesn't reboot Teensy 4.0). USB CDC degrades after ~15 rapid open/close cycles — only `teensy_reboot` or physical unplug recovers.
 - **MPU6050 mounting**: AccX≈1.02g, AccY≈0.05g, AccZ≈-0.10g → X-axis points down. Roll≈130° (drifting due to uncalibrated gyro). Needs orientation detection (`o` command) to fix.
 - **SBUS noise**: Floating serial pin produces random channel values when no receiver connected. Comment out `USE_SBUS_RECEIVER` in config.h for bench testing without receiver. Currently commented out.

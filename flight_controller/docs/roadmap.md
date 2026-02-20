@@ -1,6 +1,6 @@
 # Flight Controller Firmware - Roadmap
 
-> Last updated: 2026-02-17
+> Last updated: 2026-02-20
 
 ## Overview
 
@@ -279,6 +279,10 @@ This roadmap tracks project-level features and milestones for the flight control
 - [x] Setup permissions script (`setup_permissions.sh` at repo root)
   - Completed: 2026-02-11
   - Notes: Idempotent sudo script — installs Teensy/ESP32 udev rules, adds user to dialout/plugdev groups, reloads udev. Skips steps already done.
+
+- [x] Unified dev workflow script (`tools/dev.sh`)
+  - Completed: 2026-02-20
+  - Notes: Single CLI entry point: build, flash, monitor, go (build+flash+monitor), test, calibrate, envs, build-all, diagnose. Dynamically parses platformio.ini for environments. Auto-detects serial ports, stops ModemManager, handles Teensy CDC recovery. Delegates to serial_monitor.py, calibrate.sh, test_calibration.sh.
 
 ---
 
@@ -682,6 +686,9 @@ Files: `ota.h`, `ota.cpp`.
 - [x] Test suite boot drain (wait for "READY" after `reboot_teensy`) — 2026-02-17
 - [x] Test suite CDC recovery (auto `teensy_reboot` on empty output from USB CDC degradation) — 2026-02-17
 - [x] Bench test: OLED SSD1306 128x32, IMU MPU6050, telemetry, all serial commands — 42/42 pass — 2026-02-17
+- [x] Unified dev workflow script (`tools/dev.sh`) — build/flash/monitor/test/calibrate/diagnose in one CLI — 2026-02-20
+- [x] Acrobatics command architecture research — confirmed rate mode + air mode supports all aerobatic maneuvers — 2026-02-20
+- [x] Build verification: 7/10 envs pass (3 Teensy live builds expected fail — SBUS commented out for bench testing) — 2026-02-20
 
 ---
 
