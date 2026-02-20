@@ -114,7 +114,7 @@ bool armedFly = false;
 CalibrationMode calibration_mode = CALIB_NONE;
 bool calibration_in_progress = false;
 unsigned long calibration_start_time = 0;
-int telemetry_mode = 0;  // 0=off, 1=IMU, 2=full
+int telemetry_mode = 0;  // 0=off, 1=IMU, 2=full, 3=quaternion
 
 // Runtime-tunable PID gains (initialized from config.h macros)
 #ifdef USE_RATE_CONTROLLER
@@ -227,6 +227,8 @@ void flightControlTick() {
         printIMUTelemetry();
     } else if (telemetry_mode == 2) {
         printFullTelemetry();
+    } else if (telemetry_mode == 3) {
+        printQuaternionTelemetry();
     }
     #endif
 

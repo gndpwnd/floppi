@@ -4,6 +4,7 @@
  */
 
 #include "debug.h"
+#include "config.h"
 
 #ifdef CALIBRATION_MODE
 
@@ -163,6 +164,46 @@ void printFullTelemetry() {
         Serial.print(F(" m3@3:")); Serial.print(m3_command_PWM);
         Serial.print(F(" m4@3:")); Serial.println(m4_command_PWM);
     }
+}
+
+void printQuaternionTelemetry() {
+    // Quaternion attitude at ~50Hz — avoids gimbal lock for flight computers
+    // Plot 4 = quaternion, Plot 1 = gyro rates (useful during acro)
+    if (current_time - print_counter > 20000) {
+        print_counter = current_time;
+        Serial.print(F("q0@4:")); Serial.print(q0, 4);
+        Serial.print(F(" q1@4:")); Serial.print(q1, 4);
+        Serial.print(F(" q2@4:")); Serial.print(q2, 4);
+        Serial.print(F(" q3@4:")); Serial.print(q3, 4);
+        Serial.print(F(" gx@1:")); Serial.print(GyroX, 2);
+        Serial.print(F(" gy@1:")); Serial.print(GyroY, 2);
+        Serial.print(F(" gz@1:")); Serial.println(GyroZ, 2);
+    }
+}
+
+void printGyroSaturationCheck() {
+    // One-shot gyro range utilization check — call during diagnostics.
+    // Warns if gyro readings are near the full-scale limit.
+    #ifdef USE_MPU6050
+    float gyro_max = 0;
+    #if defined(GYRO_250DPS)
+        gyro_max = 250.0f;
+    #elif defined(GYRO_500DPS)
+        gyro_max = 500.0f;
+    #elif defined(GYRO_1000DPS)
+        gyro_max = 1000.0f;
+    #elif defined(GYRO_2000DPS)
+        gyro_max = 2000.0f;
+    #endif
+    float peak = max(max(abs(GyroX), abs(GyroY)), abs(GyroZ));
+    float util = (peak / gyro_max) * 100.0f;
+    Serial.print(F("Gyro range: +/-")); Serial.print((int)gyro_max);
+    Serial.print(F("dps  Peak: ")); Serial.print(peak, 1);
+    Serial.print(F("dps (")); Serial.print(util, 0); Serial.println(F("%)"));
+    if (util > 90.0f) {
+        Serial.println(F("WARNING: Gyro near saturation! Consider GYRO_2000DPS in config.h"));
+    }
+    #endif
 }
 
 #endif // CALIBRATION_MODE

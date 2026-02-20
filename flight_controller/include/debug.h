@@ -56,6 +56,12 @@ void printAttitudeTelemetry();
 // Print full telemetry packet (IMU + attitude + motors)
 void printFullTelemetry();
 
+// Print quaternion attitude + gyro rates (gimbal-lock-free, for flight computers)
+void printQuaternionTelemetry();
+
+// Print gyro range utilization check (one-shot diagnostic)
+void printGyroSaturationCheck();
+
 #endif // CALIBRATION_MODE
 
 #endif // DEBUG_H

@@ -151,17 +151,31 @@ For acrobatic flight, command source matters:
 - **Crazyflie**: Rate commands at 100 Hz via radio, flips and loops demonstrated
 - **UZH Swift (Autonomous Drone Racing)**: Custom stack, 400+ Hz rate commands, competitive with human pilots
 
-## Nice-to-Have Enhancements (Future, Not Blocking)
+## Implemented Enhancements (2026-02-20)
 
-These are not needed for acrobatics to work, but would improve the experience:
+The following improvements were identified during research and implemented in this session:
 
-1. **Higher MAX_RATE values** — Current config may limit to 250 deg/s. For aggressive acro, allow 400-800 deg/s. This is just a `config.h` parameter change.
+### Bug Fixes
 
-2. **GYRO_2000DPS option** — MPU6050 defaults to ±500 or ±1000 deg/s range. For very aggressive maneuvers, ±2000 deg/s prevents gyro saturation. A `config.h` define to select the range.
+1. **MPU6050 gyro range initialization** — `mpu6050.initialize()` hardcodes 250 DPS regardless of `config.h` `GYRO_SCALE` setting. Fix: explicit `setFullScaleGyroRange(GYRO_SCALE)` call after `initialize()` in `imu.cpp`. Without this fix, gyro readings were scaled incorrectly (4x error when config says 1000 DPS but hardware runs at 250 DPS).
 
-3. **Bidirectional serial protocol** — Current telemetry is one-way (FC→computer). A request-response protocol would let the flight computer query specific values. Low priority since telemetry already streams continuously.
+2. **MPU6050 accel range initialization** — Same issue: `initialize()` hardcodes 2G. Fix: explicit `setFullScaleAccelRange(ACCEL_SCALE)` after `initialize()`. Accel readings could be clipped or mis-scaled.
 
-4. **Quaternion telemetry** — Current attitude output uses Euler angles (roll/pitch/yaw). Quaternions avoid gimbal lock during aggressive maneuvers. The Madgwick filter already computes quaternions internally; just need to expose them. Low priority since the flight computer can integrate rates directly.
+### New Features
+
+1. **Higher MAX_RATE defaults** — Roll/pitch: 200 -> 500 deg/s. Yaw: 160 -> 400 deg/s. Previous values too low for any aggressive maneuvering. Config.h comments document recommended ranges (250-500 sport, 500-800 aggressive acro, 800+ FPV racing).
+
+2. **Quaternion telemetry** — New telemetry mode 3: outputs q0-q3 (Madgwick filter internals) + gyro rates. Avoids gimbal lock during aggressive maneuvers. Toggled via `t` command cycling (off -> IMU -> full -> quat). Plot ID 4 for quaternions, plot ID 1 for gyro rates.
+
+3. **Gyro saturation warning** — One-shot diagnostic printed when entering quaternion telemetry mode. Shows current gyro readings as % of full-scale range, warns if >90% utilization. Helps users identify if they need to increase gyro range (e.g., GYRO_1000DPS -> GYRO_2000DPS).
+
+4. **Acro setup guide in config.h** — 6-step quick setup guide as comment block: switch to rate mode, enable USE_RACING, enable USE_AIRMODE, set gyro range, tune MAX_RATE, optional USE_OPTIMIZATION.
+
+### Still Nice-to-Have (Not Implemented)
+
+1. **Bidirectional serial protocol** — Current telemetry is one-way (FC->computer). A request-response protocol would let the flight computer query specific values. Low priority since telemetry already streams continuously.
+
+2. **GYRO_2000DPS as default for acro** — Currently configurable in config.h (GYRO_250DPS through GYRO_2000DPS). The acro setup guide recommends GYRO_2000DPS. No code change needed, just user config.
 
 ## Conclusion
 

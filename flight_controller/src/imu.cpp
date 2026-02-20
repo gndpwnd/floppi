@@ -44,8 +44,24 @@ void setupIMU() {
         #endif
         mpu6050.initialize();
 
+        // Apply configured ranges from config.h.
+        // mpu6050.initialize() hardcodes 250 DPS / 2G regardless of config,
+        // so we must set the actual ranges explicitly after init.
+        mpu6050.setFullScaleGyroRange(GYRO_SCALE);
+        mpu6050.setFullScaleAccelRange(ACCEL_SCALE);
+
         if (mpu6050.testConnection()) {
-            Serial.println(F("MPU6050 OK"));
+            Serial.print(F("MPU6050 OK (gyro="));
+            #if defined(GYRO_250DPS)
+                Serial.print(F("250"));
+            #elif defined(GYRO_500DPS)
+                Serial.print(F("500"));
+            #elif defined(GYRO_1000DPS)
+                Serial.print(F("1000"));
+            #elif defined(GYRO_2000DPS)
+                Serial.print(F("2000"));
+            #endif
+            Serial.println(F("dps)"));
         } else {
             Serial.println(F("MPU6050 FAILED"));
         }

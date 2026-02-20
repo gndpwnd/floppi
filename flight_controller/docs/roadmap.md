@@ -688,6 +688,11 @@ Files: `ota.h`, `ota.cpp`.
 - [x] Bench test: OLED SSD1306 128x32, IMU MPU6050, telemetry, all serial commands — 42/42 pass — 2026-02-17
 - [x] Unified dev workflow script (`tools/dev.sh`) — build/flash/monitor/test/calibrate/diagnose in one CLI — 2026-02-20
 - [x] Acrobatics command architecture research — confirmed rate mode + air mode supports all aerobatic maneuvers — 2026-02-20
+- [x] MPU6050 gyro/accel range initialization bug fix — `initialize()` hardcodes 250 DPS/2G, now explicitly set after init — 2026-02-20
+- [x] Acro rate defaults — MAX_ROLL/PITCH_RATE 200→500, MAX_YAW_RATE 160→400 deg/s — 2026-02-20
+- [x] Quaternion telemetry mode — telemetry mode 3 outputs q0-q3 + gyro rates (gimbal-lock-free attitude) — 2026-02-20
+- [x] Gyro saturation warning — one-shot diagnostic on entering quaternion mode, warns if >90% range utilization — 2026-02-20
+- [x] Acrobatic flight quick setup guide in config.h — 6-step comment block — 2026-02-20
 - [x] Build verification: 7/10 envs pass (3 Teensy live builds expected fail — SBUS commented out for bench testing) — 2026-02-20
 
 ---

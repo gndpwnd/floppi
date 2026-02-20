@@ -285,10 +285,10 @@
 // Uncomment ONLY ONE control mode. This is a compile-time selection — only
 // the chosen controller is included in the binary (zero overhead).
 //
-// ANGLE MODE: Stick position = target tilt angle. Release stick → drone levels
+// ANGLE MODE: Stick position = target tilt angle. Release stick -> drone levels
 //   itself. Best for: hovering, filming, beginners, autonomous flight.
 //
-// RATE MODE:  Stick position = rotation speed. Release stick → drone holds
+// RATE MODE:  Stick position = rotation speed. Release stick -> drone holds
 //   current angle (no self-leveling). Best for: acrobatics, FPV racing.
 //
 // For in-flight switching, use a flight computer that sends pre-computed
@@ -298,13 +298,43 @@
 #define USE_ANGLE_CONTROLLER    // Angle mode (stabilize) — recommended default
 
 //=============================================================================
+// ACROBATIC FLIGHT QUICK SETUP
+//=============================================================================
+// To enable acrobatic flight (flips, rolls, inverted hover, etc.):
+//
+// 1. Switch to rate mode:
+//      Uncomment USE_RATE_CONTROLLER above, comment out USE_ANGLE_CONTROLLER
+//
+// 2. Enable racing features:
+//      Uncomment USE_RACING (line 69) — adds air mode, feed-forward, expo
+//
+// 3. Enable air mode (CRITICAL for flips):
+//      Uncomment USE_AIRMODE in RACING PARAMETERS section below
+//      Keeps PID active at zero throttle during inverted portions of maneuvers
+//
+// 4. Set gyro range for aggressive maneuvers:
+//      Change GYRO_1000DPS -> GYRO_2000DPS in IMU CONFIGURATION section
+//      Prevents gyro saturation during fast rotations (>1000 deg/s)
+//
+// 5. Tune MAX_RATE values below for your flying style:
+//      Conservative: 300 deg/s.  Standard acro: 500 deg/s.  Racing: 800 deg/s.
+//
+// 6. Optional: enable USE_OPTIMIZATION for noisy hardware (biquad filters)
+//
+// See: docs/findings/acrobatics-command-architecture.md for full details.
+// The FC just tracks rate setpoints — a flight computer handles trajectory.
+
+//=============================================================================
 // Maximum Control Limits
 //=============================================================================
 #ifdef USE_RATE_CONTROLLER
     // Rate mode: degrees per second
-    #define MAX_ROLL_RATE 200.0f   // Maximum roll rate (deg/s)
-    #define MAX_PITCH_RATE 200.0f  // Maximum pitch rate (deg/s)
-    #define MAX_YAW_RATE 160.0f    // Maximum yaw rate (deg/s)
+    // For acrobatics (flips, rolls): 400-800 deg/s typical.
+    // For gentle rate mode flying: 200-300 deg/s.
+    // Must stay within gyro full-scale range (see GYRO_xxxDPS above).
+    #define MAX_ROLL_RATE 500.0f   // Maximum roll rate (deg/s)
+    #define MAX_PITCH_RATE 500.0f  // Maximum pitch rate (deg/s)
+    #define MAX_YAW_RATE 400.0f    // Maximum yaw rate (deg/s)
 #else
     // Angle mode: degrees
     #define MAX_ROLL_ANGLE 30.0f   // Maximum roll angle (degrees)

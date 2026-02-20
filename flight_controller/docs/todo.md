@@ -102,7 +102,13 @@ _For context; clear periodically_
 - [x] Acrobatics command architecture research — 2026-02-20
   - See [findings/acrobatics-command-architecture.md](findings/acrobatics-command-architecture.md)
   - Confirmed: rate mode + air mode + serial/I2C commands already supports all acrobatic maneuvers
-  - Flight computer sends rate setpoints, FC tracks them — no firmware changes needed
+  - Flight computer sends rate setpoints, FC tracks them
+- [x] Acro support firmware improvements — 2026-02-20
+  - **BUG FIX**: MPU6050 gyro/accel range init — `initialize()` hardcodes 250 DPS/2G, now explicitly set from config.h
+  - MAX_RATE defaults increased: roll/pitch 200→500, yaw 160→400 deg/s
+  - Quaternion telemetry mode 3: q0-q3 + gyro rates (gimbal-lock-free)
+  - Gyro saturation warning: one-shot diagnostic, warns if >90% range
+  - Acro quick setup guide added to config.h (6-step comment block)
 - [x] Build verification (all environments) — 2026-02-20
   - 7/10 pass: all calibration envs + all ESP32 envs
   - 3 expected failures: teensy40, teensy41, teensy36 (SBUS commented out, live builds require a command source)

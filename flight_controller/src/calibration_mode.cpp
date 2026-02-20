@@ -626,15 +626,19 @@ static void processSerialLine(char* line) {
                 Serial.print(F("Armed: ")); Serial.println(armedFly ? "YES" : "NO");
                 return;
             case 't': case 'T':
-                telemetry_mode = (telemetry_mode + 1) % 3;
+                telemetry_mode = (telemetry_mode + 1) % 4;
                 if (telemetry_mode == 0) {
                     Serial.println(F("\n>>> Telemetry OFF"));
                 } else if (telemetry_mode == 1) {
                     Serial.println(F("\n>>> Telemetry: IMU (50Hz)"));
-                    Serial.println(F("    Accel→Plot0 Gyro→Plot1 (fc_tool multi-graph)"));
-                } else {
+                    Serial.println(F("    Accel->Plot0 Gyro->Plot1 (fc_tool multi-graph)"));
+                } else if (telemetry_mode == 2) {
                     Serial.println(F("\n>>> Telemetry: FULL (20Hz)"));
-                    Serial.println(F("    Accel→Plot0 Gyro→Plot1 Attitude→Plot2 Motors→Plot3"));
+                    Serial.println(F("    Accel->Plot0 Gyro->Plot1 Attitude->Plot2 Motors->Plot3"));
+                } else {
+                    Serial.println(F("\n>>> Telemetry: QUATERNION (50Hz)"));
+                    Serial.println(F("    Quat->Plot4 Gyro->Plot1 (gimbal-lock-free for flight computer)"));
+                    printGyroSaturationCheck();
                 }
                 return;
             case 'f': case 'F':
@@ -681,7 +685,7 @@ static void processSerialLine(char* line) {
                 Serial.println(F("  f - Failsafe auto-detection (measures receiver failsafe)"));
                 Serial.println(F("  e - ESC endpoint calibration (min/max PWM)"));
                 Serial.println(F("  s - Status (show channel values)"));
-                Serial.println(F("  t - Toggle telemetry (off/IMU/full) for fc_tool"));
+                Serial.println(F("  t - Toggle telemetry (off/IMU/full/quat) for fc_tool"));
                 Serial.println(F("  g - Show/set PID gains (g <name> <value>)"));
                 Serial.println(F("  p - Show/set filter & limits (p <name> <value>)"));
                 Serial.println(F("  n - Network diagnostics (ESP32 only — WiFi, mDNS, web server)"));
