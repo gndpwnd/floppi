@@ -8,69 +8,99 @@ _Focus: Get everything working on real hardware. Feature development is paused �
 
 > **SERIAL POLICY**: Always use `tools/serial_monitor.py` (Python) or `pio device monitor` (PlatformIO) for serial communication. NEVER use raw bash commands (cat, stty, echo > /dev). Improve the Python scripts as needed. No fc_tool dependency.
 
-### Current Hardware: Teensy 4.0 + MPU6050 + SSD1306 OLED (no receiver)
+### Current Hardware: Teensy 4.0 + MPU6050 + SSD1306 OLED + SBUS Receiver
 
-- [ ] Run orientation detection (`o` command) — auto-detect MPU6050 mounting, generate axis transforms. AccX≈1.02g confirms X-axis pointing down. **Requires physical board manipulation.** Use `calibrate.sh` interactively.
-- [ ] Complete IMU calibration (`i` command) with orientation correction — verify corrected AccZ ≈ 1.0g
-- [ ] Verify OLED displays correct status during calibration (armed/idle/calibrating states) — user visual check
+_Receiver now connected. No ESCs/motors yet._
 
-### Blocked Until Receiver Available
+## Next Session: Hardware Calibration (Teensy + SBUS)
 
-- [ ] Verify radio receiver (`s` command) — confirm all 6 channels respond to transmitter input
-- [ ] Radio calibration (`r` command) — full channel mapping with transmitter
-- [ ] Re-enable `USE_SBUS_RECEIVER` in config.h (currently commented out for bench testing)
+_Goal: Complete all calibrations possible without ESCs. Get config.h fully populated with real hardware values. Verify live build runs stable (no motors, but PID + telemetry should be sane)._
 
-## Up Next
+### Phase 0: Pre-flight Prep (before plugging in)
 
-_Priority queue for immediate work_
+- [ ] Re-enable `USE_SBUS_RECEIVER` in config.h (currently commented out)
+- [ ] Build `teensy40_calibration` — verify compiles with SBUS enabled
+- [ ] Build `teensy40` (live) — should now pass (was failing without receiver)
+- [ ] Verify `build-all` — expect 10/10 with SBUS re-enabled
 
-### Immediate: Validate All Calibration Commands
+### Phase 1: Connect & Smoke Test
 
-_Test every calibration command with the hardware we have. Use `serial_monitor.py` for serial._
+- [ ] Plug in Teensy, stop ModemManager (`sudo systemctl stop ModemManager`)
+- [ ] Flash `teensy40_calibration` — `dev.sh go teensy40_calibration`
+- [ ] Verify boot: OLED shows status, serial shows "FLIGHT CONTROLLER READY"
+- [ ] Verify OLED displays correct status (idle state) — visual check
+- [ ] Run automated test suite — `dev.sh test` — confirm 42/42 still pass
+- [ ] Verify SBUS receiver data (`s` command) — confirm CH1-6 respond to transmitter sticks
 
-- [x] `h` — help menu displays all commands
-- [x] `c` — calibration status shows all stages
-- [x] `i` → `y` → `y` — IMU calibration full flow (level warning, continue, calibrate, quality check, results)
-- [x] `o` — orientation detection start + cancel verified (full test needs physical board manipulation)
-- [x] `t` — telemetry output streams correctly (IMU ~50Hz, FULL ~20Hz)
-- [x] `g` — PID gains display + set (kp_roll 0.2→0.25 round-trip verified)
-- [x] `p` — filter/limits display + set (b_accel 0.14→0.12 round-trip verified)
-- [x] `d` — dump outputs all calibration values in config.h format
-- [x] `a` — sequential workflow starts, shows stages, offers 6-pos/single-pos choice
-- [x] `s` — channel status shows CH1-6 values
-- [x] `n` — network diagnostics (correctly reports ESP32-only on Teensy)
-- [x] `m` — 6-position IMU calibration start/cancel verified
-- [x] `e` — ESC calibration start/cancel verified
-- [x] `f` — failsafe detection start/cancel verified
-- [x] `r` — radio calibration start/cancel verified
-- [ ] `r` — radio calibration full flow (BLOCKED: needs transmitter powered on)
-- [ ] `f` — failsafe detection full flow (BLOCKED: needs transmitter power-off cycle)
-- [ ] `e` — ESC endpoint calibration full flow (BLOCKED: needs ESCs/motors connected)
+### Phase 2: Orientation Detection (`o` command)
 
-### Test Infrastructure — Completed This Session
+- [ ] Run orientation detection — **requires physical board manipulation** (3 positions: level, nose-up, right-up)
+- [ ] Use `calibrate.sh` interactively or `dev.sh calibrate`
+- [ ] Copy generated axis transformation code to config.h / imu.cpp
+- [ ] Rebuild and flash — verify corrected readings (AccZ should read ~1.0g when level)
 
-- [x] Full test suite: 18 tests, **42/42 checks pass** — 2026-02-17
-- [x] Boot drain fix — `reboot_teensy()` now waits for "FLIGHT CONTROLLER READY" before starting tests
-- [x] CDC recovery — `run_serial()` auto-recovers from Teensy USB CDC degradation via `teensy_reboot`
-- [x] Sequential cancel fix — sends two `n` to fully exit the multi-question workflow
-- [x] serial_monitor.py improvements — kernel buffer flush, silence-based drain, `--wait-for`, `--quiet`, exit code 2
+### Phase 3: IMU Calibration (`i` command)
 
-### Calibration Wrapper Script
+- [ ] Place board level on flat surface
+- [ ] Run IMU calibration (`i` → `y` → `y`) — gyro bias + accel offsets
+- [ ] Verify quality check passes (stability + level checks)
+- [ ] Copy `#define` values to config.h (`IMU_ACC_ERROR_X/Y/Z`, `IMU_GYRO_ERROR_X/Y/Z`)
+- [ ] Verify telemetry (`t`) shows: AccZ ≈ 1.0g, GyroX/Y/Z ≈ 0 deg/s, Roll/Pitch ≈ 0°
 
-- [x] Create `tools/calibrate.sh` — menu-driven wrapper for serial_monitor.py — 2026-02-17
-- [x] Update `docs/2_calibration_guide.md` to reference calibrate.sh as primary method — 2026-02-17
-- [ ] Windows `tools/calibrate.bat` — future, blocked by serial_monitor.py cross-platform
+### Phase 4: Radio Calibration (`r` command)
 
-### Future: Test Infrastructure
+- [ ] Power on transmitter
+- [ ] Run radio calibration (`r`) — move sticks as guided (throttle, roll, pitch, yaw)
+- [ ] Verify channel mapping detected correctly
+- [ ] Copy `#define` values to config.h (`THROTTLE_CHANNEL`, `ROLL_CHANNEL`, etc.)
 
-- [ ] Modular test runner — harness + suites pattern (see roadmap)
-- [ ] Auto-flash-and-test — `./test_runner.sh --board teensy40 --suite imu --flash`
+### Phase 5: Failsafe Detection (`f` command)
 
-### Next: Tuning & Flight (blocked by motors/ESCs)
+- [ ] Run failsafe detection (`f`) — TX on, read normal values
+- [ ] Power off transmitter when prompted — read failsafe values
+- [ ] Verify failsafe values are distinct from normal (receiver should output specific values on signal loss)
+- [ ] Copy `#define` values to config.h (`FAILSAFE_THROTTLE/ROLL/PITCH/YAW/AUX1/AUX2`)
 
-- [ ] Complete motor/ESC bench test — verify PWM output, ESC calibration routine
+### Phase 6: Calibration Dump & Apply
+
+- [ ] Run calibration dump (`d`) — get all calibrated values in one block
+- [ ] Copy all values to config.h
+- [ ] Rebuild `teensy40_calibration` with new values — flash and verify
+- [ ] Run telemetry (`t`) — verify sane readings:
+  - AccZ ≈ 1.0g, GyroX/Y/Z ≈ 0, Roll/Pitch ≈ 0° when level
+  - Channel values respond correctly to transmitter input
+  - Motor outputs should be sane-ish (hovering around 1000-1500 with no stick input, not pegged at extremes)
+
+### Phase 7: Live Build Verification
+
+- [ ] Flash `teensy40` (live build, no calibration overhead)
+- [ ] Verify clean boot, OLED status, telemetry via serial
+- [ ] Verify receiver channels work in live mode
+- [ ] Confirm arming/disarming behavior (throttle low + CH5)
+- [ ] Note: motor outputs won't drive anything (no ESCs) but values should be reasonable
+
+### After Session: Update Config & Docs
+
+- [ ] Commit config.h with real calibration values
+- [ ] Update this todo with results and next steps
+- [ ] Update notes section with any new findings
+
+## Up Next (After Calibration Session)
+
+_After all calibrations done, with real config.h values:_
+
+### ESC & Motor Testing (needs ESCs connected)
+
+- [ ] Connect ESCs to motor output pins (no props!)
+- [ ] ESC endpoint calibration (`e` command) — full flow
+- [ ] Verify motor spin-up responds to throttle
+- [ ] Verify motor mixing — tilt board, observe differential motor response
+
+### PID Tuning (needs motors + props)
+
 - [ ] PID tuning on real hardware — use `g` command in calibration mode
-- [ ] First hover test — tethered/constrained flight, validate stability
+- [ ] Start with conservative defaults, iterate
+- [ ] First hover test — tethered/constrained flight
 
 ## Backlog
 
@@ -81,59 +111,32 @@ _Lower priority, do when time permits_
 - [ ] Low battery voltage monitoring (ADC)
 - [ ] ESP32 test support in test harness
 - [ ] Wiring validation on startup (detect if IMU/receiver/OLED are responding)
+- [ ] Windows `tools/calibrate.bat` — blocked by serial_monitor.py cross-platform
+- [ ] Modular test runner — harness + suites pattern (see roadmap)
+- [ ] Auto-flash-and-test — `./test_runner.sh --board teensy40 --suite imu --flash`
 
 ## Blocked
 
 _Tasks waiting on something (include reason)_
 
-- Motor/ESC testing — **no motors/ESCs connected**
-- Failsafe calibration (`f` full flow) — **needs transmitter power-off cycle**
-- Radio calibration (`r` full flow) — **needs transmitter powered on**
-- SBUS re-enable — **commented out in config.h for bench testing without receiver**
+- ESC endpoint calibration (`e` full flow) — **no ESCs/motors connected**
+- Motor/ESC bench test — **no ESCs/motors connected**
+- PID tuning — **needs motors + props on a tethered drone**
 
 ## Recently Completed
 
 _For context; clear periodically_
 
-- [x] Unified dev workflow script (`tools/dev.sh`) — 2026-02-20
-  - Single CLI: build, flash, monitor, go, test, calibrate, envs, build-all, diagnose
-  - Dynamic platformio.ini parsing — no hardcoded environment names
-  - Auto port detection, ModemManager check, Teensy CDC recovery
-- [x] Acrobatics command architecture research — 2026-02-20
-  - See [findings/acrobatics-command-architecture.md](findings/acrobatics-command-architecture.md)
-  - Confirmed: rate mode + air mode + serial/I2C commands already supports all acrobatic maneuvers
-  - Flight computer sends rate setpoints, FC tracks them
 - [x] Acro support firmware improvements — 2026-02-20
   - **BUG FIX**: MPU6050 gyro/accel range init — `initialize()` hardcodes 250 DPS/2G, now explicitly set from config.h
   - MAX_RATE defaults increased: roll/pitch 200→500, yaw 160→400 deg/s
   - Quaternion telemetry mode 3: q0-q3 + gyro rates (gimbal-lock-free)
-  - Gyro saturation warning: one-shot diagnostic, warns if >90% range
-  - Acro quick setup guide added to config.h (6-step comment block)
-- [x] Build verification (all environments) — 2026-02-20
-  - 7/10 pass: all calibration envs + all ESP32 envs
-  - 3 expected failures: teensy40, teensy41, teensy36 (SBUS commented out, live builds require a command source)
-  - Will be 10/10 when receiver is re-enabled
-- [x] Bench test session — 2026-02-17
-  - See [archive/bench-test-2026-02-17.md](archive/bench-test-2026-02-17.md)
-  - OLED, IMU, telemetry, all serial commands verified
-  - 42/42 automated test checks pass
-  - IMU mounting confirmed (X-axis down, needs orientation detection)
-  - SBUS noise issue documented (comment out when no receiver)
-  - USB CDC degradation issue found and fixed (auto-recovery in test harness)
-- [x] serial_monitor.py improvements — 2026-02-17
-  - Kernel buffer flush on connect (`tcflush`)
-  - Silence-based drain (replaces fixed 0.5s timer)
-  - `--wait-for` pattern matching, `--quiet` flag, exit code 2
-- [x] test_calibration.sh fixes — 2026-02-17
-  - Boot drain after `reboot_teensy()` (waits for firmware READY)
-  - CDC recovery (auto-recovery via `teensy_reboot` on empty output)
-  - Sequential cancel sends two `n` for multi-question workflow
-  - `|| true` on serial_monitor.py calls (tolerate exit code 2 under `set -euo pipefail`)
-- [x] calibrate.sh implemented — 2026-02-17
-- [x] waitForConfirmation() dead parameter removed — 2026-02-17
-- [x] IMU calibration bug fixes from bench testing — 2026-02-12
-- [x] Calibration test suite rewritten to use serial_monitor.py — 2026-02-13
-- [x] Serial monitor rewritten with raw termios — 2026-02-13
+  - Gyro saturation warning + acro quick setup guide in config.h
+- [x] Unified dev workflow script (`tools/dev.sh`) — 2026-02-20
+- [x] Acrobatics command architecture research — 2026-02-20
+- [x] Build verification (all environments) — 7/10 pass, 3 expected fail (SBUS commented out) — 2026-02-20
+- [x] Bench test session — 42/42 pass — 2026-02-17
+- [x] calibrate.sh, serial_monitor.py improvements, test harness fixes — 2026-02-17
 
 ## Notes
 
@@ -141,9 +144,10 @@ _For context; clear periodically_
 - **Serial tools**: `tools/calibrate.sh` (menu-driven calibration), `tools/serial_monitor.py` (backend/scripting), `pio device monitor` (fallback). No fc_tool dependency.
 - **Teensy quirks**: Stop ModemManager (`sudo systemctl stop ModemManager`). Use `teensy_reboot` for board reset (DTR toggle doesn't reboot Teensy 4.0). USB CDC degrades after ~15 rapid open/close cycles — only `teensy_reboot` or physical unplug recovers.
 - **MPU6050 mounting**: AccX≈1.02g, AccY≈0.05g, AccZ≈-0.10g → X-axis points down. Roll≈130° (drifting due to uncalibrated gyro). Needs orientation detection (`o` command) to fix.
-- **SBUS noise**: Floating serial pin produces random channel values when no receiver connected. Comment out `USE_SBUS_RECEIVER` in config.h for bench testing without receiver. Currently commented out.
+- **SBUS receiver**: Now connected. Was commented out in config.h for bench testing without receiver. Re-enable before next session.
 - **Gyro bias**: Uncalibrated biases: GX≈-4°/s, GY≈-11°/s, GZ≈-2°/s. Causes attitude drift. Will be zeroed by IMU calibration (`i` command).
 - **Motor outputs**: PID outputs pegged at extremes (1000/2000) due to perceived 130° roll. Will normalize after orientation + IMU calibration.
+- **Gyro range fix**: MPU6050 init bug fixed 2026-02-20. Gyro and accel now set to config.h values (GYRO_1000DPS, ACCEL_8G) after library init.
 
 ---
 
