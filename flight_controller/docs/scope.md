@@ -1,6 +1,6 @@
 # Flight Controller Firmware - Scope
 
-> Last updated: 2026-02-17
+> Last updated: 2026-03-30
 > Status: Active
 
 ---
@@ -285,6 +285,10 @@ This is a separate project. The FC firmware just exposes the WiFi API endpoints.
 - [ ] Should IMU orientation auto-detection happen in calibration mode only, or also at startup in live mode?
 - [ ] What PID auto-tuning approach is most practical for this project? (Betaflight-style relay test, ArduPilot AUTOTUNE, or simpler?) — see [findings/auto-calibration-research.md](findings/auto-calibration-research.md) for initial research
 - [ ] How tightly should fc_tool integration be coupled to the calibration workflow?
+
+## ResearchHub Integration
+
+This sub-project is the primary research workspace for all flight dynamics topics within floppi. ResearchHub is configured to auto-research: quaternions, PID/LQR/MPC control, IMU sensor fusion, acrobatics trajectory planning, rotational dynamics, coordinate transforms, and safety constraints. The existing 14 findings documents in `docs/findings/` will be ingested into a RAG knowledge base for retrieval-augmented research. PDFs are stored at `docs/findings/sources/pdfs/`. Different build configurations (`#ifdef`) handle different sensors and flight modes, making this the natural home for all flight dynamics R&D.
 
 ## Critical Notes
 

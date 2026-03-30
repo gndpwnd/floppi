@@ -1,6 +1,6 @@
 # Flight Controller Firmware - Roadmap
 
-> Last updated: 2026-02-20
+> Last updated: 2026-03-30
 
 ## Overview
 
@@ -475,6 +475,10 @@ Files: `ota.h`, `ota.cpp`.
 
 - [ ] In-flight mode switching via radio channel
   - Description: **Likely out of scope** — flight computer territory. The flight computer commands the FC by sending pre-computed attitude targets. For manual flying, pick one mode at compile time.
+
+- [ ] ResearchHub RAG integration
+  - Description: Existing 14 findings documents to be ingested into ResearchHub knowledge base. ResearchHub auto-researches flight dynamics topics: quaternions, PID/LQR/MPC, IMU fusion, acrobatics trajectory planning, rotational dynamics, coordinate transforms, safety constraints. PDF storage at `docs/findings/sources/pdfs/`.
+  - Status: ResearchHub configured (2026-03-30), ingestion pending.
 
 - [ ] Wind compensation / disturbance rejection
   - Description: Mostly about PID tuning, not special algorithms. D-term filtering + good I-term tuning handles moderate wind. See [findings/bare-bones-fc-research.md](findings/bare-bones-fc-research.md).

@@ -1,29 +1,32 @@
-All committed. Here's a summary of what was done:
+# floppi - Todo
 
-This Session
-Completed
-fc_tool CLI + headless mode — --port, --baud for auto-connect; --headless for raw serial to stdout with stdin forwarding. Built and tested with real Teensy hardware.
+> Last updated: 2026-03-30
 
-Modular WiFi configuration — Added support for:
+## Done (This Session — 2026-03-30)
 
-WPA2-Personal (default)
-Open networks
-WPA2-Enterprise PEAP (with configurable auth method)
-WPA2-Enterprise TLS with certificates
-New wifi_certs.h template for PEM storage
-Documented in wifi-configuration.md
-ESP32 network diagnostics — n command in calibration mode tests WiFi credentials, connection, RSSI, MAC, gateway, DNS, mDNS, web server (all local, no external connections). Integrated into sequential calibration workflow.
+- [x] Bootstrap drone_3d_model sub-project (docs/features/, findings/, archive/)
+- [x] Move 3D_files/ contents into drone_3d_model/reference_models/
+- [x] Prepare ResearchHub structure (PDF dirs, research project mapping)
+- [x] Update scope.md with new mission + drone_3d_model in sub-projects table
+- [x] Reposition floppi as open-source high-performance drone research platform
 
-Telemetry multi-graph format — debug.cpp upgraded to name@plotId:value for fc_tool multi-graph plotting (backward compatible — plain name:value and CSV still work)
+## Done (Previous Sessions)
 
-All 8 build environments verified — teensy40, teensy40_calibration, teensy41, teensy36, esp32, esp32_calibration, esp32s3, esp32s3_calibration all pass.
+- [x] fc_tool CLI + headless mode — --port, --baud for auto-connect; --headless for raw serial to stdout with stdin forwarding
+- [x] Modular WiFi configuration (WPA2-Personal, Open, WPA2-Enterprise PEAP/TLS)
+- [x] ESP32 network diagnostics (n command in calibration mode)
+- [x] Telemetry multi-graph format (debug.cpp: name@plotId:value)
+- [x] All 8 build environments verified
 
-What's Next (Flight Controller Focus)
-The Teensy is flashed with calibration firmware and the hardware is connected. The main priorities from the todo are:
+## In Progress
 
-Complete IMU calibration (6-position, verify offsets)
-Motor/ESC bench testing (when hardware ready)
-Radio calibration (when controller available)
-PID tuning on real hardware
-ESP32 testing (when connected)
-Want me to continue with any of these, or is there something specific you'd like to work on?
+- [ ] ResearchHub integration — waiting on devs to add .researchhub.json config files to activate auto-research
+- [ ] Existing findings in flight_controller/docs/findings/ need RAG ingestion into ResearchHub knowledge base
+
+## Next (Flight Controller Focus)
+
+- [ ] Complete IMU calibration (6-position, verify offsets)
+- [ ] Motor/ESC bench testing (when hardware ready)
+- [ ] Radio calibration (when controller available)
+- [ ] PID tuning on real hardware
+- [ ] ESP32 testing (when connected)

@@ -1,0 +1,10 @@
+{
+    "workspace": "floppi-drone-3d-model",
+    "scope_file": "docs/scope.md",
+    "scope_files": ["docs/scope.md"],
+    "roadmap_files": ["docs/roadmap.md"],
+    "pdf_folder": "docs/findings/sources/pdfs",
+    "project_root": ".",
+    "auto_git_cleanup": true,
+    "max_perspectives_per_question": 3
+}

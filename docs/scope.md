@@ -1,11 +1,11 @@
 # Project Scope: floppi
 
-> Last updated: 2026-02-18
+> Last updated: 2026-03-30
 > Status: Active
 
 ## Mission Statement
 
-floppi is an open-source bare-bones flight controller platform. The flight controller firmware does one thing well — stabilize a drone (read sensors, filter, PID, output motors). Complex logic (missions, GPS navigation, mode switching) belongs on an external flight computer.
+floppi is an open-source high-performance drone research platform — onboard control systems, frame design, and swarm coordination for advanced drone research. The flight controller firmware handles stabilization, acrobatics, and sensor fusion using quaternion-based attitude representation. Frame design supports multiple VTOL configurations. The platform serves as a hardware demo for multi-agent systems and aims to help researchers with advanced drone development including acrobatic maneuvers, swarm behavior, and novel flight control strategies.
 
 ## Sub-Projects
 
@@ -14,6 +14,7 @@ floppi is an open-source bare-bones flight controller platform. The flight contr
 | `flight_controller/` | PlatformIO embedded firmware (Teensy + ESP32) | **Active** — hardware validation phase | [scope](../flight_controller/docs/scope.md), [roadmap](../flight_controller/docs/roadmap.md) |
 | `fc_tool/` | Tauri 2 desktop app (Rust + vanilla JS) — serial monitor, plotter | **Active** — feature-rich, pytest test framework | [scope](../fc_tool/docs/scope.md), [roadmap](../fc_tool/docs/roadmap.md) |
 | `swarm_api/` | Python FastAPI ground station for ESP32 drone control over WiFi | Paused — needs ESP32 hardware testing | [scope](../swarm_api/docs/scope.md), [roadmap](../swarm_api/docs/roadmap.md) |
+| `drone_3d_model/` | 3D frame design, sensor mounts, component layouts for multi-rotor configs | **New** — bootstrapped | [scope](../drone_3d_model/docs/scope.md), [roadmap](../drone_3d_model/docs/roadmap.md) |
 
 ## Core Philosophy
 
@@ -72,11 +73,9 @@ floppi is an open-source bare-bones flight controller platform. The flight contr
 
 ## Out of Scope
 
-- Physical drone design, frame construction, component selection (engineering360)
 - GPS, barometer, magnetometer integration (flight computer territory)
 - Autonomous navigation, waypoint following (flight computer territory)
 - In-flight mode switching (flight computer sends commands)
-- Multi-drone coordination (external systems)
 - Dynamic gyro filtering (FFT, RPM filters — Betaflight-level complexity)
 - SD card logging, runtime configuration files
 - Custom PCB design (uses off-the-shelf boards)

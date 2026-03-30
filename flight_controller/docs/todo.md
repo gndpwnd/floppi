@@ -1,6 +1,6 @@
 # Flight Controller Firmware - Todo
 
-> Last updated: 2026-02-20
+> Last updated: 2026-03-30
 
 ## In Progress
 
@@ -140,6 +140,7 @@ _For context; clear periodically_
 
 ## Notes
 
+- **ResearchHub integration** (2026-03-30): ResearchHub set up for auto-research on flight dynamics topics (quaternions, PID/LQR/MPC, IMU fusion, acrobatics trajectory planning, rotational dynamics, coordinate transforms, safety constraints). Existing 14 findings documents in `docs/findings/` will be ingested into ResearchHub RAG knowledge base. PDF storage at `docs/findings/sources/pdfs/`.
 - **Dev workflow**: `tools/dev.sh` is the primary entry point — `dev.sh go` (build+flash+monitor), `dev.sh build`, `dev.sh flash`, `dev.sh monitor`, `dev.sh test`, `dev.sh calibrate`, `dev.sh diagnose`. Dynamically parses platformio.ini.
 - **Serial tools**: `tools/calibrate.sh` (menu-driven calibration), `tools/serial_monitor.py` (backend/scripting), `pio device monitor` (fallback). No fc_tool dependency.
 - **Teensy quirks**: Stop ModemManager (`sudo systemctl stop ModemManager`). Use `teensy_reboot` for board reset (DTR toggle doesn't reboot Teensy 4.0). USB CDC degrades after ~15 rapid open/close cycles — only `teensy_reboot` or physical unplug recovers.
