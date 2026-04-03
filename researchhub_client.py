@@ -1343,6 +1343,49 @@ def cmd_research(args, config):
         else:
             die("Usage: research evidence --question-id <ID> or research evidence --all [--status answered|unanswered|partial]")
 
+    elif sub == "insights":
+        # Per-question evidence depth, perspectives, and confidence
+        params_parts = []
+        if getattr(args, "status", None):
+            params_parts.append(f"status={args.status}")
+        if getattr(args, "min_depth", None) and args.min_depth > 0:
+            params_parts.append(f"min_depth={args.min_depth}")
+        qs = f"?{'&'.join(params_parts)}" if params_parts else ""
+        data = api_get(url, f"/api/workspaces/{ws}/questions/insights{qs}")
+
+        summary = data.get("summary", {})
+        print(f"\n=== Question Insights for '{ws}' ===")
+        print(f"Total questions: {summary.get('total_questions', 0)}")
+        print(f"Avg evidence depth: {summary.get('avg_evidence_depth', 0):.1f}")
+        print(f"Avg confidence: {summary.get('avg_confidence', 0):.2f}")
+        print(f"Academic-backed: {summary.get('questions_with_academic', 0)}")
+        print(f"Web-only: {summary.get('questions_web_only', 0)}")
+        print(f"Unanswered: {summary.get('questions_unanswered', 0)}")
+        print()
+
+        questions = data.get("questions", [])
+        if questions:
+            rows = []
+            for q in questions:
+                persp = q.get("perspectives", {})
+                persp_str = ", ".join(
+                    f"{k}:{v}" for k, v in persp.items() if v > 0
+                )
+                rows.append([
+                    (q.get("text") or "?")[:55],
+                    q.get("status", "?"),
+                    str(q.get("evidence_depth", 0)),
+                    persp_str or "none",
+                    f"{q.get('confidence', 0):.2f}",
+                    q.get("source_quality", "none"),
+                ])
+            out_table(rows, ["Question", "Status", "Depth", "Perspectives", "Conf", "Quality"])
+        else:
+            print("No questions found.")
+
+        if getattr(args, "json", False):
+            out_json(data)
+
     elif sub == "results":
         if not args.job_id:
             die("--job-id is required")
@@ -2024,6 +2067,213 @@ def cmd_backup(args, config):
         sys.exit(1)
 
 
+# =============================================================================
+# Command: gitignore (manage .gitignore files in ResearchHub folders)
+# =============================================================================
+
+# Inline copy of gitignore logic for zero-dependency client usage
+_MANAGED_FOLDERS_CLIENT = {
+    "sources/pdfs": (
+        "# ResearchHub managed folder — research PDFs tracked in git\n"
+        "# This file overrides parent .gitignore rules that may exclude PDFs\n"
+        "!*.pdf\n"
+        "!*.PDF\n"
+    ),
+    "generated": (
+        "# ResearchHub managed folder — generated research output tracked in git\n"
+        "# This file overrides parent .gitignore rules that may exclude markdown\n"
+        "!*.md\n"
+    ),
+    "research_notes": (
+        "# ResearchHub managed folder — research notes tracked in git\n"
+        "# This file overrides parent .gitignore rules that may exclude markdown\n"
+        "!*.md\n"
+    ),
+    ".researchhub": (
+        "# ResearchHub managed folder — workspace database tracked in git\n"
+        "# This file overrides parent .gitignore rules that may exclude databases\n"
+        "!workspace.db\n"
+    ),
+    "notebook/exports": (
+        "# ResearchHub managed folder — notebook exports tracked in git\n"
+        "# This file overrides parent .gitignore rules that may exclude markdown\n"
+        "!*.md\n"
+    ),
+}
+
+
+def _gitignore_has_rule(content, rule):
+    """Check if a .gitignore content string already contains a rule."""
+    return any(line.strip() == rule for line in content.splitlines())
+
+
+def _gitignore_fix(repo_path):
+    """Create/update .gitignore in managed folders under repo_path."""
+    repo = Path(repo_path)
+    if not repo.is_dir():
+        die(f"Not a directory: {repo}")
+
+    created = 0
+    updated = 0
+    skipped = 0
+
+    for rel_folder, content in _MANAGED_FOLDERS_CLIENT.items():
+        folder = repo / rel_folder
+        if not folder.exists():
+            skipped += 1
+            continue
+
+        gitignore = folder / ".gitignore"
+        desired_rules = [line for line in content.splitlines() if line.startswith("!")]
+
+        if gitignore.exists():
+            existing = gitignore.read_text()
+            missing = [r for r in desired_rules if not _gitignore_has_rule(existing, r)]
+            if not missing:
+                print(f"  {rel_folder}/.gitignore — already has all rules")
+                continue
+            append = "\n".join(missing) + "\n"
+            if not existing.endswith("\n"):
+                append = "\n" + append
+            gitignore.write_text(existing + append)
+            print(f"  {rel_folder}/.gitignore — added {len(missing)} rule(s)")
+            updated += 1
+        else:
+            gitignore.write_text(content)
+            print(f"  {rel_folder}/.gitignore — created")
+            created += 1
+
+    # Also check legacy PDFs/ folder
+    legacy = repo / "PDFs"
+    if legacy.exists() and legacy.is_dir():
+        gitignore = legacy / ".gitignore"
+        content = _MANAGED_FOLDERS_CLIENT["sources/pdfs"]
+        desired_rules = [line for line in content.splitlines() if line.startswith("!")]
+        if gitignore.exists():
+            existing = gitignore.read_text()
+            missing = [r for r in desired_rules if not _gitignore_has_rule(existing, r)]
+            if missing:
+                append = "\n".join(missing) + "\n"
+                if not existing.endswith("\n"):
+                    append = "\n" + append
+                gitignore.write_text(existing + append)
+                print(f"  PDFs/.gitignore — added {len(missing)} rule(s)")
+                updated += 1
+        else:
+            gitignore.write_text(content)
+            print(f"  PDFs/.gitignore — created")
+            created += 1
+
+    print(f"\nDone: {created} created, {updated} updated, {skipped} folders not present")
+
+
+def _gitignore_audit(repo_path):
+    """Audit .gitignore status for a repo."""
+    repo = Path(repo_path)
+    if not repo.is_dir():
+        die(f"Not a directory: {repo}")
+
+    is_git = (repo / ".git").is_dir()
+    print(f"Repository: {repo}")
+    print(f"Git repo: {'yes' if is_git else 'no'}")
+    print()
+
+    # Check for parent .gitignore rules that exclude PDFs
+    pdf_patterns = {"*.pdf", "*.PDF", "**/*.pdf", "**/*.PDF"}
+    excluding_rules = []
+    for gi_file in repo.rglob(".gitignore"):
+        try:
+            content = gi_file.read_text()
+            for i, line in enumerate(content.splitlines(), 1):
+                stripped = line.strip()
+                if stripped.startswith("#") or stripped.startswith("!"):
+                    continue
+                if stripped in pdf_patterns:
+                    rel = gi_file.relative_to(repo)
+                    excluding_rules.append((str(rel), i, stripped))
+        except OSError:
+            continue
+
+    if excluding_rules:
+        print("WARNING: Found .gitignore rules that exclude PDFs:")
+        for gi_file, lineno, rule in excluding_rules:
+            print(f"  {gi_file}:{lineno}: {rule}")
+        print()
+
+    # Check managed folders
+    needs_fix = False
+    print("Managed folder status:")
+    for rel_folder, content in _MANAGED_FOLDERS_CLIENT.items():
+        folder = repo / rel_folder
+        gitignore = folder / ".gitignore"
+        desired_rules = [line for line in content.splitlines() if line.startswith("!")]
+
+        if not folder.exists():
+            print(f"  {rel_folder}/ — not present (ok)")
+            continue
+
+        if not gitignore.exists():
+            print(f"  {rel_folder}/ — NO .gitignore (needs fix)")
+            needs_fix = True
+            continue
+
+        try:
+            gi_content = gitignore.read_text()
+            missing = [r for r in desired_rules if not _gitignore_has_rule(gi_content, r)]
+            if missing:
+                print(f"  {rel_folder}/ — .gitignore missing rules: {', '.join(missing)}")
+                needs_fix = True
+            else:
+                print(f"  {rel_folder}/ — protected")
+        except OSError:
+            print(f"  {rel_folder}/ — cannot read .gitignore")
+            needs_fix = True
+
+    # Count ignored PDFs if git repo
+    if is_git:
+        print()
+        try:
+            result = subprocess.run(
+                ["git", "ls-files", "--ignored", "--exclude-standard", "-o"],
+                cwd=str(repo), capture_output=True, text=True, timeout=30,
+            )
+            if result.returncode == 0:
+                ignored_pdfs = [f for f in result.stdout.strip().splitlines() if f.lower().endswith(".pdf")]
+                print(f"Ignored PDFs (by git): {len(ignored_pdfs)}")
+                if ignored_pdfs and len(ignored_pdfs) <= 10:
+                    for f in ignored_pdfs:
+                        print(f"  {f}")
+                elif ignored_pdfs:
+                    for f in ignored_pdfs[:5]:
+                        print(f"  {f}")
+                    print(f"  ... and {len(ignored_pdfs) - 5} more")
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            pass
+
+    print()
+    if needs_fix:
+        print("Fix needed! Run: researchhub_client.py gitignore fix")
+    else:
+        print("All managed folders are protected.")
+
+
+def cmd_gitignore(args, config):
+    sub = args.gitignore_cmd
+
+    if sub == "fix":
+        repo_path = args.path or os.getcwd()
+        print(f"Fixing .gitignore in managed folders under {repo_path}...")
+        _gitignore_fix(repo_path)
+
+    elif sub == "audit":
+        repo_path = args.path or os.getcwd()
+        _gitignore_audit(repo_path)
+
+    else:
+        print("Usage: researchhub_client.py gitignore <fix|audit> [--path DIR]")
+        sys.exit(1)
+
+
 def cmd_git_cleanup(args, config):
     url = config["url"]
     sub = args.git_cleanup_cmd
@@ -2537,6 +2787,12 @@ Documentation:
     p_re_evidence.add_argument("--status", choices=["answered", "unanswered", "partial"], help="Filter by status")
     p_re_evidence.add_argument("--json", action="store_true", help="Also output raw JSON")
 
+    # research insights (per-question evidence depth + perspectives)
+    p_re_insights = re_sub.add_parser("insights", help="Show per-question evidence depth, perspectives, and confidence")
+    p_re_insights.add_argument("--status", choices=["answered", "unanswered", "partial"], help="Filter by status")
+    p_re_insights.add_argument("--min-depth", type=int, default=0, help="Minimum evidence depth to include")
+    p_re_insights.add_argument("--json", action="store_true", help="Also output raw JSON")
+
     # Legacy commands
     p_re_submit = re_sub.add_parser("submit", help="Submit via integration API (legacy)")
     p_re_submit.add_argument("--topic", required=True)
@@ -2598,6 +2854,14 @@ Documentation:
     bk_sub.add_parser("status", help="Show backup monitor status")
 
     # git-cleanup (PDF history cleanup preview/status/execute)
+    # --- gitignore ---
+    p_gi = sub.add_parser("gitignore", help="Manage .gitignore in ResearchHub folders")
+    gi_sub = p_gi.add_subparsers(dest="gitignore_cmd")
+    p_gi_fix = gi_sub.add_parser("fix", help="Create/update .gitignore in managed folders")
+    p_gi_fix.add_argument("--path", help="Repo path (default: current directory)")
+    p_gi_audit = gi_sub.add_parser("audit", help="Audit which PDFs/files are gitignored")
+    p_gi_audit.add_argument("--path", help="Repo path (default: current directory)")
+
     p_gc = sub.add_parser("git-cleanup", help="Git repository PDF history cleanup")
     gc_sub = p_gc.add_subparsers(dest="git_cleanup_cmd")
     p_gc_preview = gc_sub.add_parser("preview", help="Preview cleanup for repos (PDF bloat analysis)")
@@ -2635,6 +2899,7 @@ COMMAND_MAP = {
     "scope": cmd_scope,
     "restore": cmd_restore,
     "backup": cmd_backup,
+    "gitignore": cmd_gitignore,
     "git-cleanup": cmd_git_cleanup,
 }
 
