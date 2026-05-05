@@ -8,13 +8,13 @@ Usage:
     python3 serial_monitor.py /dev/ttyACM0
 
     # Capture output to file for analysis
-    python3 serial_monitor.py /dev/ttyACM0 --output results/test.csv --wait 30
+    python3 serial_monitor.py /dev/ttyACM0 --output results/output.log --wait 30
 
     # Custom baud rate
     python3 serial_monitor.py /dev/ttyACM0 --baud 115200
 
-    # Wait for specific pattern (e.g., first GPS lock)
-    python3 serial_monitor.py /dev/ttyACM0 --wait-for "GPS_LOCK" --timeout 30
+    # Wait for specific pattern (e.g., first valid JSON)
+    python3 serial_monitor.py /dev/ttyACM0 --wait-for "timestamp" --timeout 30
 
 Teensy USB CDC notes:
     Standard pyserial in_waiting polling doesn't work with Teensy USB CDC
