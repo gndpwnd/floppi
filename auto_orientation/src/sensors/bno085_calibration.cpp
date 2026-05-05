@@ -1,49 +1,39 @@
 /**
- * BNO085 Calibration Profile Management - Implementation Skeleton
+ * BNO085 Calibration Profile Management
  *
- * This file provides the implementation stubs for BNO085 calibration
- * read/write operations via the SH-2 FRS protocol.
+ * This file provides implementation for BNO085 calibration read/write
+ * operations via the SH-2 FRS (Feature Record Store) protocol.
  *
- * STATUS: Skeleton structure - awaiting Adafruit SH-2 API investigation
+ * The SH-2 library provides sh2_getFrs() and sh2_setFrs() functions that
+ * directly access the sensor's calibration records. These are used here to
+ * read/write the DYNAMIC_CALIBRATION (0x1F1F) record.
  *
- * BLOCKERS TO RESOLVE:
- * 1. Determine how to call sh2_getFrs() and sh2_setFrs() from user code
- *    - Currently these are part of the SH-2 library but may not be exposed
- *    - May need to access via Adafruit_BNO08x._HAL member (internal API)
- *    - May need to create custom SHTP command wrapper
- * 2. Understand exact FRS record format for DYNAMIC_CALIBRATION (0x1F1F)
- *    - Data is in 32-bit word format from sh2_getFrs
- *    - Need to verify conversion to/from 8-bit byte array
- * 3. Test with actual BNO085 hardware
+ * STATUS: Full implementation using Adafruit SH-2 FRS API
  */
 
 #include "bno085_calibration.h"
+#include "sh2.h"
+#include "sh2_err.h"
 #include <string.h>
+#include <stdio.h>
 
 // Buffer to store last error message
 static char error_buffer_[64] = "No error";
 
 /**
  * Convert error code to human-readable string
- * @param sh2_error SH-2 protocol error code
- * @return Descriptive error string
- *
- * SH-2 Error Codes (from sh2_err.h):
- * 0 = SH2_OK
- * -1 = SH2_ERR_BAD_PARAM
- * -2 = SH2_ERR_TIMEOUT
- * -3 = SH2_ERR_BAD_STATUS
- * etc.
- *
- * INVESTIGATION NOTE: Need to include sh2_err.h and map all error codes
+ * Maps SH-2 protocol error codes to descriptive strings
  */
 static const char* sh2_error_to_string(int error_code) {
   switch (error_code) {
-    case 0:   return "OK";
-    case -1:  return "Bad parameter";
-    case -2:  return "Timeout";
-    case -3:  return "Bad status";
-    default:  return "Unknown error";
+    case SH2_OK:                return "OK";
+    case SH2_ERR:               return "General error";
+    case SH2_ERR_BAD_PARAM:     return "Bad parameter";
+    case SH2_ERR_OP_IN_PROGRESS: return "Operation in progress";
+    case SH2_ERR_IO:            return "I/O error";
+    case SH2_ERR_HUB:           return "Hub error";
+    case SH2_ERR_TIMEOUT:       return "Timeout";
+    default:                    return "Unknown error";
   }
 }
 
@@ -52,69 +42,49 @@ static const char* sh2_error_to_string(int error_code) {
 // ============================================================================
 
 bool readCalibrationProfile(uint8_t* buffer, uint16_t* length) {
-  /*
-   * IMPLEMENTATION PLAN:
-   *
-   * 1. Input validation
-   *    - Check buffer is not NULL
-   *    - Check length pointer is not NULL
-   *
-   * 2. Call sh2_getFrs() to read DYNAMIC_CALIBRATION record
-   *    - Record ID: DYNAMIC_CALIBRATION (0x1F1F)
-   *    - Output: 32-bit words, need to convert to 8-bit bytes
-   *    - Max size: varies by firmware, typically 18-36 words (72-144 bytes)
-   *
-   * 3. Convert 32-bit word array to 8-bit byte array
-   *    - Each uint32_t contains 4 bytes (little-endian)
-   *    - Loop through words and pack into byte buffer
-   *    - BLOCKER: Need to verify byte order (little/big endian)
-   *
-   * 4. Store length in output parameter
-   *
-   * 5. Return true on success, false on error
-   *
-   * PSEUDO-CODE:
-   *
-   *   if (!buffer || !length) return false;
-   *
-   *   uint32_t words_buffer[64];  // Max FRS record in words
-   *   uint16_t num_words = 64;
-   *
-   *   int result = sh2_getFrs(DYNAMIC_CALIBRATION, words_buffer, &num_words);
-   *   if (result != SH2_OK) {
-   *       snprintf(error_buffer_, sizeof(error_buffer_),
-   *                "sh2_getFrs failed: %s", sh2_error_to_string(result));
-   *       return false;
-   *   }
-   *
-   *   // Convert words to bytes
-   *   uint16_t byte_count = num_words * 4;
-   *   if (byte_count > BNO085_MAX_CAL_DATA) {
-   *       snprintf(error_buffer_, sizeof(error_buffer_),
-   *                "Calibration data too large: %u bytes", byte_count);
-   *       return false;
-   *   }
-   *
-   *   for (uint16_t i = 0; i < num_words; i++) {
-   *       buffer[i*4+0] = (words_buffer[i] >>  0) & 0xFF;
-   *       buffer[i*4+1] = (words_buffer[i] >>  8) & 0xFF;
-   *       buffer[i*4+2] = (words_buffer[i] >> 16) & 0xFF;
-   *       buffer[i*4+3] = (words_buffer[i] >> 24) & 0xFF;
-   *   }
-   *
-   *   *length = byte_count;
-   *   strcpy(error_buffer_, "No error");
-   *   return true;
-   */
-
+  // Input validation
   if (!buffer || !length) {
-    strcpy(error_buffer_, "NULL pointer passed");
+    snprintf(error_buffer_, sizeof(error_buffer_), "NULL pointer passed");
     return false;
   }
 
-  // TODO: Implement FRS read
-  strcpy(error_buffer_, "Not yet implemented - investigating SH-2 API");
-  return false;
+  // Allocate temporary buffer for FRS words (max 64 words = 256 bytes)
+  uint32_t words_buffer[64];
+  uint16_t num_words = 64;
+
+  // Request the DYNAMIC_CALIBRATION record from FRS
+  int result = sh2_getFrs(DYNAMIC_CALIBRATION, words_buffer, &num_words);
+
+  if (result != SH2_OK) {
+    snprintf(error_buffer_, sizeof(error_buffer_),
+             "sh2_getFrs failed: %s (code %d)",
+             sh2_error_to_string(result), result);
+    return false;
+  }
+
+  // Convert 32-bit words to 8-bit bytes
+  // Each word is stored little-endian: byte0, byte1, byte2, byte3
+  uint16_t byte_count = num_words * 4;
+
+  if (byte_count > BNO085_MAX_CAL_DATA) {
+    snprintf(error_buffer_, sizeof(error_buffer_),
+             "Calibration data too large: %u bytes (max %u)",
+             byte_count, BNO085_MAX_CAL_DATA);
+    return false;
+  }
+
+  // Pack 32-bit words into byte buffer (little-endian)
+  for (uint16_t i = 0; i < num_words; i++) {
+    uint32_t word = words_buffer[i];
+    buffer[i*4+0] = (word >>  0) & 0xFF;
+    buffer[i*4+1] = (word >>  8) & 0xFF;
+    buffer[i*4+2] = (word >> 16) & 0xFF;
+    buffer[i*4+3] = (word >> 24) & 0xFF;
+  }
+
+  *length = byte_count;
+  snprintf(error_buffer_, sizeof(error_buffer_), "No error");
+  return true;
 }
 
 // ============================================================================
@@ -122,72 +92,50 @@ bool readCalibrationProfile(uint8_t* buffer, uint16_t* length) {
 // ============================================================================
 
 bool writeCalibrationProfile(const uint8_t* buffer, uint16_t length) {
-  /*
-   * IMPLEMENTATION PLAN:
-   *
-   * 1. Input validation
-   *    - Check buffer is not NULL
-   *    - Check length is reasonable (36-256 bytes)
-   *    - Call validateCalibrationData() to perform sanity checks
-   *
-   * 2. Convert 8-bit byte array to 32-bit word array
-   *    - Pack 4 bytes per uint32_t (little-endian)
-   *    - Round up length to nearest 4-byte boundary
-   *
-   * 3. Call sh2_setFrs() to write DYNAMIC_CALIBRATION record
-   *    - Record ID: DYNAMIC_CALIBRATION (0x1F1F)
-   *    - Input: 32-bit words array
-   *    - Return code should indicate success
-   *
-   * 4. On success, sensor begins using new calibration immediately
-   *    - Calibration status fields should update
-   *    - Sensor fusion output should reflect new offsets
-   *
-   * 5. Return true on success, false on error
-   *
-   * PSEUDO-CODE:
-   *
-   *   if (!buffer || length == 0) return false;
-   *   if (!validateCalibrationData(buffer, length)) {
-   *       strcpy(error_buffer_, "Validation failed - data appears corrupted");
-   *       return false;
-   *   }
-   *
-   *   // Convert bytes to words
-   *   uint16_t num_words = (length + 3) / 4;  // Round up
-   *   uint32_t words_buffer[64];
-   *   memset(words_buffer, 0, sizeof(words_buffer));
-   *
-   *   for (uint16_t i = 0; i < length; i++) {
-   *       uint16_t word_idx = i / 4;
-   *       uint8_t byte_idx = i % 4;
-   *       words_buffer[word_idx] |= ((uint32_t)buffer[i] << (byte_idx * 8));
-   *   }
-   *
-   *   int result = sh2_setFrs(DYNAMIC_CALIBRATION, words_buffer, num_words);
-   *   if (result != SH2_OK) {
-   *       snprintf(error_buffer_, sizeof(error_buffer_),
-   *                "sh2_setFrs failed: %s", sh2_error_to_string(result));
-   *       return false;
-   *   }
-   *
-   *   strcpy(error_buffer_, "No error");
-   *   return true;
-   */
-
+  // Input validation
   if (!buffer || length == 0) {
-    strcpy(error_buffer_, "Invalid buffer or length");
+    snprintf(error_buffer_, sizeof(error_buffer_), "Invalid buffer or length");
     return false;
   }
 
+  // Validate data before writing to sensor
   if (!validateCalibrationData(buffer, length)) {
-    strcpy(error_buffer_, "Validation failed - data appears corrupted");
+    // Error message already set by validateCalibrationData
     return false;
   }
 
-  // TODO: Implement FRS write
-  strcpy(error_buffer_, "Not yet implemented - investigating SH-2 API");
-  return false;
+  // Convert 8-bit byte array to 32-bit word array
+  // Round up to nearest multiple of 4 bytes
+  uint16_t num_words = (length + 3) / 4;
+
+  if (num_words > 64) {
+    snprintf(error_buffer_, sizeof(error_buffer_),
+             "Data too large: %u words (max 64)", num_words);
+    return false;
+  }
+
+  // Pack bytes into 32-bit words (little-endian)
+  uint32_t words_buffer[64];
+  memset(words_buffer, 0, sizeof(words_buffer));
+
+  for (uint16_t i = 0; i < length; i++) {
+    uint16_t word_idx = i / 4;
+    uint8_t byte_idx = i % 4;
+    words_buffer[word_idx] |= ((uint32_t)buffer[i] << (byte_idx * 8));
+  }
+
+  // Write the DYNAMIC_CALIBRATION record to FRS
+  int result = sh2_setFrs(DYNAMIC_CALIBRATION, words_buffer, num_words);
+
+  if (result != SH2_OK) {
+    snprintf(error_buffer_, sizeof(error_buffer_),
+             "sh2_setFrs failed: %s (code %d)",
+             sh2_error_to_string(result), result);
+    return false;
+  }
+
+  snprintf(error_buffer_, sizeof(error_buffer_), "No error");
+  return true;
 }
 
 // ============================================================================
