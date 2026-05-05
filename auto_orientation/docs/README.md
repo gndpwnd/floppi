@@ -131,20 +131,21 @@ See [Developer Guide: Adding Sensors](docs/features/adding-sensors.md)
 
 ## Documentation
 
-- **[Scope](docs/scope.md)** — Project boundaries, constraints, first-release definition
-- **[Roadmap](docs/roadmap.md)** — Feature checklist and milestones
-- **[Todo](docs/todo.md)** — Current session tasks
-- **[Findings](docs/findings/)** — Research notes on calibration, GPS, sensor fusion
-- **[Archive](docs/archive/)** — Historical context, initial sketch, requirements email
+- **[Architecture](ARCHITECTURE.md)** — System design with 12 Mermaid diagrams (start here for comprehensive overview)
+- **[Scope](scope.md)** — Project boundaries, constraints, first-release definition
+- **[Roadmap](roadmap.md)** — Feature checklist and milestones
+- **[Todo](todo.md)** — Current session tasks
+- **[Findings](findings/)** — Research notes on calibration, GPS, sensor fusion
+- **[Archive](archive/)** — Historical context, initial sketch, requirements email
 
 ---
 
 ## For Developers
 
 ### First Time?
-1. Read [Scope](docs/scope.md) to understand project boundaries
-2. Check [Hardware Setup](docs/features/hardware-setup.md) to understand wiring
-3. Review [API Reference](docs/features/api-reference.md) to understand sensor interfaces
+1. Read [Architecture](ARCHITECTURE.md) for comprehensive system overview with diagrams
+2. Check [Hardware Setup](guides/HARDWARE_SETUP.md) to understand wiring
+3. Review [Scope](scope.md) to understand project boundaries
 4. Build and flash the existing sketch to validate your setup
 
 ### Want to Add a Sensor?

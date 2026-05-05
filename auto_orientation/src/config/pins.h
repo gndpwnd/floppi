@@ -47,19 +47,9 @@
 #endif
 
 // ============================================================================
-// GPS (NEO-M9N)
-// ============================================================================
-// GPS communicates via USB serial (enumerated as separate COM port).
-// No GPIO pins needed; detected automatically via USB.
-// On Linux: typically /dev/ttyUSB0 or /dev/ttyACM1
-// Baud rate: 115200 (typical for NEO-M9N)
-
-#define GPS_BAUD_RATE 115200
-
-// ============================================================================
 // Status LED (optional)
 // ============================================================================
-// Blink on GPS lock, orientation valid, etc.
+// Blink on orientation valid, etc.
 #define LED_PIN 13  // Most Arduino boards have LED on pin 13
 
 // ============================================================================

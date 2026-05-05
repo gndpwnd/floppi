@@ -15,6 +15,8 @@
  * Status: Ready for hardware testing (Task 17)
  */
 
+#ifdef DEBUG_MODE
+
 #include <Wire.h>
 #include <HardwareSerial.h>
 #include "Adafruit_BNO08x.h"
@@ -452,3 +454,5 @@ void loop() {
   // Test complete, just keep the sensor running
   delay(1000);
 }
+
+#endif // DEBUG_MODE

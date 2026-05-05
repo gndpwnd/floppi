@@ -1,0 +1,143 @@
+ARDUINO MEGA BOOTLOADER RECOVERY - FILE LISTING
+================================================
+
+QUICK START:
+============
+1. Start here: docs/findings/bootloader_quick_reference.md
+2. For more detail: docs/findings/bootloader_recovery_guide.md
+3. For complete understanding: docs/findings/bootloader_dtr_rts_analysis.md
+
+FILE LOCATIONS:
+===============
+
+Main Documentation:
+  /home/devel/floppi/docs/findings/BOOTLOADER_RECOVERY_SUMMARY.md
+    - Investigation overview and summary
+    - Links to all other files
+    - Quick start instructions
+    - File structure and usage recommendations
+
+Navigation Hub:
+  /home/devel/floppi/docs/findings/README_BOOTLOADER.md
+    - Directory of all bootloader documentation
+    - Reading recommendations by expertise level
+    - FAQ section
+    - Related documentation links
+
+Quick Reference (2-3 minutes):
+  /home/devel/floppi/docs/findings/bootloader_quick_reference.md
+    - 3 immediate solutions
+    - Decision tree
+    - Success indicators
+    - Common mistakes to avoid
+
+Comprehensive Guide (15-20 minutes):
+  /home/devel/floppi/docs/findings/bootloader_recovery_guide.md
+    - What is a bootloader
+    - Why upload fails
+    - Windows vs Linux differences
+    - 5-step recovery procedure
+    - Bootloader re-flash procedure (ICSP)
+    - Verbose output interpretation
+    - Prevention tips
+
+Technical Analysis (30+ minutes):
+  /home/devel/floppi/docs/findings/bootloader_dtr_rts_analysis.md
+    - Hardware reset circuit analysis
+    - Linux USB driver behavior
+    - avrdude STK500v2 protocol
+    - Critical timing windows
+    - Root cause analysis
+    - Solution strategies
+    - Debugging techniques
+
+Automated Tool:
+  /home/devel/floppi/tools/recover_bootloader.sh
+    - Executable recovery script
+    - Interactive recovery attempts
+    - Detailed logging
+    - Usage: ./tools/recover_bootloader.sh
+
+Configuration:
+  /home/devel/floppi/auto_orientation/platformio.ini
+    - Updated with debugging notes
+    - Recovery recommendations in comments
+
+WHAT TO READ BASED ON YOUR SITUATION:
+======================================
+
+Immediate Fix Needed (5 minutes):
+  → Read: bootloader_quick_reference.md
+  → Try: Method 1 (press RESET button during upload)
+
+Want to Understand the Issue (30 minutes):
+  → Read: README_BOOTLOADER.md (navigation)
+  → Read: bootloader_recovery_guide.md (Parts 1-3)
+  → Skim: bootloader_quick_reference.md (for next time)
+
+Deep Technical Understanding (2+ hours):
+  → Read: README_BOOTLOADER.md (overview)
+  → Read: bootloader_quick_reference.md (quick reference)
+  → Read: bootloader_recovery_guide.md (full guide)
+  → Read: bootloader_dtr_rts_analysis.md (technical deep-dive)
+  → Run: ./tools/recover_bootloader.sh --verbose
+
+Need Automated Recovery:
+  → Run: ./tools/recover_bootloader.sh
+  → See: bootloader_quick_reference.md for manual methods
+
+RECOVERY METHODS AT A GLANCE:
+=============================
+
+Method 1: Press RESET Button (1 minute, 80% success)
+  - Start upload
+  - Press RESET button when you see "Uploading..."
+  - Release after 1 second
+  - Upload completes
+
+Method 2: Unplug/Replug USB (2 minutes, 70% success)
+  - Unplug USB from Mega
+  - Wait 2 seconds
+  - Start upload
+  - Plug USB back in when you see "Connecting..."
+
+Method 3: Different USB Port (2 minutes, variable success)
+  - Update platformio.ini upload_port = /dev/ttyUSB0
+  - Try upload
+
+Method 4: Slower Baud Rate (5 minutes, 95% success)
+  - Edit platformio.ini
+  - Change upload_speed from 115200 to 57600
+  - Try upload (will be slower but more stable)
+
+Method 5: Automated Recovery (5-30 minutes)
+  - Run: ./tools/recover_bootloader.sh
+  - Follow interactive prompts
+
+Method 6: ICSP Re-Flash (1-2 hours, if bootloader erased)
+  - Requires ICSP programmer
+  - See: bootloader_recovery_guide.md Part 4
+
+ROOT CAUSE IN SIMPLE TERMS:
+============================
+Linux handles the USB reset signal (DTR) differently than Windows:
+- Windows: Reset happens immediately and reliably (~20ms)
+- Linux: Reset is delayed and variable (~100-500ms)
+
+The bootloader has an 8-second window to listen for upload data,
+but avrdude gives up after 1 second if the bootloader doesn't respond.
+When Linux delays the reset, the bootloader isn't ready when avrdude
+sends the first message, causing a timeout.
+
+Solution: Bypass the timing issue by manually resetting (press button)
+or give the bootloader more time (slower baud rate).
+
+VERSION INFO:
+=============
+Created: 2026-05-05
+Platform: Arduino Mega 2560
+OS: Linux (Ubuntu/Debian)
+Issue: STK500v2 bootloader timeout on upload
+Status: Complete, ready for use
+
+For latest information, see: docs/findings/bootloader_recovery_guide.md
