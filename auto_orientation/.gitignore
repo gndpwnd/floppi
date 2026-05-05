@@ -1,0 +1,53 @@
+# PlatformIO
+.pio/
+.vscode/
+build/
+*.o
+*.a
+*.so
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+venv/
+env/
+
+# IDE
+.vscode
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Serial output logs
+*.log
+*.csv
+data/
+
+# Arduino/PlatformIO temp files
+*.elf
+*.hex
+*.bin
+
+# Local libraries (cloned repos) - but track structure
+lib/*/.git/
+lib/*/.github/
+lib/*/examples/
+lib/*/docs/
+
+# Test outputs
+tests/results/
+tests/outputs/
+
+# Build outputs
+.clang_complete
+.gcc-flags.json
