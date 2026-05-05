@@ -20,8 +20,10 @@
 
 // Sensor instances
 #include "sensors/bno085.h"
+#include "sensors/neo_m9n.h"
 
 BNO085 imu;
+NEOM9N gps;
 uint32_t last_output_ms = 0;
 const uint32_t output_interval_ms = 1000 / SERIAL_OUTPUT_FREQUENCY_HZ;  // 100ms for 10 Hz
 
@@ -34,26 +36,42 @@ void setup() {
   }
 
   Serial.println("\n=== Auto Orientation System ===");
-  Serial.println("Board: Initializing BNO085 sensor...");
+  Serial.println("Initializing sensors...");
 
   // Initialize BNO085 sensor
+  Serial.println("Board: Initializing BNO085 IMU sensor...");
   if (!imu.begin()) {
     Serial.println("ERROR: BNO085 initialization failed!");
     Serial.println("Check UART connections and pins.h configuration.");
     while (1) {
       delay(500);
-      Serial.println("Waiting for manual reset...");
+      Serial.println("  (waiting for manual reset)");
     }
   }
+  Serial.println("BNO085 OK");
 
-  Serial.println("BNO085 initialized successfully!");
-  Serial.println("Reading orientation data...\n");
+  // Initialize NEO-M9N GPS sensor
+  Serial.println("Board: Initializing NEO-M9N GPS sensor...");
+  if (!gps.begin()) {
+    Serial.println("ERROR: NEO-M9N initialization failed!");
+    Serial.println("Check USB serial connection and GPS_BAUD_RATE in pins.h.");
+    while (1) {
+      delay(500);
+      Serial.println("  (waiting for manual reset)");
+    }
+  }
+  Serial.println("NEO-M9N initialized successfully!");
+  Serial.println("Reading sensor data...\n");
 }
 
 void loop() {
-  // Read from BNO085
+  // Read from both sensors
   if (imu.read()) {
-    // Successfully read new sensor data
+    // Successfully read new IMU data
+  }
+
+  if (gps.read()) {
+    // Successfully read new GPS data
   }
 
   // Output at configured frequency
@@ -61,8 +79,8 @@ void loop() {
   if (now_ms - last_output_ms >= output_interval_ms) {
     last_output_ms = now_ms;
 
+    // Output IMU orientation data
     if (imu.hasNewData()) {
-      // Get latest orientation data
       const OrientationData& orientation = imu.getOrientation();
 
       // Compute quaternion magnitude for validation
@@ -83,10 +101,28 @@ void loop() {
       Serial.print(orientation.z, 4);
       Serial.print(" | Mag: ");
       Serial.print(q_mag, 4);
-      Serial.print(" | Status: ");
-      Serial.println(imu.getStatusString());
+      Serial.print(" | IMU: ");
+      Serial.print(imu.getStatusString());
+      Serial.print(" | GPS: ");
+      Serial.println(gps.getStatusString());
     } else {
-      Serial.println("No new data from BNO085");
+      Serial.print(now_ms);
+      Serial.print(" | No IMU data | GPS: ");
+      Serial.println(gps.getStatusString());
+    }
+
+    // Optionally output GPS position data when available
+    if (gps.hasNewData()) {
+      const PositionData& position = gps.getPosition();
+      Serial.print("  -> GPS Position: ");
+      Serial.print(position.latitude, 6);
+      Serial.print(", ");
+      Serial.print(position.longitude, 6);
+      Serial.print(" (alt: ");
+      Serial.print(position.altitude, 1);
+      Serial.print("m, acc: ");
+      Serial.print(position.accuracy_m, 1);
+      Serial.println("m)");
     }
   }
 }
