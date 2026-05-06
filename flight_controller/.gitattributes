@@ -1,0 +1,3 @@
+# managed by ResearchHub repo_sync_monitor
+.researchhub/workspace.db binary
+.researchhub/workspace.db merge=ours

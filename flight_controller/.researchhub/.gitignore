@@ -1,0 +1,3 @@
+# ResearchHub managed folder — workspace database tracked in git
+# This file overrides parent .gitignore rules that may exclude databases
+!workspace.db

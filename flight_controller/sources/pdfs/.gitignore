@@ -1,0 +1,4 @@
+# ResearchHub managed folder — research PDFs tracked in git
+# This file overrides parent .gitignore rules that may exclude PDFs
+!*.pdf
+!*.PDF
