@@ -14,10 +14,11 @@
  * Key APIs from Adafruit_BNO08x library used in implementation:
  *
  * 1. Initialization:
- *    - begin_UART(Stream *serial, int reset_pin)
- *      Initialize sensor on hardware/software serial stream
+ *    - begin_I2C(uint8_t addr, TwoWire *wire, int reset_pin)
+ *      Initialize sensor on I2C bus
  *      Parameters:
- *        serial - Stream object (Serial1, SoftwareSerial, etc.)
+ *        addr - I2C address (0x4A if DI pin to GND, 0x4B if DI pin to VCC)
+ *        wire - Wire object (default &Wire for Arduino Mega pins 20/21)
  *        reset_pin - GPIO pin for hardware reset (-1 if not available)
  *      Returns: true if initialization successful
  *

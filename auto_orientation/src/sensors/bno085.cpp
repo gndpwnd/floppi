@@ -2,7 +2,7 @@
  * BNO085 Sensor Driver Implementation
  *
  * Wraps Adafruit BNO08x library to provide:
- * - UART initialization on configurable pins (from pins.h)
+ * - I2C initialization (Arduino Mega: pins 20/SDA, 21/SCL)
  * - Absolute orientation (quaternion) reading
  * - Calibration status monitoring
  * - Sensor health checking
@@ -12,9 +12,10 @@
  * - Reads quaternion data (w, x, y, z) with magnitude ≈ 1.0
  * - Tracks per-axis calibration status (accel, gyro, mag)
  * - Status string includes calibration levels for debugging
+ * - I2C Address: 0x4A (default, DI pin to GND)
  *
  * Adafruit APIs Used:
- * - Adafruit_BNO08x::begin_UART() - Initialize with HardwareSerial
+ * - Adafruit_BNO08x::begin_I2C() - Initialize with Wire I2C
  * - Adafruit_BNO08x::enableReport() - Enable rotation vector report
  * - Adafruit_BNO08x::getSensorEvent() - Read sensor data
  * - Adafruit_BNO08x::wasReset() - Check for sensor reset
@@ -57,47 +58,12 @@ bool BNO085::begin() {
     return false;
   }
 
-  // Determine which UART to use based on board type
-  HardwareSerial *uart_stream = nullptr;
+  // Initialize I2C communication (all boards use Wire library)
+  Wire.begin();
+  Wire.setClock(100000L);  // 100 kHz I2C clock (BNO085 has timing issues at 400 kHz)
 
-#if defined(__AVR_ATmega328P__)
-  // Arduino Nano/Uno: Limited UART support, would need SoftwareSerial
-  // Adafruit_BNO08x::begin_UART requires HardwareSerial, not supported on Nano
-  delete imu_;
-  imu_ = nullptr;
-  initialized_ = false;
-  return false;
-
-#elif defined(__AVR_ATmega2560__)
-  // Arduino Mega: Use Serial1 (hardware UART)
-  Serial1.begin(115200);
-  uart_stream = &Serial1;
-
-#elif defined(TEENSY31) || defined(TEENSY32)
-  // Teensy 3.x: Use Serial1
-  Serial1.begin(115200);
-  uart_stream = &Serial1;
-
-#elif defined(ESP32)
-  // ESP32: Use Serial1 with custom pins
-  Serial1.begin(115200, SERIAL_8N1, BNO085_RX_PIN, BNO085_TX_PIN);
-  uart_stream = &Serial1;
-
-#else
-  // Default to Serial1 if available
-  #ifdef Serial1
-  Serial1.begin(115200);
-  uart_stream = &Serial1;
-  #else
-  delete imu_;
-  imu_ = nullptr;
-  initialized_ = false;
-  return false;
-  #endif
-#endif
-
-  // Initialize BNO08x via UART
-  if (!imu_->begin_UART(uart_stream)) {
+  // Initialize BNO08x via I2C (address 0x4A - DI pin to GND)
+  if (!imu_->begin_I2C(0x4A, &Wire, 0)) {
     delete imu_;
     imu_ = nullptr;
     initialized_ = false;
