@@ -60,7 +60,7 @@ class BNOMonitor:
         print("  1. PICK UP the Arduino board (hold by the edges)")
         print("  2. MOVE in LARGE figure-8 patterns continuously")
         print("  3. ROTATE through ALL 3 AXES (don't just rock it)")
-        print("  4. KEEP MOVING for 5-10 minutes")
+        print("  4. KEEP MOVING for 5-10 minutes until level 3 reached")
         print("  5. Watch for 'EEPROM SAVED' message\n")
         print("Calibration Levels:")
         print("  ░░░ (0) = Uncalibrated")
@@ -78,7 +78,9 @@ class BNOMonitor:
 
         self.start_time = time.time()
         self.last_cal = -1
+        self.last_status_print = 0
         saved_to_eeprom = False
+        final_level = -1
 
         print("🔄 Monitoring calibration...\n")
 
@@ -91,35 +93,48 @@ class BNOMonitor:
                 if self.ser.in_waiting:
                     line = self.ser.readline().decode('utf-8', errors='replace').strip()
 
-                    # Check for EEPROM save message
+                    # Check for EEPROM save message (always show this)
                     if '✓✓✓' in line or 'Calibration saved' in line:
-                        print(f"\n🎉 {line}")
+                        print(f"\n{'='*70}")
+                        print(f"🎉 {line}")
+                        print(f"{'='*70}\n")
                         saved_to_eeprom = True
+                        final_level = self.last_cal
 
                     # Parse JSON data
                     if line.startswith('{'):
                         try:
                             data = json.loads(line)
                             cal = data['orientation']['calibration']['system']
+                            self.readings.append(data)
 
-                            # Update level display when it changes
+                            # ONLY show output when level CHANGES or on status interval
+                            elapsed = time.time() - self.start_time
+
                             if cal != self.last_cal:
+                                # Level changed - always show this
                                 self.last_cal = cal
-                                elapsed = int(time.time() - self.start_time)
+                                elapsed_s = int(elapsed)
                                 bars = ["░░░", "█░░", "██░", "███"]
                                 bar = bars[min(cal, 3)]
                                 status = ["Uncalibrated", "Low", "Medium", "High"][cal] if cal < 4 else "?"
-                                print(f"[{elapsed:3d}s] Level {cal}: {bar}  ({status})")
+                                print(f"[{elapsed_s:3d}s] ✓ Level {cal}: {bar}  ({status})")
+                                self.last_status_print = elapsed
 
-                            # Show Euler angles periodically
-                            self.readings.append(data)
-                            if len(self.readings) % 50 == 0:
+                                # Show Euler angles when level changes
                                 euler = data['orientation']['euler']
-                                print(f"  Orientation: Roll={euler['roll_deg']:7.1f}° Pitch={euler['pitch_deg']:7.1f}° Yaw={euler['yaw_deg']:7.1f}°")
+                                print(f"         Orientation: Roll={euler['roll_deg']:7.1f}° Pitch={euler['pitch_deg']:7.1f}° Yaw={euler['yaw_deg']:7.1f}°")
 
-                            # If we hit level 3, offer to stop
-                            if cal >= 3 and not saved_to_eeprom:
-                                print("\n✓ Level 3 reached! Continuing to save calibration...")
+                                # Encouragement at level 3
+                                if cal >= 3:
+                                    print("         ✓✓ LEVEL 3! Keep moving - saving to EEPROM...")
+
+                            # Periodically show status even without level change (every 30 sec)
+                            elif elapsed - self.last_status_print > 30:
+                                euler = data['orientation']['euler']
+                                elapsed_s = int(elapsed)
+                                print(f"[{elapsed_s:3d}s] Still at level {self.last_cal}... Keep moving!")
+                                self.last_status_print = elapsed
 
                         except json.JSONDecodeError:
                             pass
@@ -131,16 +146,19 @@ class BNOMonitor:
 
         elapsed = time.time() - self.start_time
         print(f"\n{'='*70}")
-        print(f"Calibration complete! (Duration: {elapsed:.0f} seconds)")
+        print(f"Calibration session complete! (Duration: {elapsed:.0f} seconds)")
         print(f"Final level: {self.last_cal}")
-        print(f"Readings captured: {len(self.readings)}")
 
         if saved_to_eeprom:
-            print("\n✓✓✓ SUCCESS: Calibration saved to EEPROM")
+            print(f"\n✓✓✓ SUCCESS: Calibration saved to EEPROM (Level {final_level})")
             print("    System will remember this calibration after power cycle")
         else:
-            print("\n⚠ Note: Calibration may not have been saved")
-            print("    Reach level 2+ and keep moving to trigger auto-save")
+            if self.last_cal >= 2:
+                print(f"\n⚠ Level {self.last_cal} reached but may not be saved yet")
+                print("    Keep moving for a few more seconds to trigger auto-save")
+            else:
+                print("\n⚠ Calibration not complete - need to keep moving")
+                print("    Target: Level 3 (███) for best results")
         print(f"{'='*70}\n")
 
     def monitor(self, duration_seconds=300):
@@ -153,8 +171,8 @@ class BNOMonitor:
         print("\n" + "="*70)
         print(" "*15 + "BNO085 ORIENTATION MONITORING")
         print("="*70)
-        print("\nOutputting real-time absolute orientation...")
-        print("(Quaternion + Euler angles at ~10 Hz)\n")
+        print("\nReal-time absolute orientation output (quaternion + Euler)")
+        print("(Updated every 5 readings, ~0.5 seconds)\n")
         print("Press CTRL+C to stop\n")
 
         self.start_time = time.time()
@@ -176,12 +194,12 @@ class BNOMonitor:
                             euler = q['euler']
                             cal = q['calibration']
 
-                            # Display every 10 readings (1 second)
-                            if reading_count % 10 == 0:
+                            # Display every 5 readings (~0.5 seconds) to reduce spam
+                            if reading_count % 5 == 0:
                                 cal_bar = "░░░█░░██░███"[cal['system']*3:(cal['system']+1)*3]
                                 print(
                                     f"[{timestamp:6d}ms] Q:({q['w']:7.4f},{q['x']:7.4f},{q['y']:7.4f},{q['z']:7.4f}) "
-                                    f"R:{euler['roll_deg']:7.1f}° P:{euler['pitch_deg']:7.1f}° Y:{euler['yaw_deg']:7.1f}° "
+                                    f"Roll:{euler['roll_deg']:7.1f}° Pitch:{euler['pitch_deg']:7.1f}° Yaw:{euler['yaw_deg']:7.1f}° "
                                     f"Cal:{cal_bar}"
                                 )
                         except json.JSONDecodeError:
