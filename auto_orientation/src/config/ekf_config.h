@@ -1,6 +1,8 @@
 #ifndef EKF_CONFIG_H
 #define EKF_CONFIG_H
 
+#include <cstdint>
+
 /**
  * EKF Configuration Parameters
  *
