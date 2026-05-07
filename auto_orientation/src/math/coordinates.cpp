@@ -1,6 +1,5 @@
 #include "coordinates.h"
-#include <cmath>
-#include <limits>
+#include <math.h>
 
 // ============================================================================
 // GPS <-> ECEF CONVERSIONS
@@ -10,9 +9,9 @@ ECEF gps_to_ecef(double lat_deg, double lon_deg, double alt_m) {
     // Validate input
     if (!is_valid_gps(lat_deg, lon_deg, alt_m)) {
         // Return ECEF with NaN to indicate invalid input
-        return ECEF(std::numeric_limits<double>::quiet_NaN(),
-                    std::numeric_limits<double>::quiet_NaN(),
-                    std::numeric_limits<double>::quiet_NaN());
+        return ECEF(NAN,
+                    NAN,
+                    NAN);
     }
 
     // Convert degrees to radians
@@ -20,10 +19,10 @@ ECEF gps_to_ecef(double lat_deg, double lon_deg, double alt_m) {
     double lon_rad = lon_deg * M_PI / 180.0;
 
     // Precompute trigonometric values
-    double cos_lat = std::cos(lat_rad);
-    double sin_lat = std::sin(lat_rad);
-    double cos_lon = std::cos(lon_rad);
-    double sin_lon = std::sin(lon_rad);
+    double cos_lat = cos(lat_rad);
+    double sin_lat = sin(lat_rad);
+    double cos_lon = cos(lon_rad);
+    double sin_lon = sin(lon_rad);
 
     // Calculate radius of curvature in prime vertical
     double N = WGS84::radius_of_curvature(lat_rad);
@@ -41,37 +40,37 @@ GPS_Data ecef_to_gps(double x, double y, double z) {
     ECEF test(x, y, z);
     if (!is_valid_ecef(test)) {
         // Return GPS_Data with NaN to indicate invalid input
-        return GPS_Data(std::numeric_limits<double>::quiet_NaN(),
-                        std::numeric_limits<double>::quiet_NaN(),
-                        std::numeric_limits<double>::quiet_NaN());
+        return GPS_Data(NAN,
+                        NAN,
+                        NAN);
     }
 
     // Calculate longitude
-    double lon_rad = std::atan2(y, x);
+    double lon_rad = atan2(y, x);
 
     // Calculate cylindrical distance from Z-axis
-    double p = std::sqrt(x * x + y * y);
+    double p = sqrt(x * x + y * y);
 
     // Initial latitude estimate using atan2
-    double lat_rad = std::atan2(z, p * (1.0 - WGS84::ECCENTRICITY_SQ));
+    double lat_rad = atan2(z, p * (1.0 - WGS84::ECCENTRICITY_SQ));
 
     // Iterate to improve latitude and altitude estimates (3-4 iterations for convergence)
     double N;
     double h;
     for (int i = 0; i < 4; ++i) {
         N = WGS84::radius_of_curvature(lat_rad);
-        h = p / std::cos(lat_rad) - N;
-        lat_rad = std::atan2(z, p * (1.0 - WGS84::ECCENTRICITY_SQ * N / (N + h)));
+        h = p / cos(lat_rad) - N;
+        lat_rad = atan2(z, p * (1.0 - WGS84::ECCENTRICITY_SQ * N / (N + h)));
     }
 
     // Final computation of N and h
     N = WGS84::radius_of_curvature(lat_rad);
-    h = p / std::cos(lat_rad) - N;
+    h = p / cos(lat_rad) - N;
 
     // Handle special case: near poles where cos(lat) ≈ 0
     // Use alternative formula for altitude
-    if (std::abs(std::cos(lat_rad)) < 1e-6) {
-        h = std::abs(z) - WGS84::SEMI_MINOR_AXIS;
+    if (fabs(cos(lat_rad)) < 1e-6) {
+        h = fabs(z) - WGS84::SEMI_MINOR_AXIS;
     }
 
     // Convert to degrees
@@ -92,13 +91,13 @@ LocalFrame ecef_to_ned(const ECEF& point_ecef, const ECEF& origin_ecef, double o
     double dz = point_ecef.z - origin_ecef.z;
 
     // We need longitude too for the rotation matrix
-    double lon_rad = std::atan2(origin_ecef.y, origin_ecef.x);
+    double lon_rad = atan2(origin_ecef.y, origin_ecef.x);
 
     // Precompute trigonometric values
-    double sin_lat = std::sin(origin_lat_rad);
-    double cos_lat = std::cos(origin_lat_rad);
-    double sin_lon = std::sin(lon_rad);
-    double cos_lon = std::cos(lon_rad);
+    double sin_lat = sin(origin_lat_rad);
+    double cos_lat = cos(origin_lat_rad);
+    double sin_lon = sin(lon_rad);
+    double cos_lon = cos(lon_rad);
 
     // Apply rotation matrix: R_ECEF→NED
     // [N]   [-sin(φ)cos(λ)  -sin(λ)  -cos(φ)cos(λ)]   [Δx]
@@ -114,13 +113,13 @@ LocalFrame ecef_to_ned(const ECEF& point_ecef, const ECEF& origin_ecef, double o
 
 ECEF ned_to_ecef(const LocalFrame& ned_point, const ECEF& origin_ecef, double origin_lat_rad) {
     // We need longitude for the rotation matrix
-    double lon_rad = std::atan2(origin_ecef.y, origin_ecef.x);
+    double lon_rad = atan2(origin_ecef.y, origin_ecef.x);
 
     // Precompute trigonometric values
-    double sin_lat = std::sin(origin_lat_rad);
-    double cos_lat = std::cos(origin_lat_rad);
-    double sin_lon = std::sin(lon_rad);
-    double cos_lon = std::cos(lon_rad);
+    double sin_lat = sin(origin_lat_rad);
+    double cos_lat = cos(origin_lat_rad);
+    double sin_lon = sin(lon_rad);
+    double cos_lon = cos(lon_rad);
 
     // Apply inverse rotation matrix (transpose of R_ECEF→NED)
     // [Δx]   [-sin(φ)cos(λ)  -sin(φ)sin(λ)   cos(φ)    ]   [N]
@@ -177,10 +176,10 @@ GPS_Data ned_to_gps(const LocalFrame& ned_point,
 
 bool is_valid_gps(double lat_deg, double lon_deg, double alt_m) {
     // Check for NaN or infinity
-    if (std::isnan(lat_deg) || std::isnan(lon_deg) || std::isnan(alt_m)) {
+    if (isnan(lat_deg) || isnan(lon_deg) || isnan(alt_m)) {
         return false;
     }
-    if (std::isinf(lat_deg) || std::isinf(lon_deg) || std::isinf(alt_m)) {
+    if (isinf(lat_deg) || isinf(lon_deg) || isinf(alt_m)) {
         return false;
     }
 
@@ -205,10 +204,10 @@ bool is_valid_gps(double lat_deg, double lon_deg, double alt_m) {
 
 bool is_valid_ecef(const ECEF& ecef) {
     // Check for NaN or infinity
-    if (std::isnan(ecef.x) || std::isnan(ecef.y) || std::isnan(ecef.z)) {
+    if (isnan(ecef.x) || isnan(ecef.y) || isnan(ecef.z)) {
         return false;
     }
-    if (std::isinf(ecef.x) || std::isinf(ecef.y) || std::isinf(ecef.z)) {
+    if (isinf(ecef.x) || isinf(ecef.y) || isinf(ecef.z)) {
         return false;
     }
 

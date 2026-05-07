@@ -1,7 +1,5 @@
 #include "coordinate_frame.h"
-#include <stdexcept>
-#include <cmath>
-#include <limits>
+#include <math.h>
 
 CoordinateFrame::CoordinateFrame()
     : origin_lat_deg_(0.0),
@@ -15,7 +13,6 @@ CoordinateFrame::CoordinateFrame()
 }
 
 bool CoordinateFrame::initialize(double lat_deg, double lon_deg, double alt_m) {
-    std::lock_guard<std::mutex> lock(mutex_);
 
     // Validate input coordinates
     if (!is_valid_gps(lat_deg, lon_deg, alt_m)) {
@@ -49,20 +46,18 @@ bool CoordinateFrame::initializeOnFirstFix(const GPS_Data& gps_data) {
 }
 
 bool CoordinateFrame::isInitialized() const {
-    std::lock_guard<std::mutex> lock(mutex_);
     return is_initialized_;
 }
 
 LocalFrame CoordinateFrame::gpsToLocalNED(double lat_deg, double lon_deg, double alt_m) const {
-    std::lock_guard<std::mutex> lock(mutex_);
 
     assert_initialized_();
 
     // Validate input coordinates
     if (!is_valid_gps(lat_deg, lon_deg, alt_m)) {
-        return LocalFrame(std::numeric_limits<double>::quiet_NaN(),
-                         std::numeric_limits<double>::quiet_NaN(),
-                         std::numeric_limits<double>::quiet_NaN());
+        return LocalFrame(NAN,
+                         NAN,
+                         NAN);
     }
 
     // Convert GPS to ECEF
@@ -70,9 +65,9 @@ LocalFrame CoordinateFrame::gpsToLocalNED(double lat_deg, double lon_deg, double
 
     // Validate ECEF result
     if (!is_valid_ecef(point_ecef)) {
-        return LocalFrame(std::numeric_limits<double>::quiet_NaN(),
-                         std::numeric_limits<double>::quiet_NaN(),
-                         std::numeric_limits<double>::quiet_NaN());
+        return LocalFrame(NAN,
+                         NAN,
+                         NAN);
     }
 
     // Convert ECEF to NED
@@ -82,7 +77,6 @@ LocalFrame CoordinateFrame::gpsToLocalNED(double lat_deg, double lon_deg, double
 }
 
 GPS_Data CoordinateFrame::localNEDToGPS(const LocalFrame& ned_point) const {
-    std::lock_guard<std::mutex> lock(mutex_);
 
     assert_initialized_();
 
@@ -91,9 +85,9 @@ GPS_Data CoordinateFrame::localNEDToGPS(const LocalFrame& ned_point) const {
 
     // Validate ECEF result
     if (!is_valid_ecef(point_ecef)) {
-        return GPS_Data(std::numeric_limits<double>::quiet_NaN(),
-                       std::numeric_limits<double>::quiet_NaN(),
-                       std::numeric_limits<double>::quiet_NaN());
+        return GPS_Data(NAN,
+                       NAN,
+                       NAN);
     }
 
     // Convert ECEF to GPS
@@ -103,7 +97,6 @@ GPS_Data CoordinateFrame::localNEDToGPS(const LocalFrame& ned_point) const {
 }
 
 GPS_Data CoordinateFrame::getOrigin() const {
-    std::lock_guard<std::mutex> lock(mutex_);
 
     assert_initialized_();
 
@@ -111,7 +104,6 @@ GPS_Data CoordinateFrame::getOrigin() const {
 }
 
 double CoordinateFrame::getOriginAltitude() const {
-    std::lock_guard<std::mutex> lock(mutex_);
 
     assert_initialized_();
 
@@ -128,14 +120,10 @@ void CoordinateFrame::cache_trig_values_() {
     origin_lat_rad_ = origin_lat_deg_ * M_PI / 180.0;
 
     // Pre-compute and cache sine and cosine of origin latitude
-    sin_lat_ = std::sin(origin_lat_rad_);
-    cos_lat_ = std::cos(origin_lat_rad_);
+    sin_lat_ = sin(origin_lat_rad_);
+    cos_lat_ = cos(origin_lat_rad_);
 }
 
-void CoordinateFrame::assert_initialized_() const {
-    if (!is_initialized_) {
-        throw std::runtime_error(
-            "CoordinateFrame is not initialized. "
-            "Call initialize() or initializeOnFirstFix() before using conversions.");
-    }
+bool CoordinateFrame::assert_initialized_() const {
+    return is_initialized_;
 }

@@ -183,10 +183,20 @@ void loop() {
     // Debug output in calibration mode
     if (IS_CALIBRATION_MODE && position.fix_quality >= 1) {
       CAL_PRINTLN("GPS: Fix acquired");
-      Serial.printf("  Lat: %.6f, Lon: %.6f, Alt: %.1f m\n",
-          position.latitude, position.longitude, position.altitude);
-      Serial.printf("  Satellites: %d, Fix Quality: %d, Accuracy: %.1f m\n",
-          position.num_satellites, position.fix_quality, position.accuracy_m);
+      Serial.print("  Lat: ");
+      Serial.print(position.latitude, 6);
+      Serial.print(", Lon: ");
+      Serial.print(position.longitude, 6);
+      Serial.print(", Alt: ");
+      Serial.print(position.altitude, 1);
+      Serial.println(" m");
+      Serial.print("  Satellites: ");
+      Serial.print(position.num_satellites);
+      Serial.print(", Fix Quality: ");
+      Serial.print(position.fix_quality);
+      Serial.print(", Accuracy: ");
+      Serial.print(position.accuracy_m, 1);
+      Serial.println(" m");
     }
   } else if (IS_CALIBRATION_MODE && gps.isInitialized() && !gps.hasLock()) {
     // Debug: show GPS status when waiting for fix

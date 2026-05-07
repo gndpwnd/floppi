@@ -10,8 +10,8 @@
 #if ENABLE_SNAPSHOT_RECORDER
 
 #include <Arduino.h>
-#include <cmath>
-#include <cstdio>
+#include <math.h>
+#include <stdio.h>
 #include <string.h>
 #include "../sensors/sensor_base.h"
 

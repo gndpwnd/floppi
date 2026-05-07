@@ -375,11 +375,11 @@ bool BNO085::validateQuaternionMagnitude(float tolerance) {
   float deviation = magnitude - 1.0f;
 
   // Check if magnitude deviates from 1.0 beyond tolerance
-  if (std::fabs(deviation) > tolerance) {
+  if (fabs(deviation) > tolerance) {
     Serial.print("  ⚠ WARNING: Quaternion magnitude out of range: ");
     Serial.print(magnitude);
     Serial.print(" (expected ~1.0, deviation: ");
-    Serial.print(std::fabs(deviation) * 100.0f);
+    Serial.print(fabs(deviation) * 100.0f);
     Serial.println("%)");
     return false;
   }

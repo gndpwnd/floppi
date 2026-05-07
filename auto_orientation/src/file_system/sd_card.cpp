@@ -79,7 +79,7 @@ bool SDCard::create_file(const char* filename) {
   if (SD.exists(filename)) {
     if (!SD.remove(filename)) {
       last_error_ = SD_FILE_CREATE_FAILED;
-      Serial.printf("ERROR: Could not remove existing file: %s\n", filename);
+      Serial.print("ERROR: Could not remove existing file: "); Serial.println(filename);
       return false;
     }
   }
@@ -88,7 +88,7 @@ bool SDCard::create_file(const char* filename) {
   File file = SD.open(filename, FILE_WRITE);
   if (!file) {
     last_error_ = SD_FILE_CREATE_FAILED;
-    Serial.printf("ERROR: Could not create file: %s\n", filename);
+    Serial.print("ERROR: Could not create file: "); Serial.println(filename);
     return false;
   }
 
@@ -119,7 +119,7 @@ bool SDCard::append_line(const char* filename, const char* json_data) {
   // Check line length
   if (strlen(json_data) > SD_CARD_MAX_LINE_LENGTH - 10) {  // -10 for newline and safety
     last_error_ = SD_FILE_WRITE_FAILED;
-    Serial.printf("ERROR: Line too long for file %s\n", filename);
+    Serial.print("ERROR: Line too long for file "); Serial.println(filename);
     return false;
   }
 
@@ -127,7 +127,7 @@ bool SDCard::append_line(const char* filename, const char* json_data) {
   File file = SD.open(filename, FILE_WRITE);
   if (!file) {
     last_error_ = SD_FILE_OPEN_FAILED;
-    Serial.printf("ERROR: Could not open file for writing: %s\n", filename);
+    Serial.print("ERROR: Could not open file for writing: "); Serial.println(filename);
     return false;
   }
 
@@ -139,7 +139,7 @@ bool SDCard::append_line(const char* filename, const char* json_data) {
   if (written != strlen(json_data)) {
     file.close();
     last_error_ = SD_FILE_WRITE_FAILED;
-    Serial.printf("ERROR: Failed to write complete data to %s\n", filename);
+    Serial.print("ERROR: Failed to write complete data to "); Serial.println(filename);
     return false;
   }
 
@@ -148,7 +148,7 @@ bool SDCard::append_line(const char* filename, const char* json_data) {
   if (written != 1) {
     file.close();
     last_error_ = SD_FILE_WRITE_FAILED;
-    Serial.printf("ERROR: Failed to write newline to %s\n", filename);
+    Serial.print("ERROR: Failed to write newline to "); Serial.println(filename);
     return false;
   }
 
@@ -222,7 +222,7 @@ bool SDCard::create_directory(const char* dirname) {
   File file = SD.open(test_file, FILE_WRITE);
   if (!file) {
     last_error_ = SD_DIRECTORY_CREATE_FAILED;
-    Serial.printf("ERROR: Could not create directory: %s\n", dirname);
+    Serial.print("ERROR: Could not create directory: "); Serial.println(dirname);
     return false;
   }
 

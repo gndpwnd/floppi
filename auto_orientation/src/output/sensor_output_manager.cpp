@@ -8,7 +8,7 @@
 #include <Arduino.h>
 #else
 #include <stdint.h>
-#include <cstdint>
+#include <stdint.h>
 #include <chrono>
 static uint32_t mock_millis() {
   static auto start = std::chrono::steady_clock::now();
@@ -25,7 +25,7 @@ static uint32_t mock_millis() {
 
 // Provide dtostrf for non-Arduino platforms
 #ifndef ARDUINO
-#include <cstdlib>
+#include <stdlib.h>
 static char* dtostrf(double val, signed char width, unsigned char prec, char *sout) {
   int len = snprintf(sout, 20, "%*.*f", width, prec, val);
   if (len < 0) {

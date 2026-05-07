@@ -19,7 +19,7 @@ EulerAngles EulerAngles::to_radians() const {
 // ============================================================================
 
 float Vector3D::magnitude() const {
-    return std::sqrt(x * x + y * y + z * z);
+    return sqrt(x * x + y * y + z * z);
 }
 
 float Vector3D::magnitude_squared() const {
@@ -89,7 +89,7 @@ bool RotationMatrix::is_orthonormal(float tolerance) const {
     for (int i = 0; i < 3; i++) {
         for (int j = 0; j < 3; j++) {
             float expected = (i == j) ? 1.0f : 0.0f;
-            if (std::fabs(product.m[i][j] - expected) > tolerance) {
+            if (fabs(product.m[i][j] - expected) > tolerance) {
                 return false;
             }
         }
@@ -118,21 +118,21 @@ EulerAngles quaternion_to_euler(const Quaternion& q) {
     // Roll (x-axis rotation)
     float sinr_cosp = 2.0f * (q.w * q.x + q.y * q.z);
     float cosr_cosp = 1.0f - 2.0f * (q.x * q.x + q.y * q.y);
-    euler.roll = std::atan2(sinr_cosp, cosr_cosp);
+    euler.roll = atan2(sinr_cosp, cosr_cosp);
 
     // Pitch (y-axis rotation)
     float sinp = 2.0f * (q.w * q.y - q.z * q.x);
     // Guard against out-of-range value due to numerical errors
-    if (std::fabs(sinp) >= 1.0f) {
-        euler.pitch = std::copysign(M_PI / 2.0f, sinp);  // Use ±90 degrees
+    if (fabs(sinp) >= 1.0f) {
+        euler.pitch = copysign(M_PI / 2.0f, sinp);  // Use ±90 degrees
     } else {
-        euler.pitch = std::asin(sinp);
+        euler.pitch = asin(sinp);
     }
 
     // Yaw (z-axis rotation)
     float siny_cosp = 2.0f * (q.w * q.z + q.x * q.y);
     float cosy_cosp = 1.0f - 2.0f * (q.y * q.y + q.z * q.z);
-    euler.yaw = std::atan2(siny_cosp, cosy_cosp);
+    euler.yaw = atan2(siny_cosp, cosy_cosp);
 
     return euler;
 }
@@ -152,12 +152,12 @@ Quaternion euler_to_quaternion(float roll, float pitch, float yaw) {
     float pitch_half = pitch / 2.0f;
     float yaw_half = yaw / 2.0f;
 
-    float cr = std::cos(roll_half);
-    float sr = std::sin(roll_half);
-    float cp = std::cos(pitch_half);
-    float sp = std::sin(pitch_half);
-    float cy = std::cos(yaw_half);
-    float sy = std::sin(yaw_half);
+    float cr = cos(roll_half);
+    float sr = sin(roll_half);
+    float cp = cos(pitch_half);
+    float sp = sin(pitch_half);
+    float cy = cos(yaw_half);
+    float sy = sin(yaw_half);
 
     Quaternion q;
     q.w = cr * cp * cy + sr * sp * sy;
@@ -225,28 +225,28 @@ Quaternion rotation_matrix_to_quaternion(const RotationMatrix& R) {
 
     if (trace > 0.0f) {
         // Case 1: trace > 0 (w is the largest component)
-        float S = 2.0f * std::sqrt(trace + 1.0f);
+        float S = 2.0f * sqrt(trace + 1.0f);
         q.w = 0.25f * S;
         q.x = (R.m[2][1] - R.m[1][2]) / S;
         q.y = (R.m[0][2] - R.m[2][0]) / S;
         q.z = (R.m[1][0] - R.m[0][1]) / S;
     } else if ((R.m[0][0] > R.m[1][1]) && (R.m[0][0] > R.m[2][2])) {
         // Case 2: R[0][0] is the largest diagonal element (x is largest)
-        float S = 2.0f * std::sqrt(1.0f + R.m[0][0] - R.m[1][1] - R.m[2][2]);
+        float S = 2.0f * sqrt(1.0f + R.m[0][0] - R.m[1][1] - R.m[2][2]);
         q.w = (R.m[2][1] - R.m[1][2]) / S;
         q.x = 0.25f * S;
         q.y = (R.m[0][1] + R.m[1][0]) / S;
         q.z = (R.m[0][2] + R.m[2][0]) / S;
     } else if (R.m[1][1] > R.m[2][2]) {
         // Case 3: R[1][1] is the largest diagonal element (y is largest)
-        float S = 2.0f * std::sqrt(1.0f + R.m[1][1] - R.m[0][0] - R.m[2][2]);
+        float S = 2.0f * sqrt(1.0f + R.m[1][1] - R.m[0][0] - R.m[2][2]);
         q.w = (R.m[0][2] - R.m[2][0]) / S;
         q.x = (R.m[0][1] + R.m[1][0]) / S;
         q.y = 0.25f * S;
         q.z = (R.m[1][2] + R.m[2][1]) / S;
     } else {
         // Case 4: R[2][2] is the largest diagonal element (z is largest)
-        float S = 2.0f * std::sqrt(1.0f + R.m[2][2] - R.m[0][0] - R.m[1][1]);
+        float S = 2.0f * sqrt(1.0f + R.m[2][2] - R.m[0][0] - R.m[1][1]);
         q.w = (R.m[1][0] - R.m[0][1]) / S;
         q.x = (R.m[0][2] + R.m[2][0]) / S;
         q.y = (R.m[1][2] + R.m[2][1]) / S;
@@ -295,10 +295,10 @@ Quaternion axis_angle_to_quaternion(const Vector3D& axis, float angle) {
     Vector3D normalized_axis = axis.normalized();
 
     float half_angle = angle / 2.0f;
-    float sin_half = std::sin(half_angle);
+    float sin_half = sin(half_angle);
 
     Quaternion q;
-    q.w = std::cos(half_angle);
+    q.w = cos(half_angle);
     q.x = normalized_axis.x * sin_half;
     q.y = normalized_axis.y * sin_half;
     q.z = normalized_axis.z * sin_half;
@@ -308,12 +308,12 @@ Quaternion axis_angle_to_quaternion(const Vector3D& axis, float angle) {
 
 void quaternion_to_axis_angle(const Quaternion& q, Vector3D& out_axis, float& out_angle) {
     // Clamp w to [-1, 1] to avoid acos domain errors
-    float w_clamped = std::fmax(-1.0f, std::fmin(1.0f, q.w));
-    out_angle = 2.0f * std::acos(w_clamped);
+    float w_clamped = fmax(-1.0f, fmin(1.0f, q.w));
+    out_angle = 2.0f * acos(w_clamped);
 
-    float sin_half = std::sin(out_angle / 2.0f);
+    float sin_half = sin(out_angle / 2.0f);
 
-    if (std::fabs(sin_half) < 1e-6f) {
+    if (fabs(sin_half) < 1e-6f) {
         // Zero rotation or very small angle
         out_axis = Vector3D(1.0f, 0.0f, 0.0f);  // Arbitrary axis
         out_angle = 0.0f;

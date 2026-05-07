@@ -1,7 +1,7 @@
 #ifndef MAGNETIC_DECLINATION_H
 #define MAGNETIC_DECLINATION_H
 
-#include <cmath>
+#include <math.h>
 
 /**
  * Magnetic Declination and Heading Correction
@@ -138,7 +138,7 @@ double remove_declination(double true_heading_deg, double declination_deg);
  *   normalize_heading(45.0) -> 45.0°
  */
 inline double normalize_heading(double heading_deg) {
-    double result = std::fmod(heading_deg, 360.0);
+    double result = fmod(heading_deg, 360.0);
     if (result < 0.0) {
         result += 360.0;
     }

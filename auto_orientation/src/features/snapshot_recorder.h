@@ -36,11 +36,15 @@
 #define SNAPSHOT_RECORDER_H
 
 #include "config/mode.h"
+#include <stdint.h>
+#include <stddef.h>
+
+// Forward declarations
+class Quaternion;
+struct OrientationData;
 
 #if ENABLE_SNAPSHOT_RECORDER
 
-#include <stdint.h>
-#include <stddef.h>
 #include "../file_system/sd_card.h"
 #include "../math/quaternion.h"
 

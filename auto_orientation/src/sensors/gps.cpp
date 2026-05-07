@@ -6,9 +6,9 @@
  */
 
 #include "gps.h"
-#include <cstring>
-#include <cstdlib>
-#include <cmath>
+#include <string.h>
+#include <stdlib.h>
+#include <math.h>
 
 #ifdef ARDUINO
   #include <Arduino.h>
@@ -388,7 +388,7 @@ bool GPS::parseGPRMC(const char* sentence) {
 // Helper Methods
 // ============================================================================
 
-bool GPS::validateChecksum(const char* sentence) {
+bool GPS::validateChecksum(const char* sentence) const {
   // Find the asterisk
   const char* asterisk = strchr(sentence, '*');
   if (asterisk == nullptr || strlen(asterisk) < 3) {

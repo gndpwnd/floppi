@@ -1,8 +1,8 @@
 #ifndef COORDINATES_H
 #define COORDINATES_H
 
-#include <cmath>
-#include <cstdint>
+#include <math.h>
+#include <stdint.h>
 
 /**
  * GPS and Geodetic Coordinate System Conversions
@@ -52,8 +52,8 @@ namespace WGS84 {
      * @return Radius of curvature in meters
      */
     inline double radius_of_curvature(double lat_rad) {
-        double sin_lat = std::sin(lat_rad);
-        return SEMI_MAJOR_AXIS / std::sqrt(1.0 - ECCENTRICITY_SQ * sin_lat * sin_lat);
+        double sin_lat = sin(lat_rad);
+        return SEMI_MAJOR_AXIS / sqrt(1.0 - ECCENTRICITY_SQ * sin_lat * sin_lat);
     }
 }  // namespace WGS84
 
@@ -102,7 +102,7 @@ struct ECEF {
      * @return Distance in meters
      */
     double magnitude() const {
-        return std::sqrt(x * x + y * y + z * z);
+        return sqrt(x * x + y * y + z * z);
     }
 
     /**
@@ -139,7 +139,7 @@ struct LocalFrame {
      * @return Distance in meters
      */
     double magnitude() const {
-        return std::sqrt(north_m * north_m + east_m * east_m + down_m * down_m);
+        return sqrt(north_m * north_m + east_m * east_m + down_m * down_m);
     }
 
     /**
@@ -147,7 +147,7 @@ struct LocalFrame {
      * @return Distance in meters, ignoring vertical component
      */
     double horizontal_distance() const {
-        return std::sqrt(north_m * north_m + east_m * east_m);
+        return sqrt(north_m * north_m + east_m * east_m);
     }
 };
 

@@ -1,8 +1,8 @@
 #ifndef QUATERNION_H
 #define QUATERNION_H
 
-#include <cmath>
-#include <cstdint>
+#include <math.h>
+#include <stdint.h>
 
 /**
  * Quaternion Class for 3D Rotation Representation

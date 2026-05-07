@@ -1,6 +1,5 @@
 #include "magnetic_declination.h"
-#include <cmath>
-#include <algorithm>
+#include <math.h>
 
 // ============================================================================
 // WMM2024 SIMPLIFIED LOOKUP TABLE
@@ -87,9 +86,9 @@ static double angular_distance(double lat1_deg, double lon1_deg,
     double lon_delta_rad = (lon2_deg - lon1_deg) * M_PI / 180.0;
 
     // Simplified great-circle distance formula (accurate for small distances)
-    double x = lon_delta_rad * std::cos((lat1_rad + lat2_rad) / 2.0);
+    double x = lon_delta_rad * cos((lat1_rad + lat2_rad) / 2.0);
     double y = lat2_rad - lat1_rad;
-    return std::sqrt(x * x + y * y) * 180.0 / M_PI;  // Convert back to degrees
+    return sqrt(x * x + y * y) * 180.0 / M_PI;  // Convert back to degrees
 }
 
 // ============================================================================

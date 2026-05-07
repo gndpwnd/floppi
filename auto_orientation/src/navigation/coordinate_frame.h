@@ -2,8 +2,7 @@
 #define COORDINATE_FRAME_H
 
 #include "../math/coordinates.h"
-#include <cmath>
-#include <mutex>
+#include <math.h>
 
 /**
  * CoordinateFrame: Local NED Origin Manager
@@ -161,23 +160,17 @@ class CoordinateFrame {
     // Initialization flag
     bool is_initialized_;       ///< Flag indicating if frame has been initialized
 
-    // Thread synchronization
-    // Mutable to allow const methods to acquire lock for thread-safe reads
-    mutable std::mutex mutex_;  ///< Mutex for thread-safe concurrent reads
-
     /**
      * Internal helper: Validates and caches trigonometric values.
      * Called by initialize() after setting origin coordinates.
-     * Must be called while holding the mutex.
      */
     void cache_trig_values_();
 
     /**
      * Internal helper: Validates that frame is initialized.
-     * Throws std::runtime_error if not initialized.
-     * Assumes mutex is already held by caller.
+     * Returns false if not initialized.
      */
-    void assert_initialized_() const;
+    bool assert_initialized_() const;
 };
 
 #endif  // COORDINATE_FRAME_H

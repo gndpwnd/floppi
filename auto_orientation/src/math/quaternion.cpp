@@ -1,7 +1,7 @@
 #include "quaternion.h"
 
 float Quaternion::magnitude() const {
-    return std::sqrt(w * w + x * x + y * y + z * z);
+    return sqrt(w * w + x * x + y * y + z * z);
 }
 
 float Quaternion::magnitude_squared() const {
@@ -10,7 +10,7 @@ float Quaternion::magnitude_squared() const {
 
 bool Quaternion::is_normalized(float tolerance) const {
     float mag = magnitude();
-    return std::fabs(mag - 1.0f) < tolerance;
+    return fabs(mag - 1.0f) < tolerance;
 }
 
 bool Quaternion::is_valid() const {
