@@ -125,11 +125,12 @@ void test_euler_angles_valid_range() {
   };
 
   for (int idx = 0; idx < 4; idx++) {
-    EulerAngles euler = quaternion_to_euler_degrees(rotations[idx]);
+    // quaternion_to_euler_degrees returns EulerAngles in degrees
+    EulerAngles euler_deg = quaternion_to_euler_degrees(rotations[idx]);
 
-    bool in_range = (euler.roll_deg >= -180.0f && euler.roll_deg <= 180.0f) &&
-                    (euler.pitch_deg >= -90.0f && euler.pitch_deg <= 90.0f) &&
-                    (euler.yaw_deg >= -180.0f && euler.yaw_deg <= 180.0f);
+    bool in_range = (euler_deg.roll >= -180.0f && euler_deg.roll <= 180.0f) &&
+                    (euler_deg.pitch >= -90.0f && euler_deg.pitch <= 90.0f) &&
+                    (euler_deg.yaw >= -180.0f && euler_deg.yaw <= 180.0f);
 
     test_assert(in_range, "Euler angles in valid range for quaternion " + std::to_string(idx));
   }
@@ -141,24 +142,24 @@ void test_known_rotations() {
   // 90° around X axis: roll ≈ 90°
   {
     Quaternion q = euler_to_quaternion_degrees(90.0f, 0.0f, 0.0f);
-    EulerAngles euler = quaternion_to_euler_degrees(q);
-    bool correct = std::fabs(euler.roll_deg - 90.0f) < 0.5f;
+    EulerAngles euler_deg = quaternion_to_euler_degrees(q);
+    bool correct = std::fabs(euler_deg.roll - 90.0f) < 0.5f;
     test_assert(correct, "90° rotation around X axis (roll ≈ 90°)");
   }
 
   // 90° around Y axis: pitch ≈ 90°
   {
     Quaternion q = euler_to_quaternion_degrees(0.0f, 90.0f, 0.0f);
-    EulerAngles euler = quaternion_to_euler_degrees(q);
-    bool correct = std::fabs(euler.pitch_deg - 90.0f) < 0.5f;
+    EulerAngles euler_deg = quaternion_to_euler_degrees(q);
+    bool correct = std::fabs(euler_deg.pitch - 90.0f) < 0.5f;
     test_assert(correct, "90° rotation around Y axis (pitch ≈ 90°)");
   }
 
   // 90° around Z axis: yaw ≈ 90°
   {
     Quaternion q = euler_to_quaternion_degrees(0.0f, 0.0f, 90.0f);
-    EulerAngles euler = quaternion_to_euler_degrees(q);
-    bool correct = std::fabs(euler.yaw_deg - 90.0f) < 0.5f;
+    EulerAngles euler_deg = quaternion_to_euler_degrees(q);
+    bool correct = std::fabs(euler_deg.yaw - 90.0f) < 0.5f;
     test_assert(correct, "90° rotation around Z axis (yaw ≈ 90°)");
   }
 }
@@ -180,11 +181,11 @@ void test_round_trip_conversion() {
 
     // euler -> q -> euler
     Quaternion q = euler_to_quaternion_degrees(original_roll, original_pitch, original_yaw);
-    EulerAngles result = quaternion_to_euler_degrees(q);
+    EulerAngles result_deg = quaternion_to_euler_degrees(q);
 
-    bool correct = (std::fabs(result.roll_deg - original_roll) < 1.0f) &&
-                   (std::fabs(result.pitch_deg - original_pitch) < 1.0f) &&
-                   (std::fabs(result.yaw_deg - original_yaw) < 1.0f);
+    bool correct = (std::fabs(result_deg.roll - original_roll) < 1.0f) &&
+                   (std::fabs(result_deg.pitch - original_pitch) < 1.0f) &&
+                   (std::fabs(result_deg.yaw - original_yaw) < 1.0f);
 
     std::string msg = "Roll=" + std::to_string((int)original_roll) +
                       ", Pitch=" + std::to_string((int)original_pitch) +
@@ -217,11 +218,11 @@ void test_matrix_and_euler_consistent() {
   q.normalize();
 
   RotationMatrix R = quaternion_to_rotation_matrix(q);
-  EulerAngles euler = quaternion_to_euler_degrees(q);
+  EulerAngles euler_deg = quaternion_to_euler_degrees(q);
 
   // Create rotation matrix from Euler angles
   Quaternion q_from_euler = euler_to_quaternion_degrees(
-      euler.roll_deg, euler.pitch_deg, euler.yaw_deg);
+      euler_deg.roll, euler_deg.pitch, euler_deg.yaw);
   RotationMatrix R_from_euler = quaternion_to_rotation_matrix(q_from_euler);
 
   // Check similarity
@@ -261,12 +262,12 @@ void test_gimbal_lock_handling() {
 
   for (float pitch : near_lock_angles) {
     Quaternion q = euler_to_quaternion_degrees(30.0f, pitch, 45.0f);
-    EulerAngles euler = quaternion_to_euler_degrees(q);
+    EulerAngles euler_deg = quaternion_to_euler_degrees(q);
 
     // Should produce valid numbers, no NaN or inf
-    bool valid = !std::isnan(euler.roll_deg) && !std::isnan(euler.pitch_deg) &&
-                 !std::isnan(euler.yaw_deg) && !std::isinf(euler.roll_deg) &&
-                 !std::isinf(euler.pitch_deg) && !std::isinf(euler.yaw_deg);
+    bool valid = !std::isnan(euler_deg.roll) && !std::isnan(euler_deg.pitch) &&
+                 !std::isnan(euler_deg.yaw) && !std::isinf(euler_deg.roll) &&
+                 !std::isinf(euler_deg.pitch) && !std::isinf(euler_deg.yaw);
 
     test_assert(valid, "Gimbal lock handling at pitch " + std::to_string((int)pitch) + "°");
   }
@@ -302,11 +303,11 @@ void test_small_angles() {
 
   for (float angle : small_angles) {
     Quaternion q = euler_to_quaternion_degrees(angle, angle, angle);
-    EulerAngles euler = quaternion_to_euler_degrees(q);
+    EulerAngles euler_deg = quaternion_to_euler_degrees(q);
 
-    bool correct = (std::fabs(euler.roll_deg - angle) < 0.1f) &&
-                   (std::fabs(euler.pitch_deg - angle) < 0.1f) &&
-                   (std::fabs(euler.yaw_deg - angle) < 0.1f);
+    bool correct = (std::fabs(euler_deg.roll - angle) < 0.1f) &&
+                   (std::fabs(euler_deg.pitch - angle) < 0.1f) &&
+                   (std::fabs(euler_deg.yaw - angle) < 0.1f);
 
     test_assert(correct, "Small angle accuracy at " + std::to_string(angle) + "°");
   }

@@ -131,10 +131,49 @@ See [Developer Guide: Adding Sensors](docs/features/adding-sensors.md)
 
 ## Documentation
 
-- **[Architecture](ARCHITECTURE.md)** — System design with 12 Mermaid diagrams (start here for comprehensive overview)
+### Phase 1: Complete (v1.0 - Quaternion Math & Data Logging)
+
+**✓ COMPLETE - Phase 1 Status**: All core functionality implemented and tested (113 unit tests passing)
+
+#### Getting Started
+- **[Build Guide](BUILD_GUIDE.md)** — How to compile different configurations
+- **[Feature Flags](FEATURE_FLAGS.md)** — Available build flags and their effects
+- **[Quick Start](guides/QUICK_START.md)** — First-time setup and basic usage
+
+#### API Reference (Phase 1)
+- **[Quaternion API Reference](QUATERNION_API_REFERENCE.md)** — Complete quaternion math library
+  - Quaternion operations, conversions to/from Euler angles and rotation matrices
+  - Vector rotation, frame transformations
+  - Performance: all operations < 10 µs on Arduino Mega
+  
+- **[Coordinate Conversion API](COORDINATE_CONVERSION_API.md)** — GPS and navigation transforms
+  - GPS ↔ ECEF ↔ NED conversions
+  - Accuracy: sub-meter round-trip error
+  - Tested on 6+ reference locations (equator, poles, antimeridian)
+
+#### Feature Guides
+- **[Snapshot Feature Guide](SNAPSHOT_FEATURE_GUIDE.md)** — JSON data logging to SD card
+  - How to enable SNAPSHOT_MODE
+  - JSON format specification
+  - Troubleshooting and performance characteristics
+  - SD card file organization and reading
+
+#### Testing & Quality Assurance
+- **[Phase 1 Test Results](PHASE_1_TEST_RESULTS.md)** — Complete test coverage and results
+  - 113 unit tests (47 quaternion, 38 coordinate, 12 BNO085, 16 snapshot)
+  - Performance benchmarks
+  - Known limitations and workarounds
+  - Memory and binary size analysis
+
+### Architecture & Planning
+- **[Architecture](ARCHITECTURE.md)** — System design with 12 Mermaid diagrams (comprehensive overview)
 - **[Scope](scope.md)** — Project boundaries, constraints, first-release definition
 - **[Roadmap](roadmap.md)** — Feature checklist and milestones
+- **[Phase 1 Master Plan](PHASE_1_MASTER_IMPLEMENTATION_PLAN.md)** — Detailed implementation roadmap
 - **[Todo](todo.md)** — Current session tasks
+
+### Research & Reference
+- **[Math & Applications Guide](MATH_AND_APPLICATIONS_MASTER_GUIDE.md)** — Quaternion and coordinate theory
 - **[Findings](findings/)** — Research notes on calibration, GPS, sensor fusion
 - **[Archive](archive/)** — Historical context, initial sketch, requirements email
 
@@ -142,11 +181,23 @@ See [Developer Guide: Adding Sensors](docs/features/adding-sensors.md)
 
 ## For Developers
 
-### First Time?
-1. Read [Architecture](ARCHITECTURE.md) for comprehensive system overview with diagrams
-2. Check [Hardware Setup](guides/HARDWARE_SETUP.md) to understand wiring
-3. Review [Scope](scope.md) to understand project boundaries
-4. Build and flash the existing sketch to validate your setup
+### Getting Started (Recommended Order)
+1. **[Build Guide](BUILD_GUIDE.md)** — Compile and upload firmware (5 min)
+2. **[Feature Flags](FEATURE_FLAGS.md)** — Understand build options (10 min)
+3. **[Quick Start](guides/QUICK_START.md)** — Run your first test (15 min)
+4. **[Quaternion API Reference](QUATERNION_API_REFERENCE.md)** — Learn math library (30 min)
+5. **[Phase 1 Test Results](PHASE_1_TEST_RESULTS.md)** — Understand capabilities & limits (20 min)
+
+### For Field Deployment
+1. **[Snapshot Feature Guide](SNAPSHOT_FEATURE_GUIDE.md)** — Set up data logging
+2. **[Hardware Setup](guides/HARDWARE_SETUP.md)** — Physical wiring
+3. **[Build Guide](BUILD_GUIDE.md)** — Use `arduino_mega_snapshot_only` environment
+4. **[Feature Flags](FEATURE_FLAGS.md)** — Optimize binary for your board
+
+### Architecture Overview
+- Read [Architecture](ARCHITECTURE.md) for comprehensive system overview with diagrams
+- Check [Hardware Setup](guides/HARDWARE_SETUP.md) to understand wiring
+- Review [Scope](scope.md) to understand project boundaries
 
 ### Want to Add a Sensor?
 See [Adding Sensors](docs/features/adding-sensors.md)
