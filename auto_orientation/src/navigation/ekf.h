@@ -2,7 +2,7 @@
 #define EKF_H
 
 #include <stdint.h>
-#include <cmath>
+#include <math.h>
 #include "covariance_manager.h"
 
 /**

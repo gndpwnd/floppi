@@ -1,7 +1,7 @@
 #include "state_dynamics.h"
 #include "../config/ekf_config.h"
 #include <math.h>
-#include <cstring>
+#include <string.h>
 
 // ============================================================================
 // INTERNAL HELPER: QUATERNION MULTIPLICATION (FOR PROPAGATION)

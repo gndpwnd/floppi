@@ -1,8 +1,8 @@
+#include <Arduino.h>
 #include "ekf.h"
 #include "../config/ekf_config.h"
-#include <cstring>
-#include <cmath>
-#include <algorithm>
+#include <string.h>
+#include <math.h>
 
 // ============================================================================
 // Helper Functions
@@ -106,7 +106,7 @@ static void quaternion_normalize(float q[4]) {
   float mag_sq = q[0]*q[0] + q[1]*q[1] + q[2]*q[2] + q[3]*q[3];
   if (mag_sq < 1e-10f) return;
 
-  float mag = std::sqrt(mag_sq);
+  float mag = sqrt(mag_sq);
   q[0] /= mag;
   q[1] /= mag;
   q[2] /= mag;
@@ -118,9 +118,9 @@ static void quaternion_normalize(float q[4]) {
  */
 static void axis_angle_to_quaternion(float angle_rad, const float axis[3], float q[4]) {
   float half_angle = angle_rad * 0.5f;
-  float sin_half = std::sin(half_angle);
+  float sin_half = sin(half_angle);
 
-  q[0] = std::cos(half_angle);
+  q[0] = cos(half_angle);
   q[1] = axis[0] * sin_half;
   q[2] = axis[1] * sin_half;
   q[3] = axis[2] * sin_half;
@@ -132,7 +132,7 @@ static void axis_angle_to_quaternion(float angle_rad, const float axis[3], float
  * Clamp a value between min and max
  */
 static float clamp(float value, float min_val, float max_val) {
-  return std::max(min_val, std::min(max_val, value));
+  return fmax(min_val, fmin(max_val, value));
 }
 
 /**
@@ -279,7 +279,7 @@ bool ExtendedKalmanFilter::predict(const float gyro_rad_s[3], const float accel_
   gyro_corrected[2] = gyro_rad_s[2] - w_bias[2];
 
   // Convert to quaternion: dq/dt = 0.5 * q * omega_quat
-  float omega_norm = std::sqrt(gyro_corrected[0]*gyro_corrected[0] +
+  float omega_norm = sqrt(gyro_corrected[0]*gyro_corrected[0] +
                                 gyro_corrected[1]*gyro_corrected[1] +
                                 gyro_corrected[2]*gyro_corrected[2]);
 
@@ -464,7 +464,7 @@ bool ExtendedKalmanFilter::update(const float gps_pos_ned_m[3], float gps_accura
             - S[0][1] * (S[1][0]*S[2][2] - S[1][2]*S[2][0])
             + S[0][2] * (S[1][0]*S[2][1] - S[1][1]*S[2][0]);
 
-  if (std::abs(det) < 1e-10f) {
+  if (abs(det) < 1e-10f) {
     return false;  // Singular matrix
   }
 
@@ -615,7 +615,7 @@ void ExtendedKalmanFilter::get_position(float p[3]) const {
 void ExtendedKalmanFilter::get_standard_deviations(float std_devs[16]) const {
   for (int i = 0; i < 16; i++) {
     if (P_[i][i] >= 0.0f) {
-      std_devs[i] = std::sqrt(P_[i][i]);
+      std_devs[i] = sqrt(P_[i][i]);
     } else {
       std_devs[i] = 0.0f;
     }
@@ -651,7 +651,7 @@ void ExtendedKalmanFilter::normalize_quaternion_() {
     return;
   }
 
-  float mag = std::sqrt(mag_sq);
+  float mag = sqrt(mag_sq);
   state_[0] /= mag;
   state_[1] /= mag;
   state_[2] /= mag;
@@ -669,8 +669,8 @@ void ExtendedKalmanFilter::compute_f_jacobian_(const float gyro_rad_s[3],
   }
 
   // Quaternion partial derivatives (simplified, diagonal-dominant)
-  float q_noise = std::sqrt(Q_[0][0]);
-  float w = std::sqrt(gyro_rad_s[0]*gyro_rad_s[0] +
+  float q_noise = sqrt(Q_[0][0]);
+  float w = sqrt(gyro_rad_s[0]*gyro_rad_s[0] +
                       gyro_rad_s[1]*gyro_rad_s[1] +
                       gyro_rad_s[2]*gyro_rad_s[2]);
 
@@ -683,7 +683,7 @@ void ExtendedKalmanFilter::compute_f_jacobian_(const float gyro_rad_s[3],
   // Velocity partial derivatives: v_new = v + a*dt
   // dv/dp = 0 (position doesn't affect velocity in this model)
   // dv/da = dt (acceleration affects velocity)
-  float accel_mag = std::sqrt(accel_m_s2[0]*accel_m_s2[0] +
+  float accel_mag = sqrt(accel_m_s2[0]*accel_m_s2[0] +
                                accel_m_s2[1]*accel_m_s2[1] +
                                accel_m_s2[2]*accel_m_s2[2]);
   if (accel_mag > 0.01f) {

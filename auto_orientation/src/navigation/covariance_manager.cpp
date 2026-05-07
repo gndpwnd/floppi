@@ -1,6 +1,6 @@
+#include <Arduino.h>
 #include "covariance_manager.h"
-#include <algorithm>
-#include <cmath>
+#include <math.h>
 
 // ============================================================================
 // Helper Functions
@@ -30,7 +30,7 @@ static bool try_cholesky_decomposition(const Matrix16x16& P) {
       return false;
     }
 
-    L[i][i] = std::sqrt(diag_val);
+    L[i][i] = sqrt(diag_val);
 
     // Lower triangular elements
     for (int k = i + 1; k < 16; k++) {
@@ -123,7 +123,7 @@ bool clamp_negative_eigenvalues(const Matrix16x16& P_in, Matrix16x16& P_out, flo
       float diag_avg = 0.5f * (P_out[i][i] + P_out[j][j]);
       float max_off_diag = 0.99f * diag_avg;
 
-      if (std::abs(P_out[i][j]) > max_off_diag) {
+      if (abs(P_out[i][j]) > max_off_diag) {
         P_out[i][j] = (P_out[i][j] > 0) ? max_off_diag : -max_off_diag;
       }
     }
@@ -151,17 +151,17 @@ float compute_innovation_magnitude(const Vector3& innovation) {
                  innovation[1] * innovation[1] +
                  innovation[2] * innovation[2];
 
-  if (!std::isfinite(mag_sq) || mag_sq < 0.0f) {
-    return std::nanf("");
+  if (!isfinite(mag_sq) || mag_sq < 0.0f) {
+    return NAN;
   }
 
-  return std::sqrt(mag_sq);
+  return sqrt(mag_sq);
 }
 
 float compute_covariance_trace(const Matrix16x16& P) {
   float trace = 0.0f;
   for (int i = 0; i < 16; i++) {
-    if (std::isfinite(P[i][i])) {
+    if (isfinite(P[i][i])) {
       trace += P[i][i];
     }
   }
@@ -171,7 +171,7 @@ float compute_covariance_trace(const Matrix16x16& P) {
 float get_max_covariance_diagonal(const Matrix16x16& P) {
   float max_val = 0.0f;
   for (int i = 0; i < 16; i++) {
-    if (P[i][i] > max_val && std::isfinite(P[i][i])) {
+    if (P[i][i] > max_val && isfinite(P[i][i])) {
       max_val = P[i][i];
     }
   }
@@ -184,7 +184,7 @@ float estimate_condition_number(const Matrix16x16& P) {
   float min_diag = 1e20f;
 
   for (int i = 0; i < 16; i++) {
-    if (std::isfinite(P[i][i]) && P[i][i] > 0.0f) {
+    if (isfinite(P[i][i]) && P[i][i] > 0.0f) {
       if (P[i][i] > max_diag) {
         max_diag = P[i][i];
       }
@@ -194,7 +194,7 @@ float estimate_condition_number(const Matrix16x16& P) {
     }
   }
 
-  if (min_diag < 1e-20f || !std::isfinite(max_diag / min_diag)) {
+  if (min_diag < 1e-20f || !isfinite(max_diag / min_diag)) {
     return -1.0f;  // Computation failed
   }
 

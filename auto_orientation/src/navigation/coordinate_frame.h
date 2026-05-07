@@ -90,7 +90,7 @@ class CoordinateFrame {
      * @return LocalFrame with (north_m, east_m, down_m) in meters, or (NaN, NaN, NaN) on error
      *
      * Thread-safe: Acquires internal lock for read.
-     * @throws std::runtime_error if frame is not initialized
+     * @throws runtime_error if frame is not initialized
      */
     LocalFrame gpsToLocalNED(double lat_deg, double lon_deg, double alt_m) const;
 
@@ -108,7 +108,7 @@ class CoordinateFrame {
      * @return GPS_Data with latitude, longitude, altitude, or NaN values on error
      *
      * Thread-safe: Acquires internal lock for read.
-     * @throws std::runtime_error if frame is not initialized
+     * @throws runtime_error if frame is not initialized
      */
     GPS_Data localNEDToGPS(const LocalFrame& ned_point) const;
 
@@ -116,7 +116,7 @@ class CoordinateFrame {
      * Get the origin coordinates (latitude, longitude, altitude).
      *
      * @return GPS_Data structure with the origin position
-     * @throws std::runtime_error if frame is not initialized
+     * @throws runtime_error if frame is not initialized
      */
     GPS_Data getOrigin() const;
 
@@ -124,7 +124,7 @@ class CoordinateFrame {
      * Get the origin altitude in meters above WGS84 ellipsoid.
      *
      * @return Altitude in meters
-     * @throws std::runtime_error if frame is not initialized
+     * @throws runtime_error if frame is not initialized
      */
     double getOriginAltitude() const;
 

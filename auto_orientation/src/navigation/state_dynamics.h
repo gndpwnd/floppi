@@ -2,7 +2,7 @@
 #define STATE_DYNAMICS_H
 
 #include "../math/quaternion.h"
-#include <cstring>
+#include <string.h>
 
 /**
  * State Dynamics for Phase 3 Extended Kalman Filter

@@ -1,7 +1,7 @@
 #include "measurement_model.h"
 #include "../config/ekf_config.h"
 #include <math.h>
-#include <cstring>
+#include <string.h>
 
 // ============================================================================
 // GPS TO NED CONVERSION

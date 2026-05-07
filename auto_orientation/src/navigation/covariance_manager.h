@@ -1,8 +1,8 @@
 #ifndef COVARIANCE_MANAGER_H
 #define COVARIANCE_MANAGER_H
 
-#include <cmath>
-#include <cstring>
+#include <math.h>
+#include <string.h>
 
 /**
  * Covariance Manager: Numerical Stability Utilities for EKF
