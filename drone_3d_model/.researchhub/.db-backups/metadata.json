@@ -1,0 +1,23 @@
+{
+  "database_info": {
+    "project": "drone_3d_model",
+    "created_at": "2026-05-07T19:22:58.777465+00:00",
+    "last_validated": "2026-05-07T19:22:58.777465+00:00"
+  },
+  "backups": [
+    {
+      "timestamp": "2026-05-07T19:22:58.777465+00:00",
+      "filename": "workspace.db.2026-05-07T192253Z",
+      "size_bytes": 2629632,
+      "checksum_sha256": "8d73ca8eea8892842411d9f0ae3dfd56251e54de93d81e392fea333e2f80f316",
+      "table_count": 62,
+      "status": "validated"
+    }
+  ],
+  "validation_checks": {
+    "db_integrity": "ok",
+    "integrity_detail": "ok",
+    "tables": 62,
+    "last_check": "2026-05-07T19:22:58.777465+00:00"
+  }
+}

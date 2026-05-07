@@ -1,0 +1,9 @@
+# ResearchHub database exclusion
+.researchhub/workspace.db
+.researchhub/workspace.db-shm
+.researchhub/workspace.db-wal
+.researchhub/.db-backups/*.db*
+
+# Keep validation metadata
+!.researchhub/.db-backups/metadata.json
+!.researchhub/.db-backups/validation-log.txt
