@@ -20,6 +20,7 @@
 
 #include <Arduino.h>
 #include "config/pins.h"
+#include "config/mode.h"
 #include "sensors/sensor_base.h"
 #include "output/sensor_output_manager.h"
 #include "sensors/bno085.h"
@@ -34,40 +35,50 @@ void setup() {
     delay(100);
   }
 
-  Serial.println("\n==================================================");
-  Serial.println("Auto Orientation System");
-  Serial.println("==================================================");
-  Serial.println("Initializing sensors...\n");
+  // Boot message (calibration mode is verbose, production is minimal)
+  if (IS_CALIBRATION_MODE) {
+    Serial.println("\n==================================================");
+    Serial.println("Auto Orientation System [CALIBRATION MODE]");
+    Serial.println("==================================================");
+    Serial.println("Initializing sensors...\n");
+  } else {
+    Serial.println("\nAuto Orientation [PRODUCTION]");
+  }
 
   // Initialize BNO085 sensor
-  Serial.println("Board: Initializing BNO085 IMU sensor...");
+  CAL_PRINTLN("Board: Initializing BNO085 IMU sensor...");
   if (!imu.begin()) {
-    Serial.println("ERROR: BNO085 initialization failed!");
+    ALWAYS_PRINTLN("ERROR: BNO085 initialization failed!");
     while (1) {
       delay(500);
-      Serial.println("  (waiting for manual reset)");
+      ALWAYS_PRINTLN("  (waiting for manual reset)");
     }
   }
-  Serial.println("✓ BNO085 OK\n");
+  CAL_PRINTLN("✓ BNO085 OK\n");
 
   // Initialize output manager (JSON-only format)
-  Serial.println("Board: Initializing output manager...");
+  CAL_PRINTLN("Board: Initializing output manager...");
   if (!output_manager.begin(OutputFormat::JSON)) {
-    Serial.println("ERROR: Output manager initialization failed!");
+    ALWAYS_PRINTLN("ERROR: Output manager initialization failed!");
     while (1) {
       delay(500);
-      Serial.println("  (waiting for manual reset)");
+      ALWAYS_PRINTLN("  (waiting for manual reset)");
     }
   }
 
-  Serial.println("✓ All sensors initialized successfully!\n");
-  Serial.println("==================================================");
-  Serial.println("Monitoring started. Calibration progress:");
-  Serial.println("  ░░░ = Uncalibrated (0)");
-  Serial.println("  █░░ = Low (1)");
-  Serial.println("  ██░ = Medium (2) <-- Auto-saves");
-  Serial.println("  ███ = High (3)");
-  Serial.println("==================================================\n");
+  // Boot complete message
+  if (IS_CALIBRATION_MODE) {
+    Serial.println("✓ All sensors initialized successfully!\n");
+    Serial.println("==================================================");
+    Serial.println("Calibration progress indicator:");
+    Serial.println("  ░░░ = Uncalibrated (0)");
+    Serial.println("  █░░ = Low (1)");
+    Serial.println("  ██░ = Medium (2) <-- Auto-saves");
+    Serial.println("  ███ = High (3)");
+    Serial.println("==================================================\n");
+  } else {
+    Serial.println("✓ Ready");
+  }
 }
 
 void loop() {

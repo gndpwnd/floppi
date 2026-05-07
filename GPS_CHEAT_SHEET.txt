@@ -1,0 +1,289 @@
+================================================================================
+                    GPS & COORDINATE SYSTEMS CHEAT SHEET
+                          Quick Reference for Drones
+================================================================================
+
+COORDINATE FRAMES AT A GLANCE
+────────────────────────────────────────────────────────────────────────────────
+
+  WGS84 (GPS native)         ECEF (Cartesian)           NED (Local)
+  ────────────────           ────────────               ────────────
+  Lat: 47.3667°             X: 4,245,938.5 m           North: +100.0 m
+  Lon: 11.1833°             Y:   839,432.4 m           East:  + 50.0 m
+  Alt: 500.0 m (HAE)        Z: 4,669,840.5 m           Down:  - 20.0 m
+
+  • GPS output              • For satellite math      • For flight control
+  • Always ellipsoidal      • Cartesian system        • Relative to launch
+  • Intuitive               • Cumbersome for nav      • Standard in aviation
+
+CONVERSION FLOW
+────────────────────────────────────────────────────────────────────────────────
+
+  GPS Data (NMEA)
+       ↓ (parse lat/lon/alt_HAE)
+  WGS84 Coordinates
+       ↓ (geodetic_to_ecef)
+  ECEF Coordinates
+       ↓ (ecef_to_ned / ecef_to_enu)
+  Local Frame (NED/ENU)
+       ↓ (add Euler angles)
+  Body Frame
+
+GPS OUTPUTS & ACCURACY
+────────────────────────────────────────────────────────────────────────────────
+
+  From GPS Module (NEO-M9N):
+  • Latitude/Longitude    → ±2-5m (horizontal)
+  • Altitude (HAE)        → ±5-10m (ellipsoidal height)
+  • HDOP (Horizontal DOP) → Indicates geometry quality
+  • VDOP (Vertical DOP)   → Usually 1.5-2x HDOP
+  • Satellites            → Need 8+ for good accuracy
+  • Fix Quality           → 1=GPS, 4=RTK fixed
+
+  HDOP Values:
+  < 1.0   → Ideal (rare)
+  1-2     → Excellent   (≈±6m error)
+  2-5     → Good        (≈±15m error)
+  5-10    → Moderate    (≈±30m error)
+  > 10    → Poor        (unreliable)
+
+ALTITUDE REFERENCE SYSTEMS
+────────────────────────────────────────────────────────────────────────────────
+
+  HAE (Height Above Ellipsoid)        MSL (Mean Sea Level)       AGL (Above Ground)
+  ───────────────────────────         ─────────────────          ──────────────────
+  GPS direct output                   Navigation charts          Obstacle avoidance
+  500.0 m (mathematical)              500.0 - 46.9 = 453.1 m     453.1 - 100 = 353.1 m
+
+  Formula: MSL = HAE - N              Formula: AGL = MSL - terrain
+
+  Where N = geoid undulation (±50-100m globally)
+  Use NOAA Geoid Height Calculator for your location
+
+MAGNETIC HEADING CORRECTION
+────────────────────────────────────────────────────────────────────────────────
+
+  Magnetic Heading (from magnetometer)
+       ↓ (add declination)
+  True Heading (relative to geographic north)
+
+  Formula: H_true = H_magnetic + declination
+
+  Example: Magnetometer reads 45°, declination is -12° (West)
+           True heading = 45° + (-12°) = 33°
+
+  Get declination from: https://www.ncei.noaa.gov/geomag-web/
+
+  Typical Values (2024):
+  San Francisco:  +11°53' E (East)
+  New York:       -12°15' W (West)
+  London:          -0°43' W (West, changing to East)
+  Tokyo:           -8°00' W (West)
+  Sydney:         +12°24' E (East)
+
+ECEF ↔ WGS84 CONVERSIONS
+────────────────────────────────────────────────────────────────────────────────
+
+  WGS84 Constants:
+  a = 6,378,137 m (semi-major axis)
+  e² = 0.00669437999014 (eccentricity squared)
+
+  Geodetic → ECEF:
+  N(φ) = a / √(1 - e² sin²(φ))
+  x = (N + h) cos(φ) cos(λ)
+  y = (N + h) cos(φ) sin(λ)
+  z = (N(1 - e²) + h) sin(φ)
+
+  ECEF → Geodetic: Use iterative method (see full docs)
+
+NED FRAME DEFINITION
+────────────────────────────────────────────────────────────────────────────────
+
+           ↑ North (X)
+           |
+           o─────→ East (Y)
+          /
+         ↙ Down (Z)
+
+  Standard in aviation and UAV control
+  Z positive = downward (toward gravity)
+
+  Rotation matrix for ECEF → NED:
+  R = [[-sin(φ)cos(λ)  -sin(λ)  -cos(φ)cos(λ)]
+       [-sin(φ)sin(λ)   cos(λ)  -cos(φ)sin(λ)]
+       [ cos(φ)         0        -sin(φ)    ]]
+
+  Where φ = latitude, λ = longitude
+
+BODY FRAME (AIRCRAFT AXES)
+────────────────────────────────────────────────────────────────────────────────
+
+  Euler Angles (ZYX convention):
+  φ (Roll)     → Rotation about forward (X) axis
+  θ (Pitch)    → Rotation about right (Y) axis
+  ψ (Yaw)      → Rotation about down (Z) axis
+
+  Positive:
+  Roll +    = Right wing down
+  Pitch +   = Nose up
+  Yaw +     = Clockwise (viewed from above)
+
+QUICK CONVERSION RECIPES
+────────────────────────────────────────────────────────────────────────────────
+
+  Recipe 1: GPS → Local NED Position
+  ──────────────────────────────────
+  from GPS_IMPLEMENTATION_EXAMPLES import geodetic_to_ecef, ecef_to_ned
+
+  ref_ecef = geodetic_to_ecef(ref_lat, ref_lon, ref_alt)
+  drone_ecef = geodetic_to_ecef(drone_lat, drone_lon, drone_alt)
+  ned = ecef_to_ned(ref_lat, ref_lon, ref_alt, drone_ecef)
+
+  # Returns: (north, east, down) in meters
+
+  Recipe 2: Magnetometer → True Heading
+  ──────────────────────────────────────
+  from GPS_IMPLEMENTATION_EXAMPLES import magnetometer_to_true_heading
+
+  heading = magnetometer_to_true_heading(mag_x, mag_y, declination)
+
+  # Returns: heading in degrees (0-360°) relative to true north
+
+  Recipe 3: GPS Altitude → MSL & AGL
+  ──────────────────────────────────
+  from GPS_IMPLEMENTATION_EXAMPLES import AltitudeConverter
+
+  alt_msl = AltitudeConverter.hae_to_msl(gps_alt, lat, lon)
+  alt_agl = AltitudeConverter.msl_to_agl(alt_msl, terrain_elev)
+
+  # Returns: (msl_altitude, agl_altitude) in meters
+
+  Recipe 4: Check GPS Accuracy
+  ────────────────────────────
+  from GPS_IMPLEMENTATION_EXAMPLES import GPSAccuracy
+
+  acc = GPSAccuracy(hdop=0.9, vdop=1.5)
+  h_error = acc.horizontal_error_m()  # ±2.7m
+  v_error = acc.vertical_error_m()    # ±4.5m
+  is_good = acc.suitable_for_precision_navigation()
+
+COMMON MISTAKES (DON'T DO THESE)
+────────────────────────────────────────────────────────────────────────────────
+
+  ✗ Using HAE for obstacle avoidance
+    Right: Convert to MSL/AGL first (use geoid model)
+
+  ✗ Mixing NED and ENU in same calculation
+    Right: Pick one frame and stick with it (NED for drones)
+
+  ✗ Ignoring magnetic declination
+    Right: Always apply declination = magnetometer ↔ true north
+
+  ✗ Assuming GPS is always accurate
+    Right: Check HDOP < 2.5 and satellites ≥ 8 before trusting
+
+  ✗ Using GPS latitude directly as meters
+    Right: Convert through ECEF/NED for proper distances
+
+REFERENCE COORDINATES (FOR TESTING)
+────────────────────────────────────────────────────────────────────────────────
+
+  Munich, Germany:
+  Lat:  47.3667°N
+  Lon:  11.1833°E
+  Alt:  500.0m (HAE)
+  ECEF: (4245938.5, 839432.4, 4669840.5) m
+
+  San Francisco, USA:
+  Lat:  37.7749°N
+  Lon: -122.4194°W
+  Alt:  100.0m (HAE)
+  Declination: +11°53'E
+
+  Sydney, Australia:
+  Lat: -33.8688°S
+  Lon: 151.2093°E
+  Alt:  100.0m (HAE)
+  Declination: +12°24'E
+
+TOOLS & RESOURCES
+────────────────────────────────────────────────────────────────────────────────
+
+  Online Calculators:
+  • NOAA Declination:  https://www.ncei.noaa.gov/geomag-web/
+  • Geoid Height:      https://www.unavco.org/software/geodetic-utilities/
+  • ECEF Converter:    https://convertecef.com/
+
+  Python Libraries:
+  pip install pyproj geographiclib igrfmodel rasterio
+
+  Documentation:
+  • GPS_GEODETIC_COORDINATE_SYSTEMS.md    (theory & equations)
+  • GPS_COORDINATE_QUICK_REFERENCE.md     (practical guide)
+  • GPS_IMPLEMENTATION_EXAMPLES.py        (working code)
+  • GPS_COORDINATE_SYSTEMS_INDEX.md       (navigation guide)
+
+DEBUGGING QUICK LINKS
+────────────────────────────────────────────────────────────────────────────────
+
+  GPS position wrong?
+  → Check: fix_quality ≥ 1, satellites ≥ 8, HDOP < 5.0
+  → Issue: Multipath (near buildings/trees)
+
+  Altitude off by 100m?
+  → Check: Are you using correct geoid model? (NOAA for location)
+  → Formula: MSL = HAE - N (where N varies by location)
+
+  Heading doesn't match?
+  → Check: Magnetometer calibrated? Declination applied?
+  → Formula: true = magnetic + declination
+
+  Position drifts over time?
+  → Normal: GPS has natural jitter (HDOP variation)
+  → Fix: Add Kalman filter to fuse with IMU
+
+  Math doesn't work?
+  → Check: Input in degrees? Output in radians?
+  → Verify: Round-trip test (Lat→ECEF→Lat should match)
+
+STANDARDS REFERENCE
+────────────────────────────────────────────────────────────────────────────────
+
+  Altitude Terms (FAA/ICAO):
+  • HAE:  Height Above WGS84 Ellipsoid (GPS output)
+  • MSL:  Mean Sea Level (navigation/aviation)
+  • AGL:  Above Ground Level (obstacle avoidance)
+  • QNH:  Pressure altitude setting (aviation only)
+  • FL:   Flight Level (cruise altitude, aviation)
+
+  Frame Standards:
+  • NED:  Aviation/UAV standard (X=north, Y=east, Z=down)
+  • ENU:  Robotics/mapping (X=east, Y=north, Z=up)
+  • ECEF: Satellite/geodetic standard (Cartesian Earth-center)
+
+MATH REFERENCE CARD
+────────────────────────────────────────────────────────────────────────────────
+
+  Useful Constants:
+  π ≈ 3.14159265359
+  Earth radius: 6,371,000 m (mean)
+  1 degree latitude ≈ 111,000 m
+  1 degree longitude ≈ 111,000 × cos(latitude) m
+
+  Angle Conversions:
+  radians = degrees × π/180
+  degrees = radians × 180/π
+
+  Distance Approximation (local, < 1 km):
+  Δlat [m] = Δφ [degrees] × 111,000
+  Δlon [m] = Δλ [degrees] × 111,000 × cos(φ)
+
+  Vector Magnitude:
+  |v| = √(x² + y² + z²)
+
+  Rotation Matrix (NED to Body):
+  Apply three sequential Euler angle rotations (ZYX order)
+
+════════════════════════════════════════════════════════════════════════════════
+Document Version: 1.0 | Created: 2026-05-07 | Print for field reference
+════════════════════════════════════════════════════════════════════════════════

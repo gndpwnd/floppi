@@ -94,7 +94,7 @@
 #include <stdbool.h>
 
 // Maximum size for a calibration profile buffer
-#define BNO085_MAX_CAL_DATA 256
+#define BNO085_MAX_CAL_DATA 512
 
 // FRS Record IDs for calibration data (from sh2.h)
 #define STATIC_CALIBRATION_AGM 0x7979

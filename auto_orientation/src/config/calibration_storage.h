@@ -98,8 +98,8 @@
 
 // EEPROM storage configuration
 #define CAL_EEPROM_BASE 0x00         // Start address in EEPROM
-#define CAL_EEPROM_SIZE 256          // Reserved size for calibration (includes header)
-#define CAL_DATA_MAX_SIZE 252        // Maximum payload (256 - 4 byte header)
+#define CAL_EEPROM_SIZE 512          // Reserved size for calibration (includes header)
+#define CAL_DATA_MAX_SIZE 508        // Maximum payload (512 - 4 byte header)
 
 // EEPROM header byte offsets
 #define CAL_EEPROM_MARKER_OFFSET 0   // Validity marker byte
