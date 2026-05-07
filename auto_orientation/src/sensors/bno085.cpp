@@ -42,8 +42,14 @@ BNO085::BNO085()
       new_data_(false),
       last_read_ms_(0),
       calibration_data_length_(0),
-      last_saved_cal_level_(0) {
+      last_saved_cal_level_(0),
+      cache_valid_(false) {
   memset(calibration_data_, 0, sizeof(calibration_data_));
+  // Initialize last_quaternion to identity
+  last_quaternion_.w = 1.0f;
+  last_quaternion_.x = 0.0f;
+  last_quaternion_.y = 0.0f;
+  last_quaternion_.z = 0.0f;
 }
 
 BNO085::~BNO085() {
@@ -321,6 +327,64 @@ const char* BNO085::getStatusString() const {
       cal_labels[sys_cal]);
 
   return status_buffer;
+}
+
+// ============================================================================
+// Rotation Matrix & Euler Angles (Extensions for Phase 1)
+// ============================================================================
+
+const RotationMatrix& BNO085::getRotationMatrix() {
+  // Check if cache is valid (quaternion hasn't changed)
+  Quaternion current_q(orientation_.w, orientation_.x, orientation_.y, orientation_.z);
+
+  if (!cache_valid_ ||
+      current_q.w != last_quaternion_.w ||
+      current_q.x != last_quaternion_.x ||
+      current_q.y != last_quaternion_.y ||
+      current_q.z != last_quaternion_.z) {
+    // Quaternion changed or cache never set - recompute
+    last_quaternion_ = current_q;
+    rotation_matrix_ = quaternion_to_rotation_matrix(current_q);
+    cache_valid_ = true;
+  }
+
+  return rotation_matrix_;
+}
+
+const EulerAngles& BNO085::getEulerAngles() {
+  // Check if cache is valid (quaternion hasn't changed)
+  Quaternion current_q(orientation_.w, orientation_.x, orientation_.y, orientation_.z);
+
+  if (!cache_valid_ ||
+      current_q.w != last_quaternion_.w ||
+      current_q.x != last_quaternion_.x ||
+      current_q.y != last_quaternion_.y ||
+      current_q.z != last_quaternion_.z) {
+    // Quaternion changed or cache never set - recompute
+    last_quaternion_ = current_q;
+    euler_angles_ = quaternion_to_euler_degrees(current_q);
+    cache_valid_ = true;
+  }
+
+  return euler_angles_;
+}
+
+bool BNO085::validateQuaternionMagnitude(float tolerance) {
+  Quaternion q(orientation_.w, orientation_.x, orientation_.y, orientation_.z);
+  float magnitude = q.magnitude();
+  float deviation = magnitude - 1.0f;
+
+  // Check if magnitude deviates from 1.0 beyond tolerance
+  if (std::fabs(deviation) > tolerance) {
+    Serial.print("  ⚠ WARNING: Quaternion magnitude out of range: ");
+    Serial.print(magnitude);
+    Serial.print(" (expected ~1.0, deviation: ");
+    Serial.print(std::fabs(deviation) * 100.0f);
+    Serial.println("%)");
+    return false;
+  }
+
+  return true;
 }
 
 // ============================================================================

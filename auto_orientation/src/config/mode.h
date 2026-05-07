@@ -35,4 +35,15 @@
 #define ALWAYS_PRINTLN(x) Serial.println(x)
 #define ALWAYS_PRINT(x) Serial.print(x)
 
+// Build flag: -D SNAPSHOT_MODE
+// Enables snapshot recording feature (quaternion + timestamp to SD card)
+#ifdef SNAPSHOT_MODE
+  #define ENABLE_SNAPSHOT_RECORDER 1
+  #define SNAPSHOT_BUFFER_SIZE 1024  // bytes for JSON buffer
+  #define MAX_SNAPSHOT_FILES 100     // maximum files before rotating
+  #define SNAPSHOT_DIRECTORY "/snapshots/"
+#else
+  #define ENABLE_SNAPSHOT_RECORDER 0
+#endif
+
 #endif // MODE_H

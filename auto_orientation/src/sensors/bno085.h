@@ -63,6 +63,7 @@
 #define BNO085_H
 
 #include "sensor_base.h"
+#include "../math/quaternion_conversions.h"
 
 // Forward declaration - Adafruit library
 class Adafruit_BNO08x;
@@ -87,6 +88,30 @@ class BNO085 : public OrientationSensor {
   bool setCalibrationProfile(const uint8_t* profile_data, uint16_t length) override;
   bool getCalibrationProfile(uint8_t* profile_data, uint16_t* length) override;
 
+  /**
+   * Get the rotation matrix corresponding to the current quaternion.
+   * The matrix is computed from the quaternion using the formula from QUATERNION_REFERENCE.md.
+   * @return 3x3 rotation matrix (row-major)
+   */
+  const RotationMatrix& getRotationMatrix();
+
+  /**
+   * Get Euler angles (roll, pitch, yaw) for the current quaternion.
+   * Returned in both radians and degrees.
+   * Uses ZYX convention (intrinsic rotations).
+   * @return Structure containing roll, pitch, yaw in both radians and degrees
+   */
+  const EulerAngles& getEulerAngles();
+
+  /**
+   * Validate the quaternion magnitude.
+   * For a valid rotation quaternion, magnitude should be ~1.0.
+   * Logs warning if magnitude deviates by more than the tolerance.
+   * @param tolerance Maximum acceptable deviation from 1.0 (default 0.001 = 0.1%)
+   * @return True if quaternion magnitude is valid
+   */
+  bool validateQuaternionMagnitude(float tolerance = 0.001f);
+
  private:
   Adafruit_BNO08x* imu_;
   OrientationData orientation_;
@@ -100,6 +125,12 @@ class BNO085 : public OrientationSensor {
 
   // Calibration persistence
   uint8_t last_saved_cal_level_;  // Track last saved calibration to avoid re-saving
+
+  // Cached conversions (computed lazily)
+  RotationMatrix rotation_matrix_;
+  EulerAngles euler_angles_;
+  Quaternion last_quaternion_;      // Last quaternion used for caching
+  bool cache_valid_;                // Whether cached values are up-to-date
 };
 
 #endif  // BNO085_H

@@ -25,8 +25,18 @@
 #include "output/sensor_output_manager.h"
 #include "sensors/bno085.h"
 
+#if ENABLE_SNAPSHOT_RECORDER
+#include "features/snapshot_recorder.h"
+#include "sensors/button_input.h"
+#endif
+
 BNO085 imu;
 SensorOutputManager output_manager;
+
+#if ENABLE_SNAPSHOT_RECORDER
+SnapshotRecorder snapshot_recorder;
+ButtonInput button_input;
+#endif
 
 void setup() {
   Serial.begin(115200);
@@ -66,6 +76,26 @@ void setup() {
     }
   }
 
+#if ENABLE_SNAPSHOT_RECORDER
+  // Initialize snapshot recorder (if SNAPSHOT_MODE enabled)
+  CAL_PRINTLN("Board: Initializing snapshot recorder...");
+  if (!snapshot_recorder.initialize()) {
+    CAL_PRINTLN("WARNING: Snapshot recorder initialization failed");
+    // Non-fatal: continue without snapshot feature
+  } else {
+    CAL_PRINTLN("✓ Snapshot recorder OK");
+  }
+
+  // Initialize button input (if SNAPSHOT_MODE enabled)
+  CAL_PRINTLN("Board: Initializing button input...");
+  if (!button_input.initialize()) {
+    CAL_PRINTLN("WARNING: Button input initialization failed");
+    // Non-fatal: continue without button feature
+  } else {
+    CAL_PRINTLN("✓ Button input OK");
+  }
+#endif
+
   // Boot complete message
   if (IS_CALIBRATION_MODE) {
     Serial.println("✓ All sensors initialized successfully!\n");
@@ -91,8 +121,26 @@ void loop() {
     return;
   }
 
+  // Get current orientation data
+  const OrientationData& orientation = imu.getOrientation();
+
   // Update output manager with latest orientation
-  output_manager.update(imu.getOrientation());
+  output_manager.update(orientation);
+
+#if ENABLE_SNAPSHOT_RECORDER
+  // Check for button press and record snapshot if triggered
+  if (button_input.is_pressed()) {
+    if (snapshot_recorder.is_ready()) {
+      if (snapshot_recorder.record_snapshot_from_orientation(orientation, millis())) {
+        Serial.printf("✓ Snapshot #%lu recorded\n", snapshot_recorder.get_snapshot_count());
+      } else {
+        Serial.println("ERROR: Failed to record snapshot");
+      }
+    } else {
+      Serial.println("ERROR: Snapshot recorder not ready");
+    }
+  }
+#endif
 
   // Output when ready (frequency-controlled to ~10 Hz)
   if (output_manager.shouldOutput()) {
