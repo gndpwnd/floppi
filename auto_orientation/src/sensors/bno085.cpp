@@ -23,6 +23,8 @@
 
 #include "bno085.h"
 #include "../config/pins.h"
+#include "../config/calibration_storage.h"
+#include "bno085_calibration.h"
 #include <Arduino.h>
 #include <string.h>
 
@@ -38,7 +40,8 @@ BNO085::BNO085()
       initialized_(false),
       new_data_(false),
       last_read_ms_(0),
-      calibration_data_length_(0) {
+      calibration_data_length_(0),
+      last_saved_cal_level_(0) {
   memset(calibration_data_, 0, sizeof(calibration_data_));
 }
 
@@ -52,22 +55,63 @@ BNO085::~BNO085() {
 
 bool BNO085::begin() {
   // Allocate IMU object
+  Serial.println("  DEBUG: Allocating BNO085 object...");
   imu_ = new Adafruit_BNO08x();
   if (!imu_) {
+    Serial.println("  ERROR: Failed to allocate BNO085 object!");
     initialized_ = false;
     return false;
   }
+  Serial.println("  DEBUG: Object allocated successfully");
 
   // Initialize I2C communication (all boards use Wire library)
+  Serial.println("  DEBUG: Starting Wire (I2C)...");
   Wire.begin();
   Wire.setClock(100000L);  // 100 kHz I2C clock (BNO085 has timing issues at 400 kHz)
+  Serial.println("  DEBUG: Wire initialized, clock set to 100 kHz");
 
-  // Initialize BNO08x via I2C (address 0x4A - DI pin to GND)
-  if (!imu_->begin_I2C(0x4A, &Wire, 0)) {
+  // Initialize BNO08x via I2C
+  // Try both addresses: 0x4A (DI pin to GND) and 0x4B (DI pin to VCC/floating)
+  // This handles cases where DI pin is not connected or misconfigured
+  bool init_success = false;
+
+  Serial.println("  DEBUG: Trying BNO085 at address 0x4A...");
+  if (imu_->begin_I2C(0x4A, &Wire, 0)) {
+    Serial.println("  DEBUG: SUCCESS at 0x4A!");
+    init_success = true;
+  } else {
+    Serial.println("  DEBUG: Failed at 0x4A, trying 0x4B...");
+    if (imu_->begin_I2C(0x4B, &Wire, 0)) {
+      Serial.println("  DEBUG: SUCCESS at 0x4B!");
+      init_success = true;
+    } else {
+      Serial.println("  ERROR: Failed at both 0x4A and 0x4B");
+    }
+  }
+
+  if (!init_success) {
     delete imu_;
     imu_ = nullptr;
     initialized_ = false;
     return false;
+  }
+
+  // Try to load previously saved calibration from EEPROM
+  if (hasCalibrationInEEPROM()) {
+    uint8_t saved_cal[256];
+    uint16_t saved_cal_length = 0;
+    if (restoreFromEEPROM(saved_cal, &saved_cal_length)) {
+      Serial.println("  Found saved calibration in EEPROM, restoring...");
+      if (writeCalibrationProfile(saved_cal, saved_cal_length)) {
+        Serial.println("  ✓ Calibration restored successfully!");
+        last_saved_cal_level_ = 3;  // Mark as already saved (full calibration)
+      } else {
+        Serial.print("  ⚠ Warning: Could not apply saved calibration - ");
+        Serial.println(getCalibrationError());
+      }
+    }
+  } else {
+    Serial.println("  ℹ No saved calibration - you will need to calibrate with figure-8 motion");
   }
 
   // Enable the rotation vector (absolute orientation) report
@@ -137,15 +181,59 @@ bool BNO085::read() {
   orientation_.z = sensor_value.un.rotationVector.k;
   orientation_.timestamp_ms = millis();
 
+  // DEBUG: Log raw quaternion values
+  if (orientation_.cal_status == 0) {
+    Serial.print("  DEBUG: Raw quat when uncalibrated: w=");
+    Serial.print(orientation_.w, 6);
+    Serial.print(" x=");
+    Serial.print(orientation_.x, 6);
+    Serial.print(" y=");
+    Serial.print(orientation_.y, 6);
+    Serial.print(" z=");
+    Serial.println(orientation_.z, 6);
+  }
+
   // Get calibration status from sensor_value.status
   // status values: 0=unreliable, 1=low, 2=medium, 3=high
   orientation_.cal_status = sensor_value.status;
-
-  // For now, store the same calibration value for all axes
-  // (the Adafruit library doesn't provide per-axis calibration in this mode)
   orientation_.cal_accel = sensor_value.status;
   orientation_.cal_gyro = sensor_value.status;
   orientation_.cal_mag = sensor_value.status;
+
+  // Auto-save calibration when it reaches level 2+ (medium or higher)
+  // Done asynchronously to avoid blocking the main read loop
+  static uint32_t last_save_attempt_ms = 0;
+  if (sensor_value.status >= 2 && sensor_value.status > last_saved_cal_level_) {
+    uint32_t now_ms = millis();
+    // Throttle save attempts to every 5 seconds (avoid spam)
+    if (now_ms - last_save_attempt_ms > 5000) {
+      last_save_attempt_ms = now_ms;
+
+      // NOTE: This blocks for ~1-2 seconds (sensor read + EEPROM write)
+      // In production, this should be moved to a background task
+      Serial.println("\n  [Saving calibration to EEPROM - please wait...]");
+
+      uint8_t cal_data[256];
+      uint16_t cal_length = 0;
+
+      // Try to read current calibration from sensor
+      if (readCalibrationProfile(cal_data, &cal_length)) {
+        // Save to EEPROM
+        if (saveToEEPROM(cal_data, cal_length)) {
+          Serial.print("  ✓✓✓ Calibration level ");
+          Serial.print(sensor_value.status);
+          Serial.println(" saved to EEPROM!");
+          Serial.println("  ✓✓✓ Will persist on next power cycle!\n");
+          last_saved_cal_level_ = sensor_value.status;
+        } else {
+          Serial.println("  ✗ Failed to save to EEPROM\n");
+        }
+      } else {
+        Serial.print("  ✗ Could not read calibration: ");
+        Serial.println(getCalibrationError());
+      }
+    }
+  }
 
   new_data_ = true;
   last_read_ms_ = millis();

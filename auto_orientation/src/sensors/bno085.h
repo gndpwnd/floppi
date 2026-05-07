@@ -97,6 +97,9 @@ class BNO085 : public OrientationSensor {
   // Calibration data
   uint8_t calibration_data_[256];
   uint16_t calibration_data_length_;
+
+  // Calibration persistence
+  uint8_t last_saved_cal_level_;  // Track last saved calibration to avoid re-saving
 };
 
 #endif  // BNO085_H

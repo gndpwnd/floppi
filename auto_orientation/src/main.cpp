@@ -1,22 +1,27 @@
 /**
- * Auto Orientation: BNO085 IMU
+ * Auto Orientation: BNO085 IMU + Persistent Calibration
  *
- * Reads absolute orientation (quaternions) from BNO085 IMU
- * with persistent calibration.
+ * Reads absolute orientation (quaternions) from BNO085 IMU with auto-save
+ * calibration to EEPROM. On boot, loads previously saved calibration.
  *
  * Hardware:
- * - BNO085 (Adafruit) via UART (RX/TX pins configured in config/pins.h)
- * - Arduino-compatible board (Nano, Mega, Teensy, ESP32, etc.)
+ * - BNO085 (Adafruit) via I2C (SDA pin 20, SCL pin 21 on Arduino Mega)
+ * - Outputs JSON with orientation + calibration status
  *
- * See docs/README.md for usage and wiring guide.
+ * Calibration:
+ * - Auto-saves to EEPROM when level 2+ (medium or higher)
+ * - Auto-loads on boot if previously saved
+ * - Survives code uploads, power cycles, orientation changes
+ *
+ * See docs/CALIBRATION_GUIDE.md for complete user guide.
+ * See docs/ABSOLUTE_ORIENTATION_EXPLAINED.md for theory.
+ * See docs/GETTING_STARTED.md for setup instructions.
  */
 
 #include <Arduino.h>
 #include "config/pins.h"
 #include "sensors/sensor_base.h"
 #include "output/sensor_output_manager.h"
-
-// Sensor instances
 #include "sensors/bno085.h"
 
 BNO085 imu;
@@ -25,25 +30,25 @@ SensorOutputManager output_manager;
 void setup() {
   Serial.begin(115200);
 
-  // Wait for serial connection
   while (!Serial) {
     delay(100);
   }
 
-  Serial.println("\n=== Auto Orientation System ===");
-  Serial.println("Initializing sensors...");
+  Serial.println("\n==================================================");
+  Serial.println("Auto Orientation System");
+  Serial.println("==================================================");
+  Serial.println("Initializing sensors...\n");
 
   // Initialize BNO085 sensor
   Serial.println("Board: Initializing BNO085 IMU sensor...");
   if (!imu.begin()) {
     Serial.println("ERROR: BNO085 initialization failed!");
-    Serial.println("Check UART connections and pins.h configuration.");
     while (1) {
       delay(500);
       Serial.println("  (waiting for manual reset)");
     }
   }
-  Serial.println("BNO085 OK");
+  Serial.println("✓ BNO085 OK\n");
 
   // Initialize output manager (JSON-only format)
   Serial.println("Board: Initializing output manager...");
@@ -54,30 +59,36 @@ void setup() {
       Serial.println("  (waiting for manual reset)");
     }
   }
-  output_manager.setFrequencyHz(10.0f);  // 10 Hz output frequency
 
-  Serial.println("Output Manager: JSON format (v1.0), 10 Hz frequency");
-  Serial.println("Reading sensor data...\n");
+  Serial.println("✓ All sensors initialized successfully!\n");
+  Serial.println("==================================================");
+  Serial.println("Monitoring started. Calibration progress:");
+  Serial.println("  ░░░ = Uncalibrated (0)");
+  Serial.println("  █░░ = Low (1)");
+  Serial.println("  ██░ = Medium (2) <-- Auto-saves");
+  Serial.println("  ███ = High (3)");
+  Serial.println("==================================================\n");
 }
 
 void loop() {
-  // Read orientation from IMU
-  if (imu.read()) {
-    if (imu.hasNewData()) {
-      // Update output manager with new orientation data
-      output_manager.update(imu.getOrientation());
-    }
+  // Read sensor data
+  if (!imu.read()) {
+    return;
   }
 
-  // Output when ready (frequency controlled by output_manager)
-  if (output_manager.shouldOutput()) {
-    char buffer[256];
-    uint16_t len = output_manager.getFormattedOutput(buffer, sizeof(buffer));
+  if (!imu.hasNewData()) {
+    return;
+  }
 
+  // Update output manager with latest orientation
+  output_manager.update(imu.getOrientation());
+
+  // Output when ready (frequency-controlled to ~10 Hz)
+  if (output_manager.shouldOutput()) {
+    char buffer[512];
+    uint16_t len = output_manager.getFormattedOutput(buffer, sizeof(buffer));
     if (len > 0) {
       Serial.println(buffer);
-    } else {
-      Serial.println("ERROR: Failed to format output");
     }
   }
 }

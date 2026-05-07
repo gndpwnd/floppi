@@ -130,32 +130,27 @@ uint16_t SensorOutputManager::formatJSON(char* buffer, uint16_t max_len) {
       orientation_.z * orientation_.z
   );
 
-  // Start building JSON
-  int offset = 0;
-  int written = 0;
+  // Arduino snprintf doesn't support %f, so use dtostrf for floats
+  char w_str[12], x_str[12], y_str[12], z_str[12], mag_str[12];
+  dtostrf(orientation_.w, 8, 6, w_str);
+  dtostrf(orientation_.x, 8, 6, x_str);
+  dtostrf(orientation_.y, 8, 6, y_str);
+  dtostrf(orientation_.z, 8, 6, z_str);
+  dtostrf(q_mag, 8, 6, mag_str);
 
-  // Opening and timestamp
-  written = snprintf(buffer, max_len - offset,
-      "{\"timestamp\":%lu,\"orientation\":{",
-      now_ms);
-  if (written < 0 || offset + written >= max_len) return 0;
-  offset += written;
-
-  // Quaternion data
-  written = snprintf(buffer + offset, max_len - offset,
-      "\"w\":%.4f,\"x\":%.4f,\"y\":%.4f,\"z\":%.4f,\"magnitude\":%.4f,"
-      "\"calibration\":{\"system\":%d,\"accel\":%d,\"gyro\":%d,\"mag\":%d}",
-      orientation_.w, orientation_.x, orientation_.y, orientation_.z, q_mag,
+  // Build JSON with pre-formatted floats
+  int written = snprintf(buffer, max_len,
+      "{\"timestamp\":%lu,\"orientation\":{"
+      "\"w\":%s,\"x\":%s,\"y\":%s,\"z\":%s,\"magnitude\":%s,"
+      "\"calibration\":{\"system\":%d,\"accel\":%d,\"gyro\":%d,\"mag\":%d}}}",
+      now_ms,
+      w_str, x_str, y_str, z_str, mag_str,
       orientation_.cal_status, orientation_.cal_accel, orientation_.cal_gyro, orientation_.cal_mag);
-  if (written < 0 || offset + written >= max_len) return 0;
-  offset += written;
 
-  // Close orientation object and JSON
-  written = snprintf(buffer + offset, max_len - offset, "}}");
-  if (written < 0 || offset + written >= max_len) return 0;
-  offset += written;
+  if (written < 0 || written >= (int)max_len) {
+    return 0;
+  }
 
-  buffer[offset] = '\0';
-  return offset;
+  return written;
 }
 

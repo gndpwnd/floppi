@@ -362,7 +362,7 @@ class JSONSensorMonitor:
             print(f"  Quat:  w={ori.w:.3f}, x={ori.x:.3f}, y={ori.y:.3f}, z={ori.z:.3f}")
             print(f"  Cal:  {ori.calibration}")
         else:
-            print("  {self.colors['yellow']}(Waiting for orientation data...){self.colors['reset']}")
+            print(f"  {self.colors['yellow']}(Waiting for orientation data...){self.colors['reset']}")
         print()
 
         # Position section
@@ -379,7 +379,7 @@ class JSONSensorMonitor:
                       if pos.altitude_m is not None
                       else f"  Lat:  {pos.latitude:11.5f}°  |  Lon: {pos.longitude:11.5f}°")
             else:
-                print("  {self.colors['yellow']}(Waiting for position fix...){self.colors['reset']}")
+                print(f"  {self.colors['yellow']}(Waiting for position fix...){self.colors['reset']}")
         else:
             print(f"  {self.colors['yellow']}(Waiting for position data...){self.colors['reset']}")
         print()
@@ -409,13 +409,26 @@ class JSONSensorMonitor:
                 time.sleep(0.01)
         except KeyboardInterrupt:
             print(f"\n{self.colors['yellow']}Exiting...{self.colors['reset']}", file=sys.stderr)
+        except Exception as e:
+            print(f"\n{self.colors['red']}Error: {e}{self.colors['reset']}", file=sys.stderr)
         finally:
+            # Shutdown sequence
             self.running = False
             reader_thread.join(timeout=2.0)
-            if self.ser and self.ser.is_open:
-                self.ser.close()
-            if self.log_f:
-                self.log_f.close()
+
+            # Close serial port
+            try:
+                if self.ser and self.ser.is_open:
+                    self.ser.close()
+            except Exception:
+                pass
+
+            # Close log file
+            try:
+                if self.log_f:
+                    self.log_f.close()
+            except Exception:
+                pass
 
             # Print final statistics
             with self.lock:
