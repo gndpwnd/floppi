@@ -17,9 +17,14 @@
 /**
  * Orientation data: quaternion representation (w, x, y, z)
  * where w is the scalar (real) component.
+ *
+ * Also includes Euler angles (roll, pitch, yaw) in degrees for visualization.
  */
 struct OrientationData {
   float w, x, y, z;        // Quaternion components
+  float roll_deg;          // Roll (X-axis rotation) in degrees
+  float pitch_deg;         // Pitch (Y-axis rotation) in degrees
+  float yaw_deg;           // Yaw (Z-axis rotation) in degrees
   uint8_t cal_status;      // Calibration status (0-3, 3=fully calibrated)
   uint8_t cal_accel;       // Accelerometer calibration (0-3)
   uint8_t cal_gyro;        // Gyroscope calibration (0-3)
@@ -28,6 +33,7 @@ struct OrientationData {
 
   OrientationData() :
     w(0), x(0), y(0), z(0),
+    roll_deg(0), pitch_deg(0), yaw_deg(0),
     cal_status(0), cal_accel(0), cal_gyro(0), cal_mag(0),
     timestamp_ms(0) {}
 };

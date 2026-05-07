@@ -132,19 +132,25 @@ uint16_t SensorOutputManager::formatJSON(char* buffer, uint16_t max_len) {
 
   // Arduino snprintf doesn't support %f, so use dtostrf for floats
   char w_str[12], x_str[12], y_str[12], z_str[12], mag_str[12];
+  char roll_str[12], pitch_str[12], yaw_str[12];
   dtostrf(orientation_.w, 8, 6, w_str);
   dtostrf(orientation_.x, 8, 6, x_str);
   dtostrf(orientation_.y, 8, 6, y_str);
   dtostrf(orientation_.z, 8, 6, z_str);
   dtostrf(q_mag, 8, 6, mag_str);
+  dtostrf(orientation_.roll_deg, 8, 2, roll_str);
+  dtostrf(orientation_.pitch_deg, 8, 2, pitch_str);
+  dtostrf(orientation_.yaw_deg, 8, 2, yaw_str);
 
   // Build JSON with pre-formatted floats
   int written = snprintf(buffer, max_len,
       "{\"timestamp\":%lu,\"orientation\":{"
       "\"w\":%s,\"x\":%s,\"y\":%s,\"z\":%s,\"magnitude\":%s,"
+      "\"euler\":{\"roll_deg\":%s,\"pitch_deg\":%s,\"yaw_deg\":%s},"
       "\"calibration\":{\"system\":%d,\"accel\":%d,\"gyro\":%d,\"mag\":%d}}}",
       now_ms,
       w_str, x_str, y_str, z_str, mag_str,
+      roll_str, pitch_str, yaw_str,
       orientation_.cal_status, orientation_.cal_accel, orientation_.cal_gyro, orientation_.cal_mag);
 
   if (written < 0 || written >= (int)max_len) {

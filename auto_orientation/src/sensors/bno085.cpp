@@ -27,6 +27,7 @@
 #include "bno085_calibration.h"
 #include <Arduino.h>
 #include <string.h>
+#include <math.h>
 
 // Include the Adafruit library
 #include "Adafruit_BNO08x.h"
@@ -55,37 +56,32 @@ BNO085::~BNO085() {
 
 bool BNO085::begin() {
   // Allocate IMU object
-  Serial.println("  DEBUG: Allocating BNO085 object...");
   imu_ = new Adafruit_BNO08x();
   if (!imu_) {
     Serial.println("  ERROR: Failed to allocate BNO085 object!");
     initialized_ = false;
     return false;
   }
-  Serial.println("  DEBUG: Object allocated successfully");
 
   // Initialize I2C communication (all boards use Wire library)
-  Serial.println("  DEBUG: Starting Wire (I2C)...");
   Wire.begin();
+  delay(100);
   Wire.setClock(100000L);  // 100 kHz I2C clock (BNO085 has timing issues at 400 kHz)
-  Serial.println("  DEBUG: Wire initialized, clock set to 100 kHz");
+  delay(100);
+
+  // Give BNO085 time to be ready after I2C initialization
+  delay(500);  // Wait 500ms for sensor to stabilize
 
   // Initialize BNO08x via I2C
   // Try both addresses: 0x4A (DI pin to GND) and 0x4B (DI pin to VCC/floating)
   // This handles cases where DI pin is not connected or misconfigured
   bool init_success = false;
 
-  Serial.println("  DEBUG: Trying BNO085 at address 0x4A...");
   if (imu_->begin_I2C(0x4A, &Wire, 0)) {
-    Serial.println("  DEBUG: SUCCESS at 0x4A!");
     init_success = true;
   } else {
-    Serial.println("  DEBUG: Failed at 0x4A, trying 0x4B...");
     if (imu_->begin_I2C(0x4B, &Wire, 0)) {
-      Serial.println("  DEBUG: SUCCESS at 0x4B!");
       init_success = true;
-    } else {
-      Serial.println("  ERROR: Failed at both 0x4A and 0x4B");
     }
   }
 
@@ -143,6 +139,32 @@ bool BNO085::isInitialized() const {
 }
 
 // ============================================================================
+// Helper Functions
+// ============================================================================
+
+static void calculateEulerAngles(float w, float x, float y, float z,
+                                 float& roll_deg, float& pitch_deg, float& yaw_deg) {
+  // Convert quaternion to Euler angles (roll, pitch, yaw in degrees)
+  const float PI_LOCAL = 3.14159265359f;
+
+  // Roll (X-axis rotation)
+  float sinr_cosp = 2.0f * (w * x + y * z);
+  float cosr_cosp = 1.0f - 2.0f * (x * x + y * y);
+  roll_deg = atan2(sinr_cosp, cosr_cosp) * 180.0f / PI_LOCAL;
+
+  // Pitch (Y-axis rotation)
+  float sinp = 2.0f * (w * y - z * x);
+  if (sinp > 1.0f) sinp = 1.0f;
+  if (sinp < -1.0f) sinp = -1.0f;
+  pitch_deg = asin(sinp) * 180.0f / PI_LOCAL;
+
+  // Yaw (Z-axis rotation)
+  float siny_cosp = 2.0f * (w * z + x * y);
+  float cosy_cosp = 1.0f - 2.0f * (y * y + z * z);
+  yaw_deg = atan2(siny_cosp, cosy_cosp) * 180.0f / PI_LOCAL;
+}
+
+// ============================================================================
 // Data Reading
 // ============================================================================
 
@@ -181,17 +203,10 @@ bool BNO085::read() {
   orientation_.z = sensor_value.un.rotationVector.k;
   orientation_.timestamp_ms = millis();
 
-  // DEBUG: Log raw quaternion values
-  if (orientation_.cal_status == 0) {
-    Serial.print("  DEBUG: Raw quat when uncalibrated: w=");
-    Serial.print(orientation_.w, 6);
-    Serial.print(" x=");
-    Serial.print(orientation_.x, 6);
-    Serial.print(" y=");
-    Serial.print(orientation_.y, 6);
-    Serial.print(" z=");
-    Serial.println(orientation_.z, 6);
-  }
+  // Calculate Euler angles from quaternion (roll, pitch, yaw in degrees)
+  calculateEulerAngles(orientation_.w, orientation_.x, orientation_.y, orientation_.z,
+                       orientation_.roll_deg, orientation_.pitch_deg, orientation_.yaw_deg);
+
 
   // Get calibration status from sensor_value.status
   // status values: 0=unreliable, 1=low, 2=medium, 3=high
@@ -286,11 +301,23 @@ const char* BNO085::getStatusString() const {
   // Clamp calibration values to valid range (0-3)
   uint8_t sys_cal = (orientation_.cal_status <= 3) ? orientation_.cal_status : 3;
 
+  // Use dtostrf for floats (Arduino snprintf doesn't support %f)
+  char w_buf[12], x_buf[12], y_buf[12], z_buf[12];
+  char roll_buf[12], pitch_buf[12], yaw_buf[12];
+  dtostrf(orientation_.w, 6, 3, w_buf);
+  dtostrf(orientation_.x, 6, 3, x_buf);
+  dtostrf(orientation_.y, 6, 3, y_buf);
+  dtostrf(orientation_.z, 6, 3, z_buf);
+  dtostrf(orientation_.roll_deg, 6, 1, roll_buf);
+  dtostrf(orientation_.pitch_deg, 6, 1, pitch_buf);
+  dtostrf(orientation_.yaw_deg, 6, 1, yaw_buf);
+
   snprintf(
       status_buffer,
       sizeof(status_buffer),
-      "BNO085 OK | Q: %.3f,%.3f,%.3f,%.3f | Cal: %s",
-      orientation_.w, orientation_.x, orientation_.y, orientation_.z,
+      "BNO085 OK | Q: %s,%s,%s,%s | Roll: %s° Pitch: %s° Yaw: %s° | Cal: %s",
+      w_buf, x_buf, y_buf, z_buf,
+      roll_buf, pitch_buf, yaw_buf,
       cal_labels[sys_cal]);
 
   return status_buffer;
