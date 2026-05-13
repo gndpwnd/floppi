@@ -1,17 +1,22 @@
-# Auto Orientation Project - Folder Structure
+# Auto Orientation Framework — Folder Structure
 
-This document explains the organization of the auto_orientation project (BNO085 IMU + GPS + EKF Fusion).
+This document explains the organization of the `auto_orientation/` project. It has evolved from a BNO085+GPS sensor toolkit (Phases 1–3) into a portable 3D-orientation **framework** with multi-IMU, multi-MCU, and optional-WiFi support. See [docs/scope.md](docs/scope.md) for the framework mission.
 
 ---
 
 ## Project Overview
 
-**Auto Orientation** is a complete sensor fusion system for Arduino Mega that:
-1. Reads absolute orientation from BNO085 IMU
-2. Reads GPS position and validates with local coordinate frames
-3. Fuses both sensors using Extended Kalman Filter (EKF) for smooth, accurate tracking
+**Auto Orientation** is a portable 3D-orientation framework for embedded systems. It provides:
 
-**Status**: Phase 3 Complete (all 143+ tests passing, 18.1% flash used)
+1. A portable **sensor abstraction** that swaps freely between IMU chips (BNO085 today; BNO055, MPU6050 + external magnetometer planned).
+2. **Multi-MCU portability** (Arduino Mega today; Nano, Teensy 4.0/4.1, ESP32, ESP32-S3 planned).
+3. Sensor fusion (EKF + Madgwick) with **persistent calibration** across power cycles.
+4. **Automatic calibration** (one-shot mounting capture + online adaptive drift tracking + magnetometer ellipsoid fit) — replaces hand-tuned offsets.
+5. A generic **auto-PID-tuner** (relay feedback, twiddle, RLS) usable across pendulum/drone/generic control loops.
+6. Optional **WiFi telemetry + browser dashboard + OTA** on ESP32-class builds (mirroring the sister `flight_controller/` project's conventions).
+7. A growing catalog of **reference applications** under `src/applications/` (balancing robot, multirotor bridge, gimbal, photogrammetry rig, educational kit).
+
+**Current state** (2026-05-12): Phase 3 complete (BNO085 + GPS + EKF, 143+ tests passing, 18.1% flash used on Mega). Phase 4 planning complete; implementation pending. See [docs/roadmap.md](docs/roadmap.md) for the full phase plan.
 
 ---
 
@@ -143,6 +148,125 @@ auto_orientation/
 ├── .gitignore                 # Git ignore rules (build artifacts, etc)
 └── platformio.ini             # Build configuration (see details below)
 ```
+
+---
+
+## Planned `src/` additions (Phase 4+)
+
+These modules are scoped in [docs/roadmap.md](docs/roadmap.md) and detailed in [docs/findings/](docs/findings/INDEX.md). They do not yet exist in source but the planning is complete:
+
+```
+src/
+├── storage/                       # Phase 4.1 — persistent storage HAL
+│   ├── persistent_storage.h       # Single API: begin/read/write/commit/clear/capacity
+│   ├── persistent_storage_avr.cpp # AVR EEPROM backend
+│   ├── persistent_storage_teensy.cpp  # Teensy emulated EEPROM backend
+│   └── persistent_storage_esp32.cpp   # ESP32 Preferences/NVS backend
+│                                  # ^ fixes Known Issue KI-1 (silent EEPROM fail on ESP32)
+│
+├── control/                       # Phase 4.5 — generic PID + auto-tuner
+│   ├── pid_controller.h/cpp       # Generic single-axis PID
+│   ├── auto_pid_tuner.h/cpp       # Strategy-driven auto-tune coordinator
+│   ├── tuners/
+│   │   ├── relay_feedback.cpp     # Åström-Hägglund, default for pendulums
+│   │   ├── twiddle.cpp            # Coordinate descent, generic fallback
+│   │   └── rls_systemid.cpp       # Recursive LS + analytical PID, for drones
+│   └── tuning_strategy.h          # ITuningStrategy interface + SafetyLimits
+│
+├── navigation/                    # Phase 4.3-4.4 additions
+│   ├── mounting_calibration.h/cpp # One-shot gravity-vector mounting capture
+│   ├── balance_kalman.h/cpp       # 2-state Kalman (pitch + gyro-bias) for balance loop
+│   └── online_mounting_estimator.h/cpp  # Adaptive drift tracker (Phase 4.4)
+│
+├── sensors/                       # Phase 4.6 + 5.5 additions
+│   ├── bno055.h/cpp               # BNO055 driver (Phase 4.6)
+│   ├── mpu6050.h/cpp              # Raw gyro+accel (Phase 5.5)
+│   ├── external_magnetometer.h/cpp # Abstract magnetometer (Phase 5.5)
+│   ├── hmc5883l.h/cpp             # Concrete magnetometer (Phase 5.5)
+│   ├── qmc5883l.h/cpp             # Concrete magnetometer (Phase 5.5)
+│   ├── lis3mdl.h/cpp              # Concrete magnetometer (Phase 5.5)
+│   └── fused_imu.h/cpp            # Madgwick adapter; implements OrientationSensor
+│
+├── actuators/                     # Phase 4.7 — application motor drivers
+│   ├── motor_driver.h             # Base interface
+│   └── l298n_motor_driver.h/cpp   # L298N dual-channel PWM
+│
+├── network/                       # Phase 6 — ESP32 WiFi stack
+│   ├── wifi_manager.h/cpp         # STA + mDNS hostname
+│   ├── wifi_credentials.h         # Template; gitignored at runtime
+│   ├── web_server.h/cpp           # Static asset server (LittleFS)
+│   ├── api_server.h/cpp           # REST + WebSocket endpoints
+│   └── ota.h/cpp                  # ArduinoOTA + HTTP-pull update
+│
+└── applications/                  # Reference application catalog
+    ├── balancing_robot/           # Phase 4.7 — primary reference
+    │   ├── balance_app.h/cpp      # IDLE → CAPTURE → TUNE → RUN → SAFE_FALL state machine
+    │   └── safety.h/cpp           # Tilt limits, motor disarm, watchdog
+    ├── multirotor_bridge/         # Phase 7 — I2C slave for flight_controller
+    ├── camera_mount/              # Phase 7 — 2- or 3-axis gimbal
+    ├── photogrammetry/            # Phase 7 — wires up snapshot recorder
+    └── edu_kit/                   # Phase 7 — Nano + MPU6050 minimum-viable build
+
+data/                              # Phase 6 — LittleFS browser dashboard assets
+└── www/
+    ├── index.html                 # Dashboard home
+    ├── three.min.js               # Vendored Three.js (~150 KB)
+    ├── app.js                     # WebSocket + UI logic
+    └── style.css
+
+tests/data/                        # Phase 4.7 — scenario test fixtures
+└── balancing_reference_trajectory.csv  # Recorded pitch trace for regression
+```
+
+Each module is gated by a compile flag in `src/config/mode.h`:
+`USE_BNO055`, `USE_MPU6050`, `USE_WIFI`, `USE_BALANCING_ROBOT`, `USE_TUNER_RELAY` / `USE_TUNER_TWIDDLE` / `USE_TUNER_RLS`, etc. A build only links the code its application needs.
+
+---
+
+## Documentation Layout (post-reorganization 2026-05-12)
+
+```
+docs/
+├── INDEX.md                       # Root navigation index
+├── README.md
+├── scope.md                       # Framework mission, in/out of scope
+├── roadmap.md                     # Phase 4–8 plan
+├── todo.md                        # Active task list
+│
+├── getting_started/               # Onboarding (GETTING_STARTED, FAQS, ARCHITECTURE)
+├── theory/                        # Math + concept background
+├── build/                         # Build guides + feature flags
+├── hardware/                      # Wiring + GPS hardware + troubleshooting
+├── calibration/                   # End-user procedure + impl notes
+├── phases/                        # PHASE_1/2/3 plans, results, summaries, release checklists
+├── reference/                     # API references (quaternion, GPS, BNO085, EKF, SH-2)
+├── implementation/                # Per-component impl walk-throughs
+├── guides/                        # Task-oriented how-to guides
+├── research/                      # Long-form research compilations (MPU6050)
+├── findings/                      # Short focused research notes (drives design decisions)
+│   ├── INDEX.md
+│   ├── auto_pid_tuning_research.md
+│   ├── balance_point_and_mounting_research.md
+│   ├── bno055_driver_and_multi_imu_strategy.md
+│   ├── multi_mcu_port_strategy.md
+│   ├── wifi_telemetry_integration_design.md
+│   ├── mpu6050_external_mag_pipeline.md
+│   ├── application_catalog.md
+│   ├── test_infrastructure_expansion.md
+│   ├── browser_dashboard_architecture.md
+│   ├── online_adaptive_balance_tracking.md
+│   ├── disturbance_compensation_research.md
+│   └── tetherless_operation_strategy.md
+│
+├── setup/                         # First-time setup + next-step planning
+├── testing/                       # Test manifests + READMEs + integration test guide
+├── todo/                          # In-progress checklists + per-session status
+└── archive/                       # Old session records, superseded docs, reference sketches
+    ├── balancing_robot_reference/ # Archived .ino + dissection notes
+    └── session_records/           # Dated work logs (YYYY-MM-DD_topic.md)
+```
+
+Every doc folder has an `INDEX.md` for quick navigation. The 32 previously-loose files at `docs/` root have been moved into thematic subfolders.
 
 ---
 
@@ -367,5 +491,5 @@ output/ (data serialization)
 
 ---
 
-*Last updated: 2026-05-07 (After Phase 3 cleanup)*
-*Status: Phase 3 COMPLETE - Ready for Phase 4 (Camera Calibration)*
+*Last updated: 2026-05-12 (Framework re-scoping session — Phase 4 planning complete)*
+*Status: Phase 3 COMPLETE — Ready for Phase 4 (Auto-orientation framework + balancing-robot reference, then multi-MCU, then WiFi, then applications catalog)*

@@ -36,7 +36,7 @@ class MathPipelineIntegrationTest : public ::testing::Test {
                          const Quaternion& q) {
     // Create rotation matrices from all three representations
     RotationMatrix R_from_euler = quaternion_to_rotation_matrix(
-        euler_to_quaternion_degrees(euler.roll_deg, euler.pitch_deg, euler.yaw_deg)
+        euler_to_quaternion_degrees(euler.roll, euler.pitch, euler.yaw)
     );
 
     // Test with unit vectors along each axis
@@ -82,9 +82,9 @@ class MathPipelineIntegrationTest : public ::testing::Test {
    * Check if Euler angles are in valid ranges.
    */
   bool IsValidEulerAngles(const EulerAngles& e) {
-    return e.roll_deg >= -180.0f && e.roll_deg <= 180.0f &&
-           e.pitch_deg >= -90.0f && e.pitch_deg <= 90.0f &&
-           e.yaw_deg >= -180.0f && e.yaw_deg <= 180.0f;
+    return e.roll >= -180.0f && e.roll <= 180.0f &&
+           e.pitch >= -90.0f && e.pitch <= 90.0f &&
+           e.yaw >= -180.0f && e.yaw <= 180.0f;
   }
 };
 
@@ -112,7 +112,7 @@ TEST_F(MathPipelineIntegrationTest, BasicRotationsAroundXAxis) {
     EXPECT_TRUE(IsValidEulerAngles(euler)) << "Invalid Euler angles at roll=" << roll;
 
     // Verify roll is approximately correct
-    EXPECT_NEAR(euler.roll_deg, roll, ANGLE_TOLERANCE)
+    EXPECT_NEAR(euler.roll, roll, ANGLE_TOLERANCE)
         << "Roll mismatch at " << roll << "°";
 
     // Verify consistency
@@ -134,7 +134,7 @@ TEST_F(MathPipelineIntegrationTest, BasicRotationsAroundYAxis) {
     EXPECT_TRUE(IsValidEulerAngles(euler)) << "Invalid Euler angles at pitch=" << pitch;
 
     // Verify pitch is approximately correct
-    EXPECT_NEAR(euler.pitch_deg, pitch, ANGLE_TOLERANCE)
+    EXPECT_NEAR(euler.pitch, pitch, ANGLE_TOLERANCE)
         << "Pitch mismatch at " << pitch << "°";
 
     VerifyConsistency(R, euler, q);
@@ -155,12 +155,12 @@ TEST_F(MathPipelineIntegrationTest, BasicRotationsAroundZAxis) {
     EXPECT_TRUE(IsValidEulerAngles(euler)) << "Invalid Euler angles at yaw=" << yaw;
 
     // Verify yaw is approximately correct (handling wrap-around)
-    float yaw_diff = std::fabs(euler.yaw_deg - yaw);
+    float yaw_diff = std::fabs(euler.yaw - yaw);
     if (yaw_diff > 180.0f) {
       yaw_diff = 360.0f - yaw_diff;
     }
     EXPECT_LT(yaw_diff, ANGLE_TOLERANCE)
-        << "Yaw mismatch at " << yaw << "°, got " << euler.yaw_deg;
+        << "Yaw mismatch at " << yaw << "°, got " << euler.yaw;
 
     VerifyConsistency(R, euler, q);
   }
@@ -205,10 +205,10 @@ TEST_F(MathPipelineIntegrationTest, CombinedRotations) {
     // Verify roundtrip accuracy
     bool near_gimbal_lock = std::fabs(tc.pitch) > 85.0f;
     if (!near_gimbal_lock) {
-      EXPECT_NEAR(euler.roll_deg, tc.roll, ANGLE_TOLERANCE);
-      EXPECT_NEAR(euler.yaw_deg, tc.yaw, ANGLE_TOLERANCE);
+      EXPECT_NEAR(euler.roll, tc.roll, ANGLE_TOLERANCE);
+      EXPECT_NEAR(euler.yaw, tc.yaw, ANGLE_TOLERANCE);
     }
-    EXPECT_NEAR(euler.pitch_deg, tc.pitch, ANGLE_TOLERANCE);
+    EXPECT_NEAR(euler.pitch, tc.pitch, ANGLE_TOLERANCE);
 
     VerifyConsistency(R, euler, q);
   }
@@ -238,8 +238,8 @@ TEST_F(MathPipelineIntegrationTest, RandomOrientations) {
     bool near_gimbal_lock = std::fabs(pitch) > 85.0f;
     if (!near_gimbal_lock) {
       // Allow slightly more tolerance for random orientations
-      EXPECT_NEAR(euler.roll_deg, roll, ANGLE_TOLERANCE * 10.0f);
-      EXPECT_NEAR(euler.yaw_deg, yaw, ANGLE_TOLERANCE * 10.0f);
+      EXPECT_NEAR(euler.roll, roll, ANGLE_TOLERANCE * 10.0f);
+      EXPECT_NEAR(euler.yaw, yaw, ANGLE_TOLERANCE * 10.0f);
     }
 
     VerifyConsistency(R, euler, q);
@@ -266,7 +266,7 @@ TEST_F(MathPipelineIntegrationTest, NearGimbalLock) {
     EXPECT_TRUE(IsValidEulerAngles(euler));
 
     // Pitch should still be accurate
-    EXPECT_NEAR(euler.pitch_deg, pitch, ANGLE_TOLERANCE);
+    EXPECT_NEAR(euler.pitch, pitch, ANGLE_TOLERANCE);
 
     // Consistency should still hold (even though roll/yaw are indeterminate)
     VerifyConsistency(R, euler, q);
@@ -286,9 +286,9 @@ TEST_F(MathPipelineIntegrationTest, SmallAngles) {
     EulerAngles euler = quaternion_to_euler_degrees(q);
     EXPECT_TRUE(IsValidEulerAngles(euler));
 
-    EXPECT_NEAR(euler.roll_deg, angle, ANGLE_TOLERANCE);
-    EXPECT_NEAR(euler.pitch_deg, angle, ANGLE_TOLERANCE);
-    EXPECT_NEAR(euler.yaw_deg, angle, ANGLE_TOLERANCE);
+    EXPECT_NEAR(euler.roll, angle, ANGLE_TOLERANCE);
+    EXPECT_NEAR(euler.pitch, angle, ANGLE_TOLERANCE);
+    EXPECT_NEAR(euler.yaw, angle, ANGLE_TOLERANCE);
   }
 }
 
@@ -306,7 +306,7 @@ TEST_F(MathPipelineIntegrationTest, LargeAngles) {
   EXPECT_TRUE(IsValidEulerAngles(euler));
 
   // 180° roll should be preserved or wrapped
-  EXPECT_TRUE(std::fabs(std::fabs(euler.roll_deg) - 180.0f) < ANGLE_TOLERANCE);
+  EXPECT_TRUE(std::fabs(std::fabs(euler.roll) - 180.0f) < ANGLE_TOLERANCE);
 }
 
 // ============================================================================

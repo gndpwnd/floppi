@@ -108,14 +108,17 @@ TEST_F(MathBenchmark, QuaternionToEuler) {
   timer.start();
   for (int i = 0; i < ITERATIONS; i++) {
     euler = quaternion_to_euler_degrees(q);
-    volatile float dummy = euler.roll_deg;
+    // EulerAngles stores roll/pitch/yaw as plain fields (values in degrees
+    // when produced by quaternion_to_euler_degrees). Legacy field names
+    // roll_deg/pitch_deg/yaw_deg were renamed to roll/pitch/yaw.
+    volatile float dummy = euler.roll;
     (void)dummy;
   }
   timer.stop();
 
   PrintBenchmarkResult("quaternion_to_euler_degrees()", timer.milliseconds(), ITERATIONS);
 
-  EXPECT_LT(std::fabs(euler.roll_deg - 45.0f), 0.01f);
+  EXPECT_LT(std::fabs(euler.roll - 45.0f), 0.01f);
 }
 
 /**
