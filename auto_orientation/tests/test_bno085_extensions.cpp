@@ -242,9 +242,9 @@ TEST_F(EulerAnglesTest, AnglesInValidRange) {
     // Roll: -180 to +180
     // Pitch: -90 to +90
     // Yaw: -180 to +180
-    AssertAngleInRange(euler.roll_deg, -180.0f, 180.0f);
-    AssertAngleInRange(euler.pitch_deg, -90.0f, 90.0f);
-    AssertAngleInRange(euler.yaw_deg, -180.0f, 180.0f);
+    AssertAngleInRange(euler.roll, -180.0f, 180.0f);
+    AssertAngleInRange(euler.pitch, -90.0f, 90.0f);
+    AssertAngleInRange(euler.yaw, -180.0f, 180.0f);
   }
 }
 
@@ -262,23 +262,23 @@ TEST_F(EulerAnglesTest, RoundTripConversion) {
   for (const auto& original : original_angles) {
     // Convert degrees to radians
     Quaternion q = euler_to_quaternion_degrees(
-        original.roll_deg, original.pitch_deg, original.yaw_deg);
+        original.roll, original.pitch, original.yaw);
 
     // Convert back
     EulerAngles result = quaternion_to_euler_degrees(q);
 
     // Check if they match (allowing for gimbal lock near ±90° pitch)
-    bool near_gimbal_lock = std::fabs(original.pitch_deg) > 85.0f;
+    bool near_gimbal_lock = std::fabs(original.pitch) > 85.0f;
 
     if (!near_gimbal_lock) {
-      EXPECT_TRUE(AnglesEqual(result.roll_deg, original.roll_deg))
-          << "Roll mismatch: " << result.roll_deg << " vs " << original.roll_deg;
-      EXPECT_TRUE(AnglesEqual(result.yaw_deg, original.yaw_deg))
-          << "Yaw mismatch: " << result.yaw_deg << " vs " << original.yaw_deg;
+      EXPECT_TRUE(AnglesEqual(result.roll, original.roll))
+          << "Roll mismatch: " << result.roll << " vs " << original.roll;
+      EXPECT_TRUE(AnglesEqual(result.yaw, original.yaw))
+          << "Yaw mismatch: " << result.yaw << " vs " << original.yaw;
     }
 
-    EXPECT_TRUE(AnglesEqual(result.pitch_deg, original.pitch_deg))
-        << "Pitch mismatch: " << result.pitch_deg << " vs " << original.pitch_deg;
+    EXPECT_TRUE(AnglesEqual(result.pitch, original.pitch))
+        << "Pitch mismatch: " << result.pitch << " vs " << original.pitch;
   }
 }
 
@@ -291,7 +291,7 @@ TEST_F(EulerAnglesTest, KnownRotations) {
   {
     Quaternion q = euler_to_quaternion_degrees(90.0f, 0.0f, 0.0f);
     EulerAngles euler = quaternion_to_euler_degrees(q);
-    EXPECT_TRUE(AnglesEqual(euler.roll_deg, 90.0f));
+    EXPECT_TRUE(AnglesEqual(euler.roll, 90.0f));
   }
 
   // 90° around Y axis: pitch ≈ 90°
@@ -299,14 +299,14 @@ TEST_F(EulerAnglesTest, KnownRotations) {
     Quaternion q = euler_to_quaternion_degrees(0.0f, 90.0f, 0.0f);
     EulerAngles euler = quaternion_to_euler_degrees(q);
     // At pitch = 90°, gimbal lock occurs, so roll/yaw become indeterminate
-    EXPECT_TRUE(AnglesEqual(euler.pitch_deg, 90.0f));
+    EXPECT_TRUE(AnglesEqual(euler.pitch, 90.0f));
   }
 
   // 90° around Z axis: yaw ≈ 90°
   {
     Quaternion q = euler_to_quaternion_degrees(0.0f, 0.0f, 90.0f);
     EulerAngles euler = quaternion_to_euler_degrees(q);
-    EXPECT_TRUE(AnglesEqual(euler.yaw_deg, 90.0f));
+    EXPECT_TRUE(AnglesEqual(euler.yaw, 90.0f));
   }
 }
 
@@ -321,12 +321,12 @@ TEST_F(EulerAnglesTest, SmallAngleAccuracy) {
 
   for (const auto& original : small_angles) {
     Quaternion q = euler_to_quaternion_degrees(
-        original.roll_deg, original.pitch_deg, original.yaw_deg);
+        original.roll, original.pitch, original.yaw);
     EulerAngles result = quaternion_to_euler_degrees(q);
 
-    EXPECT_TRUE(AnglesEqual(result.roll_deg, original.roll_deg));
-    EXPECT_TRUE(AnglesEqual(result.pitch_deg, original.pitch_deg));
-    EXPECT_TRUE(AnglesEqual(result.yaw_deg, original.yaw_deg));
+    EXPECT_TRUE(AnglesEqual(result.roll, original.roll));
+    EXPECT_TRUE(AnglesEqual(result.pitch, original.pitch));
+    EXPECT_TRUE(AnglesEqual(result.yaw, original.yaw));
   }
 }
 
@@ -379,19 +379,19 @@ TEST_F(EulerAnglesTest, QuaternionEulerRoundTrip) {
   for (const auto& original : angles_deg) {
     // euler -> q
     Quaternion q = euler_to_quaternion_degrees(
-        original.roll_deg, original.pitch_deg, original.yaw_deg);
+        original.roll, original.pitch, original.yaw);
 
     // q -> euler
     EulerAngles result = quaternion_to_euler_degrees(q);
 
     // Check accuracy (except near gimbal lock)
-    bool near_gimbal_lock = std::fabs(original.pitch_deg) > 85.0f;
+    bool near_gimbal_lock = std::fabs(original.pitch) > 85.0f;
 
     if (!near_gimbal_lock) {
-      EXPECT_TRUE(AnglesEqual(result.roll_deg, original.roll_deg));
-      EXPECT_TRUE(AnglesEqual(result.yaw_deg, original.yaw_deg));
+      EXPECT_TRUE(AnglesEqual(result.roll, original.roll));
+      EXPECT_TRUE(AnglesEqual(result.yaw, original.yaw));
     }
-    EXPECT_TRUE(AnglesEqual(result.pitch_deg, original.pitch_deg));
+    EXPECT_TRUE(AnglesEqual(result.pitch, original.pitch));
   }
 }
 
@@ -405,13 +405,13 @@ TEST_F(EulerAnglesTest, GimbalLockAtPitch90) {
   Quaternion q = euler_to_quaternion_degrees(0.0f, 90.0f, 0.0f);
   EulerAngles euler = quaternion_to_euler_degrees(q);
 
-  EXPECT_FALSE(std::isnan(euler.roll_deg));
-  EXPECT_FALSE(std::isnan(euler.pitch_deg));
-  EXPECT_FALSE(std::isnan(euler.yaw_deg));
+  EXPECT_FALSE(std::isnan(euler.roll));
+  EXPECT_FALSE(std::isnan(euler.pitch));
+  EXPECT_FALSE(std::isnan(euler.yaw));
 
-  EXPECT_FALSE(std::isinf(euler.roll_deg));
-  EXPECT_FALSE(std::isinf(euler.pitch_deg));
-  EXPECT_FALSE(std::isinf(euler.yaw_deg));
+  EXPECT_FALSE(std::isinf(euler.roll));
+  EXPECT_FALSE(std::isinf(euler.pitch));
+  EXPECT_FALSE(std::isinf(euler.yaw));
 }
 
 TEST_F(EulerAnglesTest, GimbalLockAtPitchMinus90) {
@@ -419,13 +419,13 @@ TEST_F(EulerAnglesTest, GimbalLockAtPitchMinus90) {
   Quaternion q = euler_to_quaternion_degrees(0.0f, -90.0f, 0.0f);
   EulerAngles euler = quaternion_to_euler_degrees(q);
 
-  EXPECT_FALSE(std::isnan(euler.roll_deg));
-  EXPECT_FALSE(std::isnan(euler.pitch_deg));
-  EXPECT_FALSE(std::isnan(euler.yaw_deg));
+  EXPECT_FALSE(std::isnan(euler.roll));
+  EXPECT_FALSE(std::isnan(euler.pitch));
+  EXPECT_FALSE(std::isnan(euler.yaw));
 
-  EXPECT_FALSE(std::isinf(euler.roll_deg));
-  EXPECT_FALSE(std::isinf(euler.pitch_deg));
-  EXPECT_FALSE(std::isinf(euler.yaw_deg));
+  EXPECT_FALSE(std::isinf(euler.roll));
+  EXPECT_FALSE(std::isinf(euler.pitch));
+  EXPECT_FALSE(std::isinf(euler.yaw));
 }
 
 // ============================================================================
@@ -475,7 +475,7 @@ TEST_F(RotationMatrixTest, MatrixAndEulerConsistent) {
   // Create a rotation matrix from Euler angles separately
   // And verify they give the same result
   Quaternion q_from_euler = euler_to_quaternion_degrees(
-      euler.roll_deg, euler.pitch_deg, euler.yaw_deg);
+      euler.roll, euler.pitch, euler.yaw);
   RotationMatrix R_from_euler = quaternion_to_rotation_matrix(q_from_euler);
 
   // The two matrices should be very similar

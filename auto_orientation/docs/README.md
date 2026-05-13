@@ -4,6 +4,8 @@
 
 **Status**: Initialization Phase (v1.0 in active development)
 
+> **Design direction**: see [MINIMIZE_ACCELERATIONS_PHILOSOPHY.md](MINIMIZE_ACCELERATIONS_PHILOSOPHY.md) for the project's current design direction (balancing-robot reference application).
+
 ---
 
 ## Quick Start

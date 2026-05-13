@@ -104,6 +104,17 @@ class OrientationSensor : public Sensor {
   virtual const OrientationData& getOrientation() const = 0;
   virtual bool setCalibrationProfile(const uint8_t* profile_data, uint16_t length) = 0;
   virtual bool getCalibrationProfile(uint8_t* profile_data, uint16_t* length) = 0;
+
+  // Raw sensor access for control loops that need to bypass fusion (HELD/FALLEN
+  // motion detection, future direct Madgwick, etc.). Defaulted to "not
+  // supported" so drivers without raw access still compile — they return false
+  // and leave xyz untouched (caller should zero-initialize).
+  //
+  // Units (matching Adafruit_BNO055 native units to avoid lossy conversion):
+  //   getRawGyro:  body-frame angular rate in deg/s (xyz)
+  //   getRawAccel: body-frame linear acceleration in m/s² (xyz)
+  virtual bool getRawGyro(float xyz[3])  { (void)xyz; return false; }
+  virtual bool getRawAccel(float xyz[3]) { (void)xyz; return false; }
 };
 
 // ============================================================================

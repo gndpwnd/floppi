@@ -1,16 +1,18 @@
 /**
- * Calibration Data Persistent Storage - Implementation Skeleton
+ * Calibration Data Persistent Storage - Implementation
  *
- * This file provides the implementation for saving/restoring calibration
- * data to/from Arduino EEPROM.
+ * Saves and restores calibration data via the persistent_storage HAL.
  *
- * STATUS: Skeleton structure with full implementation ready for build
+ * STATUS: Uses ps:: HAL (Phase 4.1). Source-level API is unchanged from the
+ * previous direct-`<EEPROM.h>` implementation — only the backing store moves
+ * to the HAL, so caller code in the rest of the project is untouched.
  *
- * Uses Arduino's built-in <EEPROM.h> library (available on all standard boards)
+ * Fixes Known Issue KI-1: silent EEPROM failure on ESP32 (the HAL routes ESP32
+ * writes through Preferences/NVS with proper commit semantics).
  */
 
 #include "calibration_storage.h"
-#include <EEPROM.h>
+#include "../storage/persistent_storage.h"
 #include <string.h>
 
 // ============================================================================
@@ -48,23 +50,24 @@ uint8_t calculateCRC8(const uint8_t* data, uint16_t length) {
 }
 
 // ============================================================================
-// SAVE CALIBRATION TO EEPROM
+// SAVE CALIBRATION TO PERSISTENT STORAGE
 // ============================================================================
 
 bool saveToEEPROM(const uint8_t* cal_data, uint16_t length) {
   /*
-   * Save calibration data with header to EEPROM.
+   * Save calibration data with header via the persistent_storage HAL.
    *
    * Process:
    * 1. Validate input length
    * 2. Calculate CRC8 checksum
    * 3. Write header bytes (marker, length, version, CRC)
    * 4. Write calibration data bytes
+   * 5. ps::commit() once to flush (no-op on AVR/Teensy; flushes NVS on ESP32)
    *
-   * EEPROM writes:
-   * - Each write takes ~3.3ms on AVR boards
-   * - Total time for 256 bytes: ~850ms
-   * - Do not power off during write!
+   * Notes on timing:
+   * - AVR: each byte takes ~3.3 ms (~850 ms for full block); do not power off
+   * - Teensy: flash-emulated, similar wall-clock budget
+   * - ESP32: buffered until commit(); commit is atomic (single NVS write)
    */
 
   if (!cal_data || length == 0) {
@@ -79,83 +82,87 @@ bool saveToEEPROM(const uint8_t* cal_data, uint16_t length) {
   // Calculate CRC8 of calibration data
   uint8_t crc = calculateCRC8(cal_data, length);
 
-  // Write header to EEPROM
-  // Byte 0: Validity marker
-  EEPROM.write(CAL_EEPROM_BASE + CAL_EEPROM_MARKER_OFFSET, CAL_MARKER_VALID);
+  // Build the 4-byte header in a small local buffer so we can issue a single
+  // ps::write() call instead of four. This is friendlier to NVS back-ends
+  // that batch internally and keeps the dirty-tracking path tight.
+  uint8_t header[4];
+  header[CAL_EEPROM_MARKER_OFFSET]  = CAL_MARKER_VALID;
+  header[CAL_EEPROM_LENGTH_OFFSET]  = (uint8_t)length;
+  header[CAL_EEPROM_VERSION_OFFSET] = CAL_FORMAT_VERSION;
+  header[CAL_EEPROM_CRC_OFFSET]     = crc;
 
-  // Byte 1: Data length
-  EEPROM.write(CAL_EEPROM_BASE + CAL_EEPROM_LENGTH_OFFSET, (uint8_t)length);
+  if (!ps::write(CAL_EEPROM_BASE, header, sizeof(header))) {
+    return false;
+  }
 
-  // Byte 2: Format version
-  EEPROM.write(CAL_EEPROM_BASE + CAL_EEPROM_VERSION_OFFSET, CAL_FORMAT_VERSION);
+  // Write the payload as a single batch.
+  if (!ps::write(CAL_EEPROM_BASE + CAL_EEPROM_PAYLOAD_OFFSET,
+                 cal_data, length)) {
+    return false;
+  }
 
-  // Byte 3: CRC8 checksum
-  EEPROM.write(CAL_EEPROM_BASE + CAL_EEPROM_CRC_OFFSET, crc);
-
-  // Write calibration data payload
-  for (uint16_t i = 0; i < length; i++) {
-    EEPROM.write(CAL_EEPROM_BASE + CAL_EEPROM_PAYLOAD_OFFSET + i, cal_data[i]);
+  // Flush — required on ESP32 (NVS commit), no-op on AVR/Teensy.
+  if (!ps::commit()) {
+    return false;
   }
 
   return true;
 }
 
 // ============================================================================
-// RESTORE CALIBRATION FROM EEPROM
+// RESTORE CALIBRATION FROM PERSISTENT STORAGE
 // ============================================================================
 
 bool restoreFromEEPROM(uint8_t* cal_data, uint16_t* length) {
   /*
-   * Restore calibration data from EEPROM with validation.
+   * Restore calibration data via the persistent_storage HAL, with validation.
    *
    * Process:
-   * 1. Check validity marker
-   * 2. Read length and version
-   * 3. Read calibration data
-   * 4. Verify CRC8 checksum
-   * 5. Return data if valid, false if any check fails
-   *
-   * Failure cases:
-   * - No valid marker (EEPROM empty)
-   * - CRC mismatch (data corrupted)
-   * - Invalid length
-   * - Version mismatch
+   * 1. Read header (marker, length, version, CRC)
+   * 2. Sanity-check marker and stored length
+   * 3. Read calibration payload
+   * 4. Recompute CRC8 and compare against the stored value
+   * 5. Return data if valid; false on any check failure
    */
 
   if (!cal_data || !length) {
     return false;
   }
 
-  // Read validity marker
-  uint8_t marker = EEPROM.read(CAL_EEPROM_BASE + CAL_EEPROM_MARKER_OFFSET);
+  // Read 4-byte header.
+  uint8_t header[4];
+  if (!ps::read(CAL_EEPROM_BASE, header, sizeof(header))) {
+    return false;
+  }
+
+  uint8_t marker        = header[CAL_EEPROM_MARKER_OFFSET];
+  uint8_t stored_length = header[CAL_EEPROM_LENGTH_OFFSET];
+  uint8_t version       = header[CAL_EEPROM_VERSION_OFFSET];
+  uint8_t stored_crc    = header[CAL_EEPROM_CRC_OFFSET];
+
   if (marker != CAL_MARKER_VALID) {
     // No valid calibration stored
     return false;
   }
 
-  // Read data length
-  uint8_t stored_length = EEPROM.read(CAL_EEPROM_BASE + CAL_EEPROM_LENGTH_OFFSET);
   if (stored_length == 0 || stored_length > CAL_DATA_MAX_SIZE) {
     // Invalid length
     return false;
   }
 
-  // Read format version
-  uint8_t version = EEPROM.read(CAL_EEPROM_BASE + CAL_EEPROM_VERSION_OFFSET);
   if (version != CAL_FORMAT_VERSION) {
     // Format mismatch - could be from older firmware
     // For now, accept it (future: could handle multiple versions)
   }
 
-  // Read calibration data
-  for (uint16_t i = 0; i < stored_length; i++) {
-    cal_data[i] = EEPROM.read(CAL_EEPROM_BASE + CAL_EEPROM_PAYLOAD_OFFSET + i);
+  // Read calibration payload in one batch.
+  if (!ps::read(CAL_EEPROM_BASE + CAL_EEPROM_PAYLOAD_OFFSET,
+                cal_data, stored_length)) {
+    return false;
   }
 
   // Verify CRC8
-  uint8_t stored_crc = EEPROM.read(CAL_EEPROM_BASE + CAL_EEPROM_CRC_OFFSET);
   uint8_t calculated_crc = calculateCRC8(cal_data, stored_length);
-
   if (stored_crc != calculated_crc) {
     // CRC mismatch - data corrupted
     return false;
@@ -172,34 +179,33 @@ bool restoreFromEEPROM(uint8_t* cal_data, uint16_t* length) {
 
 bool hasCalibrationInEEPROM(void) {
   /*
-   * Quick check if a valid calibration is stored.
-   * Does not validate CRC or load data, just checks the marker.
-   *
-   * Useful for deciding:
-   * - Skip initial calibration (restore and use saved)
-   * - Proceed with initial calibration (no saved available)
+   * Quick check if a valid calibration is stored. Reads only the marker byte
+   * (offset 0) — no CRC validation or payload load. Matches the legacy
+   * single-byte EEPROM.read() semantics exactly.
    */
 
-  uint8_t marker = EEPROM.read(CAL_EEPROM_BASE + CAL_EEPROM_MARKER_OFFSET);
+  uint8_t marker = 0xFF;
+  if (!ps::read(CAL_EEPROM_BASE + CAL_EEPROM_MARKER_OFFSET, &marker, 1)) {
+    return false;
+  }
   return (marker == CAL_MARKER_VALID);
 }
 
 // ============================================================================
-// CLEAR CALIBRATION FROM EEPROM
+// CLEAR CALIBRATION FROM PERSISTENT STORAGE
 // ============================================================================
 
 bool clearCalibrationFromEEPROM(void) {
   /*
-   * Clear the calibration validity marker, making EEPROM appear empty.
-   * The actual data bytes remain (can be recovered), but marked as invalid.
-   *
-   * This is fast (just 1 byte write) and reversible (data still present).
-   * Use when:
-   * - Forcing re-calibration
-   * - Preparing for new location
-   * - Factory reset
+   * Clear the calibration validity marker, making the slot appear empty.
+   * The payload bytes are untouched (single-byte write). Fast and reversible
+   * (the data is technically still in storage; only the marker is gone).
    */
 
-  EEPROM.write(CAL_EEPROM_BASE + CAL_EEPROM_MARKER_OFFSET, CAL_MARKER_EMPTY);
-  return true;
+  uint8_t empty = CAL_MARKER_EMPTY;
+  if (!ps::write(CAL_EEPROM_BASE + CAL_EEPROM_MARKER_OFFSET, &empty, 1)) {
+    return false;
+  }
+  // Flush — required on ESP32 so the marker change survives a reset.
+  return ps::commit();
 }
