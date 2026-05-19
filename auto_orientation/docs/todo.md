@@ -1,11 +1,49 @@
 # Todo: Auto Orientation Framework
 
-**Current phase**: Phase 4 — Auto-orientation + auto-PID + balancing-robot reference
-**Last updated**: 2026-05-18 PM late
+**Current phase**: Phase 4 — bifurcated 2026-05-19 into Phase 4M (Mega-universal) and Phase 4U (Uno-minimal)
+**Last updated**: 2026-05-19 (platform-bifurcation pivot)
 
-For phase-level context see [roadmap.md](roadmap.md). For framework bounds see [scope.md](scope.md).
+For phase-level context see [roadmap.md](roadmap.md). For framework bounds see [scope.md](scope.md). For the pivot rationale see operator memory `project_strategic_pivot_2026-05-19.md` and [scope.md §Platform bifurcation](scope.md#platform-bifurcation-2026-05-19--mega-universal-vs-uno-minimal).
 
 ---
+
+## Strategic pivot — 2026-05-19
+
+The balance-bot reference application splits in two:
+
+- **Mega path** (`src/applications/balancing_robot/`) — home of the universal/adaptive stack (BOOTSTRAP, RLS, collision detection, OnlineMountingEstimator, position containment, wheel encoders). Flash budget is generous; optimize for clarity.
+- **Uno path** (`src/applications/balancing_robot_uno/`, sibling-owned) — minimal single-purpose balancer with hardcoded PID + PWM constants. Constants come from an offline Python brute-force tuner (`tools/sim/`, sibling-owned). No on-MCU learning.
+
+The two paths share `src/sensors/`, `src/actuators/`, and `src/math/` — only the application layer diverges.
+
+---
+
+## Recently completed (2026-05-19 multi-agent session)
+
+This session landed a coordinated set of P0/P1 audit fixes, three audits, two research findings, an operator workflow doc, a test investigation, and the strategic pivot itself. See `project_strategic_pivot_2026-05-19.md` for the canonical pivot record.
+
+**Audit fixes that landed:**
+- Gyro torn-read atomicity fix in BOOTSTRAP (P0)
+- `plant_id_.reset()` no-overwrite on successful BOOTSTRAP K seed (P0)
+- K-quality gate — refuse to push gains when per-pulse K spread is unreasonable (P1)
+- Baseline-window operator-motion cap (P1)
+- Per-pulse Serial telemetry expanded for bench post-mortem visibility
+
+**Audits delivered:**
+- P0/P1 BOOTSTRAP audit (drove the 5 fixes above)
+- 2026-05-19 multi-orientation audit
+- Scope-violation re-audit (annotated with platform-bifurcation tags — see scope.md)
+
+**Research findings written:**
+- Collision-signature characterization for BNO055 linear accel (3-gate detector spec: 12 g / 8+3-tick / 6+200 dps)
+- Wheel-encoder feasibility for Mega (sibling agent owns the doc)
+
+**Other deliverables:**
+- Safe-test-area operator workflow doc
+- Test-suite investigation (root-caused why `tests/test_balance_app_collision.cpp` was untracked)
+- Strategic pivot decision and propagation (this doc set)
+
+**Session regression to redo on Mega path:** the collision-detection code in `balance_app.{h,cpp}` was inadvertently reverted by an audit-fix agent late in the session. Scaffolding survives (`bno055::getLinearAccel`, `OrientationSensor::getLinearAccel` virtual, untracked test file) — see Phase 4M.0 below.
 
 ## Recently completed (2026-05-18 PM)
 
@@ -19,39 +57,94 @@ See [PHASE2_FLASH_TRIMS_AND_HEURISTICS.md](archive/session_records/2026-05-18_PH
 - Phase 2.6 — gain scheduling (linear output scaling inside ±2° soft zone).
 - Uno build: 95.9% flash (1336 B free), 70.4% RAM. Flashed and 30 s monitored — zero anomalies.
 
-## Next session (priorities)
+---
 
-BOOTSTRAP shipped (Phase 4.10c) AND was bench-validated 2026-05-18 PM late — see [BOOTSTRAP_FIRST_BENCH](archive/session_records/2026-05-18_PM_LATE_BOOTSTRAP_FIRST_BENCH.md). Bot transitioned IDLE → BOOTSTRAP → RUN with measured K, but **twitched and fell within ~1 s** instead of balancing. Four blockers identified, each with a known fix path:
+## Mega path — universal stack (Phase 4M)
 
-**Operator-observed THIS session: bot wanders during testing and collides with stuff.** No encoders / optical flow / bumpers → balance loop constrains pitch but not position. Any phase (BOOTSTRAP, CHARACTERISE, RUN) can be derailed by an external impact the algorithm doesn't expect.
+The universal/adaptive code lives here from 2026-05-19 onward. Flash budget is generous on Mega 2560 (~88 % free); optimize for clarity, not for size. See [roadmap.md §Phase 4M](roadmap.md#phase-4m--mega-only-universal-stack-cleanup) for the phase plan.
 
-**TOP PRIORITY — collision detection via BNO055 linear-accel** (small, ~50–100 B per site, three sites).
+### TOP PRIORITY — Restore collision detection (Phase 4M.0)
 
-1. Read `getVector(VECTOR_LINEARACCEL)` (gravity-removed body-frame accel, already in the library); add a fast peak detector on magnitude. Threshold ~15 m/s² (1.5 g) sustained 2+ ticks = impact.
-2. BOOTSTRAP / CHARACTERISE: spike during any pulse or baseline → abandon sequence, exit to IDLE with `failure_reason=5 (collision)`. Operator repositions in safe area and retries.
-3. RUN: spike → enter HELD (motors off, wait for quiet+level resume).
-4. Optional `USE_BALANCE_AUTO_BOOTSTRAP` build flag to gate boot-time auto-fire — operator may want to position the bot in the test area before motors engage.
+Reverted late in the 2026-05-19 session by an audit-fix agent. Sensor scaffolding survives:
 
-**Research items (next 1–2 sessions, more design than code)**:
+- `bno055::getLinearAccel` (concrete) ✅
+- `OrientationSensor::getLinearAccel` virtual in `sensor_base.h` ✅
+- `tests/test_balance_app_collision.cpp` (still untracked) ✅
+- Three-gate detector + state-handler integration in `balance_app.{h,cpp}` ❌ — re-implement
 
-- Position-cascade outer loop using double-integrated linear accel as a short-term position estimate, with a slow restoring pitch setpoint. Bench-class bots in OSS do this; drift over tens of seconds is bounded enough for indoor testing. Search: "two-wheeled inverted pendulum drift containment IMU only", "linear accel position estimate balance bot".
-- Empirical collision signature characterization from bench traces — confirms the >15 m/s² threshold and distinguishes from balance-recovery accel.
-- Safe-test-area operator workflow doc (mat, barriers, kill-switch placement, reset procedure).
+Re-implementation reference: [findings/research_collision_signature_bno055.md](findings/research_collision_signature_bno055.md) — 3-gate thresholds (12 g instant / 8+3-tick sustained / 6+200 dps rotational).
 
-**THEN — fix BOOTSTRAP K-quality so derived gains land near truth.**
+Apply to:
+1. BOOTSTRAP — spike during any pulse or baseline → abandon sequence, exit to IDLE with `failure_reason=5 (collision)`.
+2. CHARACTERISE — same abandonment policy.
+3. RUN — spike → enter HELD (motors off, wait for quiet + level to resume).
+4. Optional `USE_BALANCE_AUTO_BOOTSTRAP` build flag to gate boot-time auto-fire (operator may want to position the bot before motors engage).
 
-1. **Sample-quality gate** (estimated <50 B flash). Skip a pulse if `|g0|` (gyro at pulse start, already in the PulseLog telemetry) is above ~5 dps — the bot still has prior-pulse momentum and the |Δω| measurement is contaminated by braking, not just plant excitation. First bench data showed g0 values of −0.1, −25.5, +20.3, +1.9 across 4 pulses → K spread 0.09–0.74 (8× range) → poisoned mean.
-2. **Longer cooldown** between pulses (150 → 400 ms) to let the bot settle. ~free, just constants.
-3. **Threshold cap** at e.g. 5 dps so operator-handling motion during the 300 ms baseline doesn't make the bench unbootstrappable. Second bench reboot showed thr=50 dps (baseline gyro range ~17 dps from settling motion) — all real pulses failed.
+### K-quality follow-on (Phase 4M.k)
 
-**After clean K_est, then verify RUN actually balances.** If still twitching: reduce ω_n from 8 → 5 rad/s in PlantIdentifier (less aggressive pole-placement; BNO055 NDOF group delay eats phase margin at the current target).
+The P0/P1 fixes landed this session (gyro atomicity, `plant_id_.reset()` no-overwrite, K-quality gate, baseline cap) addressed the most-acute K-spread issues. Remaining work on the Mega path:
 
-Optional: add periodic RUN telemetry (pitch / output / mount-offset / K_motor every 100 ms) so the bench can see what the balance loop is doing after BOOTSTRAP exits.
+- [ ] Validate the K-quality gate against a wider range of bench K spreads
+- [ ] Encoder-driven K verification (Phase 4M.2) — cross-check IMU-derived K against encoder-derived K before BOOTSTRAP exits
+- [ ] Per-wheel CHARACTERISE on Mega using encoder pulses (Phase 4M.3)
+- [ ] Periodic RUN telemetry (pitch / output / mount-offset / K_motor every 100 ms) so the bench can see what the balance loop is doing
+- [ ] Reduce ω_n target from 8 → 5 rad/s in PlantIdentifier if bench still twitches (BNO055 NDOF group delay eats phase margin)
 
-After the bot balances for tens of seconds:
+### Wheel encoders + position containment (Phase 4M.1, 4M.11)
 
-1. Phase 2.7 — motor-null-space HELD detector with quaternion projection. Replaces hardcoded `a_dev_lpf_ > 6.0f` HELD threshold from the audit. Per [research_motor_null_space_handling_detection.md](findings/research_motor_null_space_handling_detection.md).
-2. Audit row-by-row: each remaining hardcoded value in `scope.md` gets a derivation cycle (noise-floor measurement → threshold = baseline × sigma). 14/21 violations still open.
+- [ ] Source new `src/sensors/wheel_encoder.{h,cpp}` (sibling-research-driven; see [findings/research_wheel_encoders_mega_2026-05-19.md](findings/research_wheel_encoders_mega_2026-05-19.md))
+- [ ] Mega ISR backend using external-interrupt pins (INT0/INT1/INT4/INT5)
+- [ ] Per-wheel position (ticks), velocity (ticks/s), direction
+- [ ] Cascade outer loop: position error → pitch setpoint command → inner balance loop (Phase 4M.11)
+- [ ] Replace IMU-only pitch double-integration position estimate with encoder odometry
+
+### Remaining scope-violation rows on Mega
+
+All 14 open rows in [scope.md §Current scope violations — audit](scope.md#current-scope-violations--audit-2026-05-18-updated-pm-evening-phase-410c-landed-re-tagged-2026-05-19-for-platform-bifurcation) are now `[mega]`-tagged. Each becomes addressable once the bot balances long enough on Mega to collect the derivation data. Pick the smallest and most-blocking one first; do NOT iterate on the numeric value.
+
+### Phase 2.7 (deferred to Mega path)
+
+- [ ] Motor-null-space HELD detector with quaternion projection. Replaces hardcoded `a_dev_lpf_ > 6.0f` HELD threshold from the audit. Per [research_motor_null_space_handling_detection.md](findings/research_motor_null_space_handling_detection.md). Mega-only because Uno minimal program does not implement HELD.
+
+---
+
+## Uno path — minimal balancer (Phase 4U)
+
+Single-purpose hardcoded balancer. **No** auto-tune, **no** RLS, **no** BOOTSTRAP, **no** OnlineMountingEstimator. PID + PWM constants come from offline Python brute-force tuning. Reference target: `archive/balancing_robot_reference/SelfBallancingRobot3.ino`. See [roadmap.md §Phase 4U](roadmap.md#phase-4u--uno-minimal-hardcoded-balancer--python-brute-force-tuner).
+
+- [ ] **Scaffold `src/applications/balancing_robot_uno/`** (sibling agent owns this — link will resolve)
+  - `balance_uno_app.{h,cpp}` — read pitch, run PID, drive motors (~150 LOC ceiling)
+  - Consume generated header `balance_constants_uno.h`
+  - Reuse existing `src/sensors/bno055.cpp`, `src/actuators/l298n_motor_driver.cpp`
+  - Compile gate `USE_BALANCING_ROBOT_UNO` (mutually exclusive with `USE_BALANCING_ROBOT`)
+- [ ] **New build env `arduino_uno_minimal`** (or repurpose the existing `uno_balance`)
+- [ ] **Python brute-force tuner in `tools/sim/`** (sibling agent owns) — wraps `balance_bot_sim.py`, grid/evolutionary search over PID + PWM scaling, fitness = time-balanced under disturbance injection
+- [ ] **Header generator + Uno-side consumer** — tuner emits `balance_constants_uno.h`; build script copies into `src/applications/balancing_robot_uno/generated/`
+- [ ] **First brute-force run + bench validation** — pass criterion: balance ≥ 30 s on flat indoor surface
+
+Constraint: **resist the urge to add adaptive code on the Uno path.** Hardcoded constants are the design. If a behaviour cannot be reproduced with constants alone, it does not belong in the Uno program.
+
+---
+
+## Tooling
+
+### Python brute-force PID/PWM tuner (new, sibling-owned)
+
+- [ ] Source under `auto_orientation/tools/sim/` — wraps existing `balance_bot_sim.py` plant model
+- [ ] Search strategy: grid-search → evolutionary (CMA-ES or similar) once grid converges
+- [ ] Search space: Kp / Ki / Kd / stiction_min_pwm / saturation_pwm
+- [ ] Fitness: time balanced before tip-over under randomized disturbance injection
+- [ ] Output: `balance_constants_uno.h` with `constexpr` declarations
+- [ ] CLI flags for plant-parameter overrides (mass, wheel radius, motor K — defaults to simulated nominal bot)
+- [ ] Docs in `docs/applications/balancing_robot_uno/README.md` once the tool stabilises
+
+### Other tooling (cross-cutting, no specific phase)
+
+- [ ] `tools/replay_trajectory.py` — feed recorded pitch CSV to firmware over serial (for scenario tests and HIL emulation)
+- [ ] `tools/auto_calibrate.py` — host-side magnetometer ellipsoid fit
+- [ ] `tools/quaternion_viewer.py` — desktop 3D quaternion viewer (pre-dashboard fallback)
+- [ ] `tools/balance_tune_visualizer.py` — auto-PID-tune convergence plot (Mega path)
+- [ ] `tools/build_matrix.sh` — wrap `pio run -e <env>` for every env; summarize flash/RAM
 
 ---
 
@@ -188,7 +281,7 @@ Phase 4 implementation + universal auto-tune research and coding session. See [d
 - [x] Freeze gates: 5 s bootstrap window, lateral-gyro > 30 dps, windup_active
 - [x] `tests/test_plant_identifier.cpp` — 7 native tests pass, K_est=K_true (0.0% error) on synthetic data
 - [x] `s` serial command extended with ADAPT/BOOT tag + K_motor + target gains
-- [ ] Phase 4.10c — full 5-stage bootstrap state machine (designed, deferred)
+- [x] **Phase 4.10c — BOOTSTRAP K_motor pulse-measurement + analytical gain seeding — LANDED 2026-05-18 PM evening** (commit 7a4d27f). Replaces hardcoded Kp/Ki/Kd defaults. 27/27 bootstrap tests pass; Uno flash 92.2% after net +1.1 KB headroom from removing relay tuner.
 - [ ] Motor-polarity sanity check at adaptation start (designed, deferred)
 
 ### 4.11 — Multi-orientation balance (Level 2 — designed, not coded)
@@ -256,12 +349,12 @@ See [roadmap.md#phase-7](roadmap.md#phase-7--application-catalog-expansion). Top
 
 ## Cross-cutting (no specific phase)
 
-### Tooling
+### Tooling (legacy list — see top-level "Tooling" section above for the 2026-05-19-onward authoritative list)
 
 - [ ] `tools/replay_trajectory.py` — feed recorded pitch CSV to firmware over serial (for scenario tests and HIL emulation)
 - [ ] `tools/auto_calibrate.py` — host-side magnetometer ellipsoid fit
 - [ ] `tools/quaternion_viewer.py` — desktop 3D quaternion viewer (pre-dashboard fallback)
-- [ ] `tools/balance_tune_visualizer.py` — auto-PID-tune convergence plot
+- [ ] `tools/balance_tune_visualizer.py` — auto-PID-tune convergence plot (Mega path)
 - [ ] `tools/build_matrix.sh` — wrap `pio run -e <env>` for every env; summarize flash/RAM
 
 ### Documentation cross-cutting
@@ -305,4 +398,4 @@ See [roadmap.md#phase-7](roadmap.md#phase-7--application-catalog-expansion). Top
 
 ---
 
-*Last updated: 2026-05-12. When you finish an item, move it to "Recently completed" with date. When you start a new item, mark it in-progress in `TodoWrite`.*
+*Last updated: 2026-05-19 (platform-bifurcation pivot — Mega-universal vs Uno-minimal). When you finish an item, move it to "Recently completed" with date. When you start a new item, mark it in-progress in `TodoWrite`.*

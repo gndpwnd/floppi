@@ -43,12 +43,21 @@
 // plain pointer access so the same source compiles everywhere.
 #if defined(__AVR__) || defined(ARDUINO_ARCH_AVR)
   #include <avr/pgmspace.h>
+  #include <util/atomic.h>
 #else
   #ifndef PROGMEM
     #define PROGMEM
   #endif
   #ifndef pgm_read_byte
     #define pgm_read_byte(addr) (*reinterpret_cast<const uint8_t*>(addr))
+  #endif
+  // On non-AVR (native test, Teensy/ESP32) ATOMIC_BLOCK is a no-op shim. The
+  // ISR/loop race only exists on the 8-bit AVR path where a 4-byte float load
+  // can be interrupted mid-byte. On 32-bit platforms float reads are naturally
+  // atomic; native tests run single-threaded so there is no race at all.
+  #ifndef ATOMIC_BLOCK
+    #define ATOMIC_BLOCK(x)
+    #define ATOMIC_RESTORESTATE
   #endif
 #endif
 
@@ -856,9 +865,22 @@ void BalanceApp::enter_state_(BalanceAppState s, uint32_t now_ms) {
             // so its first target is consistent with the seed. The
             // bootstrap_freeze window (handled in step_run_) gives the loop
             // ~5 s to settle before the RLS begins adapting.
+            //
+            // Fix B (audit P1-SM-1): skip the back-derived reset() when the
+            // just-finished BOOTSTRAP measured K directly. plant_id_.reset()
+            // back-solves K from Kp (K = ω_n²/Kp) AND inflates the RLS
+            // covariance to INITIAL_P (1.0), which would let early noise
+            // drown the freshly-measured K. seed_k_motor() (called from
+            // step_bootstrap_'s FINALISE) leaves covariance at SEED_P (0.05)
+            // so the measurement is trusted; clobbering it here negates the
+            // entire point of BOOTSTRAP. Only reset() when entering RUN from
+            // a non-converged path (manual enter_run_with_current_gains,
+            // CAPTURE→RUN without BOOTSTRAP, etc).
             float kp_now, ki_now, kd_now;
             pid_.get_tunings(kp_now, ki_now, kd_now);
-            plant_id_.reset(kp_now, kd_now);
+            if (!bootstrap_result_.converged) {
+                plant_id_.reset(kp_now, kd_now);
+            }
             applied_kp_         = kp_now;
             applied_ki_         = ki_now;
             applied_kd_         = kd_now;
@@ -960,18 +982,24 @@ void BalanceApp::enter_bootstrap(uint32_t now_ms) {
 void BalanceApp::step_bootstrap_(uint32_t now_ms) {
     // Phase layout (all relative to state_entered_ms_):
     //   0..299     ms   PHASE 0 baseline — motors off, peak |α| noise capture
-    //   300..399   ms   PULSE 0  +100 PWM/wheel
-    //   400..499   ms   COOL  0  motors off, capture Δω → K_0
-    //   500..599   ms   PULSE 1  -100 PWM/wheel
-    //   600..699   ms   COOL  1  → K_1
-    //   700..799   ms   PULSE 2  +150 PWM/wheel
-    //   800..899   ms   COOL  2  → K_2
-    //   900..999   ms   PULSE 3  -150 PWM/wheel
-    //   1000..1099 ms   COOL  3  → K_3
-    //   ≥ 1100     ms   FINALISE  → push gains, enter RUN (or IDLE on fail)
+    //   300..449   ms   PULSE 0  +180 PWM/wheel
+    //   450..849   ms   COOL  0  motors off (400 ms), capture Δω → K_0
+    //   850..999   ms   PULSE 1  -180 PWM/wheel
+    //   1000..1399 ms   COOL  1  → K_1
+    //   1400..1549 ms   PULSE 2  +240 PWM/wheel
+    //   1550..1949 ms   COOL  2  → K_2
+    //   1950..2099 ms   PULSE 3  -240 PWM/wheel
+    //   2100..2499 ms   COOL  3  → K_3
+    //   ≥ 2500     ms   FINALISE  → push gains, enter RUN (or IDLE on fail)
+    //
+    // Fix D (audit "THEN" todo.md): cooldown extended 150 → 400 ms so the bot
+    // has time to settle between pulses. Bench 2026-05-18 PM late showed
+    // pulse N+1 starting at -25 dps while pulse N produced +20 dps —
+    // 150 ms was too short for the chassis to dump prior-pulse momentum,
+    // contaminating |Δω|. Total BOOTSTRAP duration ~2.5 s (was 1.5 s).
     static const uint16_t BASELINE_MS = 300;
     static const uint16_t PULSE_MS    = 150;
-    static const uint16_t COOLDOWN_MS = 150;
+    static const uint16_t COOLDOWN_MS = 400;
     static const uint8_t  N_PULSES    = 4;
     // Per-wheel pulse magnitudes. Alternating signs are applied below.
     // Bench finding 2026-05-18 evening: 100/150 PWM did not always overcome
@@ -1048,6 +1076,43 @@ void BalanceApp::step_bootstrap_(uint32_t now_ms) {
         return;
     }
 
+    // Fix E (audit "THEN" todo.md): noisy-baseline rejection. If the operator
+    // was still touching / placing the bot during the 300 ms baseline window,
+    // peak-to-peak gyro shoots into double-digit dps. Without a cap, the
+    // downstream 3× threshold balloons to >15 dps and no real pulse can ever
+    // clear it -> all pulses fail -> IDLE with no_response (which is
+    // misleading; the motors were fine). Cap the implied threshold at 5 dps,
+    // bail explicitly with failure_reason=6 (baseline_noisy) so the operator
+    // knows to retry with the bot at rest. Bench 2026-05-18 PM late second
+    // boot showed thr=50 dps, all pulses failed.
+    //
+    // Check exactly once on the first tick past BASELINE_MS (before any pulse
+    // has run, bs_phase_idx_ still 0 and no captured count yet).
+    if (bs_phase_idx_ == 0 && bs_pulse_count_ == 0 && !bs_pulse_active_) {
+        const float baseline_range = bs_noise_alpha_max_ - bs_prev_gyro_;
+        // Baseline range was measured as peak-to-peak; the implied threshold
+        // is 3× this. If baseline_range alone exceeds NOISE_FLOOR_MAX, the
+        // bot wasn't at rest at all and we should not proceed.
+        if (baseline_range > BOOTSTRAP_NOISE_FLOOR_MAX_DPS) {
+            motors_.stop();
+            last_output_ = 0;
+            bootstrap_result_.failure_reason = 6;   // baseline_noisy
+            bootstrap_result_.converged      = false;
+            // Stash a diagnostic pulse_log entry so loop()'s drain shows the
+            // operator the actual baseline_range we measured.
+            pulse_log_.source         = 0;
+            pulse_log_.pulse_idx      = 0xFF;       // sentinel: not a real pulse
+            pulse_log_.cmd_pwm        = 0;
+            pulse_log_.gyro_start_x10 = 0;
+            pulse_log_.metric_x10     = (int16_t)(baseline_range * 10.0f);
+            pulse_log_.thr_x10        = (int16_t)(BOOTSTRAP_NOISE_FLOOR_MAX_DPS * 10.0f);
+            pulse_log_.passed         = 0;
+            pulse_log_.seq++;
+            enter_state_(BalanceAppState::IDLE, now_ms);
+            return;
+        }
+    }
+
     // ---- PHASE 1..N: pulses + cooldowns ----
     if (bs_phase_idx_ < N_PULSES) {
         const uint16_t cycle_start_ms = BASELINE_MS +
@@ -1093,7 +1158,18 @@ void BalanceApp::step_bootstrap_(uint32_t now_ms) {
                 const float baseline_range = bs_noise_alpha_max_ - bs_prev_gyro_;
                 float thr_dps = 3.0f * baseline_range;
                 if (thr_dps < 0.5f) thr_dps = 0.5f;
-                const bool passed = abs_dgyro > thr_dps;
+                // Fix C (audit "THEN" todo.md): sample-quality gate. If the
+                // bot was still in motion at pulse start (|g0| > 5 dps), the
+                // measured |Δω| is partly braking the prior-pulse momentum,
+                // not pure plant excitation. Skip this pulse rather than
+                // contaminate the K mean. Bench 2026-05-18 PM late showed
+                // g0 values of -0.1, -25.5, +20.3, +1.9 across 4 pulses ->
+                // K spread 0.09-0.74 (8× range) -> poisoned mean.
+                const float abs_g0 = bs_pulse_start_gyro_ < 0.0f
+                                     ? -bs_pulse_start_gyro_
+                                     :  bs_pulse_start_gyro_;
+                const bool  g0_clean = abs_g0 <= BOOTSTRAP_G0_MAX_DPS;
+                const bool  passed   = g0_clean && (abs_dgyro > thr_dps);
 
                 const uint8_t pwm_mag = pgm_read_byte(&PULSE_PWMS[bs_phase_idx_]);
                 if (passed) {
@@ -1292,7 +1368,7 @@ void BalanceApp::read_imu_(uint32_t /*now_ms*/) {
     // side because the host loop also feeds it externally.)
     imu_.read();
     const OrientationData& od = imu_.getOrientation();
-    pitch_deg_ = od.pitch_deg;
+    const float new_pitch = od.pitch_deg;
 
     // Motion signals for HELD/FALLEN distinction. Lateral gyro = sqrt(gx²+gz²)
     // (NOT |gyro| — pitch-axis motion is intrinsic to balancing and would
@@ -1307,44 +1383,64 @@ void BalanceApp::read_imu_(uint32_t /*now_ms*/) {
     const bool have_g = imu_.getRawGyro(g);
     const bool have_a = imu_.getRawAccel(a);
 
-    if (have_g) {
-        // Stash the raw rates so step_run_ can feed the gyro pitch-axis rate
-        // (index 1, BNO055 body Y = pitch axis) into PID compute_with_rate()
-        // and OnlineMountingEstimator's transient-freeze gate. See balance_app.h
-        // for axis convention notes.
-        raw_gyro_dps_[0] = g[0];
-        raw_gyro_dps_[1] = g[1];
-        raw_gyro_dps_[2] = g[2];
-    }
+    // Compute LPF / motion-filter values into locals first, then publish under
+    // a single critical section. Fix A (audit P0-ISR-1 / P0-ISR-2): the 200 Hz
+    // MsTimer2 ISR (tick()) reads these member floats; without protection the
+    // 4-byte loads can tear mid-byte on AVR, producing the BOOTSTRAP "K spread
+    // across pulses" symptom (bench 2026-05-18 PM late). Compute first, atomic-
+    // publish second — the critical section is the minimum possible to hide
+    // the cross-boundary stores.
+    float g_lat_new        = 0.0f;
+    float a_dev_abs_new    = 0.0f;
+    float a_align_raw_new  = 0.0f;
+    bool  publish_motion   = false;
 
     if (have_g && have_a) {
         // Lateral gyro magnitude (deg/s).
-        const float g_lat = sqrtf(g[0]*g[0] + g[2]*g[2]);
+        g_lat_new = sqrtf(g[0]*g[0] + g[2]*g[2]);
 
         // Accel magnitude deviation from gravity. |a|−g goes negative on
         // free-fall, positive when being shaken or carried with impulses.
         const float a_mag = sqrtf(a[0]*a[0] + a[1]*a[1] + a[2]*a[2]);
         const float a_dev = a_mag - 9.81f;
-        const float a_dev_abs = a_dev < 0.0f ? -a_dev : a_dev;
+        a_dev_abs_new = a_dev < 0.0f ? -a_dev : a_dev;
 
         // Body-Z alignment with gravity: 1.0 ≈ upright sitting on a surface,
         // ~0.0 ≈ lying on side, negative ≈ upside-down. Hand-held bots
         // rarely keep Z aligned with gravity due to subtle hand motion.
         // Guard against divide-by-zero in zero-g (impossible on Earth).
-        const float a_align_raw = (a_mag > 0.1f) ? (a[2] / a_mag) : 0.0f;
+        a_align_raw_new = (a_mag > 0.1f) ? (a[2] / a_mag) : 0.0f;
+        publish_motion = true;
+    }
 
-        // ~120 ms time constant LPF on all three (alpha = dt/(τ+dt),
-        // with dt=5 ms -> alpha ≈ 0.04). Hard-coded for AVR cycle budget.
-        const float alpha = 0.04f;
-        if (!motion_filters_init_) {
-            g_lateral_dps_lpf_   = g_lat;
-            a_dev_lpf_           = a_dev_abs;
-            a_align_             = a_align_raw;
-            motion_filters_init_ = true;
-        } else {
-            g_lateral_dps_lpf_ += alpha * (g_lat       - g_lateral_dps_lpf_);
-            a_dev_lpf_         += alpha * (a_dev_abs   - a_dev_lpf_);
-            a_align_           += alpha * (a_align_raw - a_align_);
+    // Publish all ISR-shared floats inside one critical section. ATOMIC_BLOCK
+    // saves/restores SREG and disables interrupts for the duration; on Uno
+    // this is 2 instructions in / 2 out (push/cli, pop/sei), so the per-tick
+    // overhead is well under 1 µs. The ~120 ms LPF update is included so the
+    // ISR never sees a torn LPF state either.
+    const float alpha = 0.04f;
+    ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
+        pitch_deg_ = new_pitch;
+        if (have_g) {
+            // Stash the raw rates so step_run_ can feed the gyro pitch-axis
+            // rate (index 1, BNO055 body Y = pitch axis) into PID
+            // compute_with_rate() and OnlineMountingEstimator's transient-
+            // freeze gate. See balance_app.h for axis convention notes.
+            raw_gyro_dps_[0] = g[0];
+            raw_gyro_dps_[1] = g[1];
+            raw_gyro_dps_[2] = g[2];
+        }
+        if (publish_motion) {
+            if (!motion_filters_init_) {
+                g_lateral_dps_lpf_   = g_lat_new;
+                a_dev_lpf_           = a_dev_abs_new;
+                a_align_             = a_align_raw_new;
+                motion_filters_init_ = true;
+            } else {
+                g_lateral_dps_lpf_ += alpha * (g_lat_new       - g_lateral_dps_lpf_);
+                a_dev_lpf_         += alpha * (a_dev_abs_new   - a_dev_lpf_);
+                a_align_           += alpha * (a_align_raw_new - a_align_);
+            }
         }
     }
     // If raw access failed (e.g. driver not initialized) we leave the

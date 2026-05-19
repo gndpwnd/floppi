@@ -2,7 +2,7 @@
 
 **Status**: Phase 2 Troubleshooting Documentation  
 **Last Updated**: 2026-05-07  
-**Related Docs**: [GPS Hardware Setup](GPS_HARDWARE_SETUP.md), [GPS Driver API](GPS_DRIVER_API_REFERENCE.md)
+**Related Docs**: [GPS Hardware Setup](GPS_HARDWARE_SETUP.md), [GPS Driver API](../reference/GPS_DRIVER_API_REFERENCE.md)
 
 ## Quick Diagnosis Flowchart
 
@@ -774,18 +774,18 @@ If issue persists after trying fixes above:
    - Serial output log from diagnostic step above
 
 3. **Check Implementation Documentation:**
-   - [GPS Driver API Reference](GPS_DRIVER_API_REFERENCE.md)
+   - [GPS Driver API Reference](../reference/GPS_DRIVER_API_REFERENCE.md)
    - [GPS Hardware Setup](GPS_HARDWARE_SETUP.md)
-   - [PHASE_2_MASTER_IMPLEMENTATION_PLAN.md](PHASE_2_MASTER_IMPLEMENTATION_PLAN.md)
+   - [PHASE_2_MASTER_IMPLEMENTATION_PLAN.md](../phases/PHASE_2_MASTER_IMPLEMENTATION_PLAN.md)
 
 ---
 
 ## Related Documentation
 
 - [GPS Hardware Setup](GPS_HARDWARE_SETUP.md) - Complete hardware wiring guide
-- [GPS Driver API](GPS_DRIVER_API_REFERENCE.md) - Software API reference
-- [Build Guide Phase 2](BUILD_GUIDE_PHASE2.md) - Building and uploading firmware
-- [Coordinate Frame API](COORDINATE_FRAME_API_REFERENCE.md) - Using GPS coordinates
+- [GPS Driver API](../reference/GPS_DRIVER_API_REFERENCE.md) - Software API reference
+- [Build Guide Phase 2](../build/BUILD_GUIDE_PHASE2.md) - Building and uploading firmware
+- [Coordinate Frame API](../reference/COORDINATE_FRAME_API_REFERENCE.md) - Using GPS coordinates
 
 ---
 

@@ -65,8 +65,11 @@ Phase 4 implementation and diagnosis. Five parallel research agents and two codi
 ### Diagnosis & tuning
 
 - [balance_failure_diagnosis_2026-05-12.md](balance_failure_diagnosis_2026-05-12.md) — Root-cause analysis of "motors slam during balance" — legacy gains, NDOF latency, Kd × quantization noise, contaminated online estimator.
-- [conservative_balance_gains_recommendation.md](conservative_balance_gains_recommendation.md) — Specific Kp/Ki/Kd starting points for an under-instrumented small inverted pendulum.
+- [conservative_balance_gains_recommendation.md](conservative_balance_gains_recommendation.md) — Specific Kp/Ki/Kd starting points for an under-instrumented small inverted pendulum. **Superseded by BOOTSTRAP (Phase 4.10c) — kept for historical context.**
+- [midrange_balance_gains.md](midrange_balance_gains.md) — Middle-ground Kp/Ki/Kd between the conservative and legacy regimes. **Also superseded by BOOTSTRAP — kept for historical context.**
 - [latency_budget_2026-05-12.md](latency_budget_2026-05-12.md) — End-to-end sensor→actuator latency breakdown; BNO055 NDOF group delay is the dominant 20-40 ms contributor.
+- [bno055_latency_and_pitch_fusion.md](bno055_latency_and_pitch_fusion.md) — Uno-specific BNO055 latency analysis + pitch fusion options (NDOF vs gyro-integration + accel-fusion).
+- [theoretical_audit_balance_stack.md](theoretical_audit_balance_stack.md) — Full theoretical-soundness audit of the balance control stack (2026-05-18).
 
 ### State machine
 
@@ -77,7 +80,11 @@ Phase 4 implementation and diagnosis. Five parallel research agents and two codi
 ### Universal auto-tune (Phase 4.10)
 
 - [dynamic_pwm_accel_learning.md](dynamic_pwm_accel_learning.md) — The system-ID design: scalar RLS for K_motor + closed-form PD-from-K_motor. **Coded and shipped 2026-05-12.**
-- [bootstrap_protocol_unstable_plant.md](bootstrap_protocol_unstable_plant.md) — 6-stage sequenced bootstrap (SEED → MOUNT_CONVERGED → PLANT_IDENTIFIED → GAINS_REFINED → ADAPTIVE). Full state machine designed; simple 5 s timer implemented.
+- [bootstrap_protocol_unstable_plant.md](bootstrap_protocol_unstable_plant.md) — 6-stage sequenced bootstrap (SEED → MOUNT_CONVERGED → PLANT_IDENTIFIED → GAINS_REFINED → ADAPTIVE). Implemented as Phase 4.10c BOOTSTRAP state (2026-05-18 PM evening).
+
+### Phase 2 — CHARACTERISE actuator (planning)
+
+- [phase2_characterise_final_plan.md](phase2_characterise_final_plan.md) — Final implementation plan for Phase 2 CHARACTERISE state (per-wheel stiction + saturation sweep). Pending implementation.
 
 ### Background research (5 parallel agents)
 
@@ -103,4 +110,4 @@ Three parallel agents triggered by the user's question "how does the flight_cont
 
 ---
 
-*Last updated: 2026-05-18 (bench session — added operator_ideas_backlog index). Add new findings as you discover them.*
+*Last updated: 2026-05-19 (doc audit — indexed midrange_balance_gains, bno055_latency_and_pitch_fusion, theoretical_audit_balance_stack, phase2_characterise_final_plan; marked balance-gain rec docs as superseded by BOOTSTRAP). Add new findings as you discover them.*

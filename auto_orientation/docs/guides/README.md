@@ -9,14 +9,14 @@ Welcome! This directory contains comprehensive guides to help you get started wi
 ### I'm New to This
 
 Start here:
-1. **[Quick Start: 5-Minute Setup Guide](QUICK_START_GETTING_STARTED.md)** — Get hardware connected and firmware running
+1. **[Quick Start: 5-Minute Setup Guide](QUICK_START.md)** — Get hardware connected and firmware running
 2. **[First Calibration Guide](FIRST_CALIBRATION.md)** — Calibrate your sensors (required once)
 3. **[Real-Time Monitoring Guide](MONITORING_REAL_TIME_DATA.md)** — See your data in action
 
 ### I Have Questions
 
-- **[FAQs](../FAQS.md)** — 50+ common questions answered (accuracy, GPS, power, troubleshooting, etc.)
-- **[Troubleshooting section](QUICK_START_GETTING_STARTED.md#troubleshooting-quick-reference)** — Fix common problems fast
+- **[FAQs](../getting_started/FAQS.md)** — 50+ common questions answered (accuracy, GPS, power, troubleshooting, etc.)
+- **[Troubleshooting section](QUICK_START.md#troubleshooting-quick-reference)** — Fix common problems fast
 
 ### I'm Deploying to the Field
 
@@ -28,7 +28,7 @@ Start here:
 
 ### I Want to Understand Calibration Deeply
 
-- **[Calibration Guide](CALIBRATION_GUIDE.md)** — Detailed magnetometer calibration reference, common mistakes, recalibration scenarios
+- **[Calibration Guide](../calibration/CALIBRATION_GUIDE.md)** — Detailed magnetometer calibration reference, common mistakes, recalibration scenarios
 
 ### I Want to Add a New Sensor
 
@@ -40,12 +40,12 @@ Start here:
 
 | Guide | Purpose | Time | Difficulty | Status |
 |-------|---------|------|------------|--------|
-| **[Quick Start](QUICK_START_GETTING_STARTED.md)** | 5-min setup, hardware + firmware + verification | 5-10 min | Beginner | ✓ Complete |
+| **[Quick Start](QUICK_START.md)** | 5-min setup, hardware + firmware + verification | 5-10 min | Beginner | ✓ Complete |
 | **[First Calibration](FIRST_CALIBRATION.md)** | First-time magnetometer calibration | 5-10 min | Beginner | ✓ Complete |
 | **[Real-Time Monitoring](MONITORING_REAL_TIME_DATA.md)** | Monitor, log, and analyze data | 5-30 min | Intermediate | ✓ Complete |
 | **[Field Deployment](FIELD_DEPLOYMENT.md)** | Checklists, location selection, troubleshooting | 30+ min | Intermediate | ✓ Complete |
 | **[Hardware Setup](HARDWARE_SETUP.md)** | Wiring, connections, assembly, testing | 30 min | Intermediate | ✓ Complete |
-| **[Calibration Guide](CALIBRATION_GUIDE.md)** | Detailed calibration reference | 15-30 min | Intermediate | ✓ Complete |
+| **[Calibration Guide](../calibration/CALIBRATION_GUIDE.md)** | Detailed calibration reference | 15-30 min | Intermediate | ✓ Complete |
 | **[Adding Sensors](ADDING_NEW_SENSORS.md)** | Integrate new sensors | Varies | Advanced | ✓ Complete |
 
 ---
@@ -53,26 +53,26 @@ Start here:
 ## Recommended Reading Order
 
 ### Path 1: I Just Got Everything (Fastest)
-1. [Quick Start](QUICK_START_GETTING_STARTED.md) — Get it running (5 min)
+1. [Quick Start](QUICK_START.md) — Get it running (5 min)
 2. [First Calibration](FIRST_CALIBRATION.md) — Calibrate (5 min)
 3. [Real-Time Monitoring](MONITORING_REAL_TIME_DATA.md) — See the data (5 min)
 4. **Done!** You're ready to use it
 
 ### Path 2: I Want to Do It Right (Thorough)
 1. [Hardware Setup](HARDWARE_SETUP.md) — Understand the connections
-2. [Quick Start](QUICK_START_GETTING_STARTED.md) — Get it running
+2. [Quick Start](QUICK_START.md) — Get it running
 3. [First Calibration](FIRST_CALIBRATION.md) — Calibrate properly
-4. [Calibration Guide](CALIBRATION_GUIDE.md) — Understand calibration
+4. [Calibration Guide](../calibration/CALIBRATION_GUIDE.md) — Understand calibration
 5. [Real-Time Monitoring](MONITORING_REAL_TIME_DATA.md) — Master data collection
 6. [Field Deployment](FIELD_DEPLOYMENT.md) — Deploy successfully
 
 ### Path 3: I'm Hitting Issues (Troubleshooting)
-1. [Quick Start - Troubleshooting section](QUICK_START_GETTING_STARTED.md#troubleshooting-quick-reference) — Common quick fixes
-2. [FAQs](../FAQS.md) — Search for your specific issue
+1. [Quick Start - Troubleshooting section](QUICK_START.md#troubleshooting-quick-reference) — Common quick fixes
+2. [FAQs](../getting_started/FAQS.md) — Search for your specific issue
 3. [Hardware Setup - Troubleshooting section](HARDWARE_SETUP.md#troubleshooting-guide) — Deep hardware diagnosis
 
 ### Path 4: I'm Deploying to Field (Professional)
-1. [Quick Start](QUICK_START_GETTING_STARTED.md) — Verify system works
+1. [Quick Start](QUICK_START.md) — Verify system works
 2. [First Calibration](FIRST_CALIBRATION.md) — Complete calibration indoors
 3. [Real-Time Monitoring](MONITORING_REAL_TIME_DATA.md) — Test data logging
 4. [Field Deployment](FIELD_DEPLOYMENT.md) — Detailed pre-deployment checklist
@@ -194,10 +194,10 @@ Requires: GPS, clear sky view (5+ degrees above horizon)
 
 Most questions are answered in these guides! Please check:
 
-1. **For setup issues**: [Quick Start](QUICK_START_GETTING_STARTED.md) + [Hardware Setup](HARDWARE_SETUP.md)
+1. **For setup issues**: [Quick Start](QUICK_START.md) + [Hardware Setup](HARDWARE_SETUP.md)
 2. **For data/analysis**: [Real-Time Monitoring](MONITORING_REAL_TIME_DATA.md)
 3. **For field problems**: [Field Deployment](FIELD_DEPLOYMENT.md)
-4. **For any question**: [FAQs](../FAQS.md) (search with Ctrl+F)
+4. **For any question**: [FAQs](../getting_started/FAQS.md) (search with Ctrl+F)
 5. **For sensor integration**: [Adding Sensors](ADDING_NEW_SENSORS.md)
 
 ---
@@ -207,8 +207,8 @@ Most questions are answered in these guides! Please check:
 If you can't find an answer:
 
 1. **Search these guides** (Ctrl+F for keywords)
-2. **Check [FAQs](../FAQS.md)** (most common questions answered)
-3. **Review [Architecture](../ARCHITECTURE.md)** (system design diagrams)
+2. **Check [FAQs](../getting_started/FAQS.md)** (most common questions answered)
+3. **Review [Architecture](../getting_started/ARCHITECTURE.md)** (system design diagrams)
 4. **Check [findings](../findings/)** (research notes on specific topics)
 5. **Check troubleshooting sections** in relevant guide
 
@@ -217,13 +217,13 @@ If you can't find an answer:
 ## Quick Links to Specific Topics
 
 ### Setup & Installation
-- [Quick Start Guide](QUICK_START_GETTING_STARTED.md) — Complete setup
+- [Quick Start Guide](QUICK_START.md) — Complete setup
 - [Hardware Setup Guide](HARDWARE_SETUP.md) — Detailed wiring
 - [platformio.ini](../../platformio.ini) — Build configuration
 
 ### Calibration
 - [First Calibration Guide](FIRST_CALIBRATION.md) — First time
-- [Calibration Guide](CALIBRATION_GUIDE.md) — Detailed reference
+- [Calibration Guide](../calibration/CALIBRATION_GUIDE.md) — Detailed reference
 
 ### Data & Monitoring
 - [Real-Time Monitoring Guide](MONITORING_REAL_TIME_DATA.md) — Display and logging
@@ -232,11 +232,11 @@ If you can't find an answer:
 
 ### Deployment
 - [Field Deployment Guide](FIELD_DEPLOYMENT.md) — Complete checklist
-- [FAQs](../FAQS.md) — Accuracy, GPS, troubleshooting
+- [FAQs](../getting_started/FAQS.md) — Accuracy, GPS, troubleshooting
 
 ### Advanced
 - [Adding New Sensors](ADDING_NEW_SENSORS.md) — Sensor integration
-- [Architecture](../ARCHITECTURE.md) — System design
+- [Architecture](../getting_started/ARCHITECTURE.md) — System design
 - [findings/](../findings/) — Research notes
 
 ---

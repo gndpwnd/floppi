@@ -89,9 +89,44 @@ struct BootstrapResult {
     uint8_t  pulses_valid;     // count of pulses with detectable response
     uint8_t  pulses_total;     // total pulses applied (fixed by algorithm)
     uint8_t  failure_reason;   // 0=ok, 1=pitch_out_of_range, 2=no_response,
-                               // 3=k_out_of_bounds, 4=user_abort
+                               // 3=k_out_of_bounds, 4=user_abort,
+                               // 6=baseline_noisy (operator handled bot during baseline)
     bool     converged;        // true iff K_motor was pushed to PlantIdentifier
 };
+
+// ---------------------------------------------------------------------------
+// BOOTSTRAP K-quality constants (Fix C/D/E from audit_code_quality_balance_
+// stack_2026-05-19.md + todo.md "THEN — fix BOOTSTRAP K-quality").
+//
+// Bench 2026-05-18 PM late produced a 0.09-0.74 K spread across 4 pulses
+// (8× range, poisoned mean). Root cause: 150 ms cooldown was too short for
+// the bot to settle, so pulse N+1 started with significant momentum from
+// pulse N (g0 values: -0.1, -25.5, +20.3, +1.9 dps). Skipping pulses with
+// large g0 + extending cooldown gives clean per-pulse K samples.
+//
+// BOOTSTRAP_G0_MAX_DPS (5.0 dps):
+//   If gyro_y at the start of a pulse is above this magnitude, the bot is
+//   still in motion from the prior pulse / cooldown. Including such a pulse
+//   in the K estimate contaminates |Δω| with whatever the prior momentum
+//   was decaying through (braking, not pure plant excitation). Skip and
+//   move on — better to estimate K from fewer clean samples than from
+//   noisy ones. Derivation: 3× the typical BNO055 NDOF gyro noise floor
+//   (~1.5 dps 1σ at rest from bench observations), giving ~95% rejection
+//   of true at-rest samples while catching ~5 dps and larger momentum.
+//
+// BOOTSTRAP_NOISE_FLOOR_MAX_DPS (5.0 dps):
+//   Hard cap on the computed baseline noise threshold. The threshold
+//   adapts to the actual baseline window (3 × peak-to-peak range), but
+//   operator motion during the 300 ms baseline can balloon the measured
+//   range to 50+ dps — at which point no real pulse can ever clear the
+//   threshold and BOOTSTRAP fails with `no_response`. Capping at 5 dps
+//   means: if baseline is noisier than this, the operator was clearly
+//   not holding the bot still — fail explicitly with `baseline_noisy`
+//   (failure_reason=6) so the operator knows to retry, rather than
+//   silently masquerading as no_response. Matches BOOTSTRAP_G0_MAX_DPS
+//   (same physical envelope — both express "bot is sufficiently at rest").
+constexpr float BOOTSTRAP_G0_MAX_DPS          = 5.0f;
+constexpr float BOOTSTRAP_NOISE_FLOOR_MAX_DPS = 5.0f;
 
 /**
  * Application-level config. Owned by the caller; passed once into begin().

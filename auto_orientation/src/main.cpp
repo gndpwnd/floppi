@@ -373,6 +373,13 @@ void setup() {
     // corrected_pitch ≈ +1.5° → drove backward → kill switch at −22°. With
     // the gate, that scenario lands in IDLE for the operator to recapture
     // instead of slamming motors at a tipped bot.
+    //
+    // USE_BALANCE_AUTO_BOOTSTRAP (default ON, see base_balance build flags):
+    // operator preference is "prop-and-go" — boot to balancing without console
+    // interaction. Undefine the flag to require manual 'b' / long-press, useful
+    // when the operator needs to position the bot in a safe test area before
+    // motors engage. Per docs/todo.md "TOP PRIORITY — collision detection".
+#ifdef USE_BALANCE_AUTO_BOOTSTRAP
     if (have_mount) {
         // Grace period — operator getting hands clear after power-on.
         delay(2000);
@@ -397,6 +404,9 @@ void setup() {
             // continues automatically into BOOTSTRAP → RUN.
         }
     }
+#else
+    (void)have_mount;   // USE_BALANCE_AUTO_BOOTSTRAP disabled — manual trigger only
+#endif
 
     // Item 3 — start the 5 ms PID tick ISR. Must be AFTER app.begin() so the
     // app's state is initialised before tick() can fire. MsTimer2 ticks at

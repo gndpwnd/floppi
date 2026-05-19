@@ -203,6 +203,32 @@ bool BNO055::getRawGyro(float xyz[3]) {
   return true;
 }
 
+bool BNO055::getLinearAccel(float xyz[3]) {
+  if (!initialized_ || !bno_) {
+    return false;
+  }
+  // VECTOR_LINEARACCEL is the fusion output with gravity removed by the BNO055
+  // onboard NDOF algorithm. Units: m/s². Body frame.
+  //
+  // BURST-READ GUARANTEE (research_collision_signature_bno055.md §4 F1):
+  // Adafruit_BNO055::getVector() (lib at Adafruit_BNO055.cpp:401-410) calls
+  //   readLen((reg)vector_type, buffer, 6)
+  // which in turn (Adafruit_BNO055.cpp:863-867) issues
+  //   i2c_dev->write_then_read(&reg, 1, buffer, 6)
+  // — a single I²C transaction: one write of the start-register pointer
+  // followed by a 6-byte read in one Wire.requestFrom(). The BNO055
+  // datasheet §3.7 (data-register shadowing) guarantees the 6 LIA bytes
+  // (0x28..0x2D) latch together when read in one transfer, eliminating the
+  // documented MSB/LSB tear glitch (±2.55 m/s² LSB-only, up to ±39 m/s²
+  // saturated-MSB) that would otherwise manufacture phantom collisions.
+  // No manual replacement needed.
+  imu::Vector<3> v = bno_->getVector(Adafruit_BNO055::VECTOR_LINEARACCEL);
+  xyz[0] = static_cast<float>(v.x());
+  xyz[1] = static_cast<float>(v.y());
+  xyz[2] = static_cast<float>(v.z());
+  return true;
+}
+
 // ============================================================================
 // Data Access
 // ============================================================================

@@ -574,7 +574,7 @@ file field_data.jsonl
    // Add to output JSON: "temp": temp
    ```
 
-See [Adding New Sensors Guide](guides/ADDING_NEW_SENSORS.md) for detailed instructions.
+See [Adding New Sensors Guide](../guides/ADDING_NEW_SENSORS.md) for detailed instructions.
 
 ---
 
@@ -708,19 +708,19 @@ plt.savefig('yaw_plot.png')
 
 ## Quick Links
 
-- **[Quick Start Guide](guides/QUICK_START_GETTING_STARTED.md)** — Get started in 5 minutes
-- **[First Calibration Guide](guides/FIRST_CALIBRATION.md)** — Calibrate your sensor
-- **[Real-Time Monitoring Guide](guides/MONITORING_REAL_TIME_DATA.md)** — Monitor and log data
-- **[Field Deployment Guide](guides/FIELD_DEPLOYMENT.md)** — Deploy in the field
-- **[Hardware Setup Guide](guides/HARDWARE_SETUP.md)** — Wiring and connections
-- **[Calibration Guide](guides/CALIBRATION_GUIDE.md)** — Detailed calibration reference
-- **[Adding New Sensors](guides/ADDING_NEW_SENSORS.md)** — Extend with new sensors
+- **[Quick Start Guide](../guides/QUICK_START.md)** — Get started in 5 minutes
+- **[First Calibration Guide](../guides/FIRST_CALIBRATION.md)** — Calibrate your sensor
+- **[Real-Time Monitoring Guide](../guides/MONITORING_REAL_TIME_DATA.md)** — Monitor and log data
+- **[Field Deployment Guide](../guides/FIELD_DEPLOYMENT.md)** — Deploy in the field
+- **[Hardware Setup Guide](../guides/HARDWARE_SETUP.md)** — Wiring and connections
+- **[Calibration Guide](../calibration/CALIBRATION_GUIDE.md)** — Detailed calibration reference
+- **[Adding New Sensors](../guides/ADDING_NEW_SENSORS.md)** — Extend with new sensors
 
 ---
 
 ## Still Have Questions?
 
-1. **Check the guides**: Most answers are in the [Quick Start](guides/QUICK_START_GETTING_STARTED.md)
+1. **Check the guides**: Most answers are in the [Quick Start](../guides/QUICK_START.md)
 2. **Search this FAQ**: Use Ctrl+F to search for keywords
 3. **Check [Architecture](ARCHITECTURE.md)**: System design and diagrams
 4. **Review examples**: Check `tools/EXAMPLES.md` for usage patterns

@@ -33,7 +33,7 @@ Flashed 95.7% flash (1384 B free).
 **1 transition vs 9. HELD oscillation eliminated.** Mount estimator climbed 0.87° → 1.04° during 8.7 s of RUN (vs 0.16° before). Both core findings from Round D were resolved. New observation: STUCK detector correctly fired at t=8.73 s after 4 s of saturated output with no rotation.
 
 ### Round 3 — STUCK cause confirmed
-Operator clarified: **motors were not powered during Round 2.** PWM was being commanded, no motion was occurring because the L298N V+ rail was off. STUCK detector did exactly the right thing. This is the third time this session that "motors off without firmware knowing" caused confusion — re-raising the urgency of [operator backlog #15](../findings/operator_ideas_backlog.md) (A0 voltage divider on L298N V+).
+Operator clarified: **motors were not powered during Round 2.** PWM was being commanded, no motion was occurring because the L298N V+ rail was off. STUCK detector did exactly the right thing. This is the third time this session that "motors off without firmware knowing" caused confusion — re-raising the urgency of [operator backlog #15](../../findings/operator_ideas_backlog.md) (A0 voltage divider on L298N V+).
 
 ### Round 5/6 — motors confirmed on
 **81.2% RUN, longest 8.3 s, 8 transitions.** Bot oscillated -1.6° to +4.9° pitch with output swings -255 to +255. **Mount estimator stayed flat at 0.87°.** Identified the architectural bug in the estimator.

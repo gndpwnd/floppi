@@ -1,5 +1,17 @@
 # Universal Self-Balancing Robot — The Vision
-Last updated: 2026-05-18
+
+Last updated: 2026-05-19 (banner added for platform-bifurcation pivot)
+
+> **2026-05-19 update — this vision now applies to Mega builds only.**
+>
+> After the 2026-05-18 PM-late bench session left Uno at 97.5 % flash without reliable balance, the project pivoted: the universal/adaptive design captured below moves to Mega-class hardware (where wheel encoders and flash headroom can host it), and **Uno builds get a separate hardcoded program** with PID + PWM constants generated offline by a Python brute-force tuner. The universal design here trades flash for autonomy; Uno can't host the trade.
+>
+> - Uno-minimal program landing doc: [docs/applications/balancing_robot_uno/README.md](applications/balancing_robot_uno/README.md)
+> - Pivot rationale and platform bifurcation: [scope.md §Platform bifurcation](scope.md#platform-bifurcation-2026-05-19--mega-universal-vs-uno-minimal)
+> - Roadmap entries: [roadmap.md §Phase 4M](roadmap.md#phase-4m--mega-only-universal-stack-cleanup) (Mega-universal) and [roadmap.md §Phase 4U](roadmap.md#phase-4u--uno-minimal-hardcoded-balancer--python-brute-force-tuner) (Uno-minimal)
+> - Operator-memory canonical record: `project_strategic_pivot_2026-05-19.md`
+>
+> The rest of this document — control philosophy, "more/less" framing, the seven things the operator should never interact with — applies unchanged to the Mega-universal target.
 
 ## Control philosophy: "more / less" — not "set to N"
 

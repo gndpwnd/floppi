@@ -7,7 +7,7 @@ A user-friendly walkthrough for first-time calibration of the Auto Orientation s
 ## Before You Start
 
 **Prerequisites:**
-- [ ] Hardware is wired and tested (see [Quick Start](QUICK_START_GETTING_STARTED.md))
+- [ ] Hardware is wired and tested (see [Quick Start](QUICK_START.md))
 - [ ] Firmware is uploaded and running
 - [ ] Monitor is displaying orientation data
 - [ ] You have 5-10 minutes of uninterrupted time

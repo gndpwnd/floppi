@@ -639,8 +639,8 @@ void convertWaypointsToGPS() {
 
 - [GPS Driver API Reference](GPS_DRIVER_API_REFERENCE.md) - Reading GPS data
 - [Coordinate Conversion API](COORDINATE_CONVERSION_API.md) - Mathematical details
-- [Build Guide Phase 2](BUILD_GUIDE_PHASE2.md) - Building with coordinate frame support
-- [PHASE_2_MASTER_IMPLEMENTATION_PLAN.md](PHASE_2_MASTER_IMPLEMENTATION_PLAN.md) - Implementation details
+- [Build Guide Phase 2](../build/BUILD_GUIDE_PHASE2.md) - Building with coordinate frame support
+- [PHASE_2_MASTER_IMPLEMENTATION_PLAN.md](../phases/PHASE_2_MASTER_IMPLEMENTATION_PLAN.md) - Implementation details
 
 ---
 

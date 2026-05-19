@@ -13,7 +13,8 @@ How-to and deployment guides. Each guide is task-oriented ("I want to do X").
 | [LIBRARIES.md](LIBRARIES.md) | Which libraries we bundle, where they live |
 | [LIBRARY_STRATEGY.md](LIBRARY_STRATEGY.md) | Why we vendor libs locally rather than `lib_deps` |
 | [FIELD_DEPLOYMENT.md](FIELD_DEPLOYMENT.md) | Deployment checklist before going to the field |
+| [safe_bench_test_workflow.md](safe_bench_test_workflow.md) | Bench-test the balancing robot without wrecking it (mat, barriers, BOOTSTRAP, collision handling, recovery, cheat-sheet) |
 
 ---
 
-*Last updated: 2026-05-12.*
+*Last updated: 2026-05-19.*

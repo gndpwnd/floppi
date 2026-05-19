@@ -1,9 +1,36 @@
 # Project Scope: Auto Orientation Framework
 
 **Status**: Framework expansion (Phase 3 of original plan complete: BNO085 + GPS + EKF, 143+ tests passing)
-**Last updated**: 2026-05-18
+**Last updated**: 2026-05-19
 
 > **Design direction**: see [MINIMIZE_ACCELERATIONS_PHILOSOPHY.md](MINIMIZE_ACCELERATIONS_PHILOSOPHY.md) for the project's current direction on the balancing-robot reference application.
+
+---
+
+## Platform bifurcation (2026-05-19) — Mega-universal vs Uno-minimal
+
+After the 2026-05-18 PM-late bench run that left Uno at 97.5 % flash with the universal stack still unable to balance reliably, the balance-bot reference application **splits in two**. This is a strategic pivot, not a scope deletion — the universal vision continues, but it migrates exclusively to Mega-class targets where the flash and GPIO/interrupt budget can host the sensors it actually needs. The pivot is captured in detail in the operator-memory note `project_strategic_pivot_2026-05-19.md`.
+
+| Build | Target | Source tree | Philosophy | Flash budget |
+|---|---|---|---|---|
+| **Mega-balance (universal/adaptive)** | Arduino Mega 2560 + BNO055 + **wheel encoders** (+ future sensors) | `src/applications/balancing_robot/` (existing) | BOOTSTRAP + RLS + collision detection + OnlineMountingEstimator + position containment + auto-PID + everything in [UNIVERSAL_BALANCE_BOT_VISION.md](UNIVERSAL_BALANCE_BOT_VISION.md) | **Generous** — Mega has 256 KB. Optimize for clarity, not size. New code lands here by default. |
+| **Uno-balance (minimal hardcoded)** | Arduino Uno + BNO055 | `src/applications/balancing_robot_uno/` (new — owned by sibling agent) | Single-purpose self-balancer. `pitch → PID(Kp,Ki,Kd) → PWM`. **No** auto-tune, **no** RLS, **no** BOOTSTRAP, **no** OnlineMountingEstimator. Reference: `archive/balancing_robot_reference/SelfBallancingRobot3.ino`. | **Tight** (32 KB on Uno) but the program is simple — should fit easily because all the universal machinery is gone. |
+
+### How the Uno gets its constants
+
+Universal learning is gone on Uno. The PID gains, the PWM scaling, the stiction floor — all of them are **hardcoded `constexpr` values** in a generated header consumed by the Uno build. The values come from an offline Python brute-force / evolutionary tuner that wraps the existing `tools/sim/balance_bot_sim.py` plant model, sweeps the gain space, and exports a `balance_constants_uno.h` file. The Uno doesn't know it's tuned — it just runs the constants it was given. When the bot needs re-tuning (new battery chemistry, new wheels, different surface) the operator runs the Python tool again and reflashes; the Uno firmware itself never changes.
+
+The Python tuner lives under `auto_orientation/tools/sim/` (owned by a sibling agent this session). See [docs/applications/balancing_robot_uno/README.md](applications/balancing_robot_uno/README.md) for the planned workflow.
+
+### How this affects existing scope-violation rows
+
+The [Current scope violations — audit](#current-scope-violations--audit-2026-05-18-updated-pm-evening-phase-410c-landed) table below was written when the universal stack was *also* the Uno target. With the pivot, several rows are re-tagged:
+
+- **`[mega]`** — the row applies on the Mega-universal path. Replacement plan stands; do the work there.
+- **`[uno-intentional]`** — the row is a Uno-minimal-program design choice (hardcoded for simplicity, value will be brute-force-tuned offline). Not a violation in the Uno context. Still a violation if the same constant appears in `src/applications/balancing_robot/`.
+- **`[deferred-to-mega]`** — the row was a Uno-flash-driven hardcode that was under audit. The Uno path no longer needs to retire it (it's an intentional hardcode there). On Mega, the replacement plan still applies.
+
+The audit table is annotated below.
 
 ---
 
@@ -13,8 +40,8 @@ The platformio.ini is intentionally tiny. Four balance-robot envs (only two enab
 
 | Env name | Status | Board | Flash | Default IMU | Notes |
 |---|---|---|---|---|---|
-| `uno_balance` | **active** | Arduino Uno | 32 KB | BNO055 | Current bench bot. Tight: ~5% headroom. |
-| `mega_balance` | **active** | Arduino Mega 2560 | 256 KB | BNO055 | Development headroom; 88% flash free. Use this for new features that don't fit Uno yet. |
+| `uno_balance` | **active** | Arduino Uno | 32 KB | BNO055 | **Pivot 2026-05-19**: targets the new minimal hardcoded program under `src/applications/balancing_robot_uno/`. PID + PWM constants brute-forced offline via Python (`tools/sim/`). No on-MCU learning. |
+| `mega_balance` | **active** | Arduino Mega 2560 | 256 KB | BNO055 | **Pivot 2026-05-19**: home of the universal/adaptive stack — BOOTSTRAP, RLS, collision detection, OnlineMountingEstimator, position containment (Phase 4M.11). Wheel encoders preferred over IMU-only pitch double-integration. |
 | `esp32_balance` | *scaffolded* | ESP32 dev | 1.3 MB | BNO055 | Needs MsTimer2 → esp_timer port; WiFi cascade landed. |
 | `teensy_balance` | *scaffolded* | Teensy 4.0 | 1.9 MB | BNO055 | Needs MsTimer2 → IntervalTimer port; FPU + 600 MHz. |
 | `mega_orientation` | active | Arduino Mega 2560 | 256 KB | BNO085 | Original Phase 3 framework (orientation + GPS + EKF). |
@@ -126,11 +153,13 @@ Any future PR that adds a literal numeric constant outside of pin assignments mu
 
 ---
 
-## Current scope violations — audit (2026-05-18, updated PM-evening Phase 4.10c landed)
+## Current scope violations — audit (2026-05-18, updated PM-evening Phase 4.10c landed; re-tagged 2026-05-19 for platform bifurcation)
 
-This table lists every hardcoded tuning value still present in the firmware and the *concrete* replacement that retires it. Each violation must have an active replacement plan. **No exceptions for "it works well enough."** The 2026-05-18 PM bench session demonstrated empirically that even reasonable-looking hardcoded gains (Kp=50 inherited from the reference .ino) produce destructive oscillation on a different bot. **Hand-tuned constants do not generalise — that is the entire point.**
+This table lists every hardcoded tuning value still present in the firmware and the *concrete* replacement that retires it. Each violation must have an active replacement plan. **No exceptions for "it works well enough" on the Mega-universal path.** The 2026-05-18 PM bench session demonstrated empirically that even reasonable-looking hardcoded gains (Kp=50 inherited from the reference .ino) produce destructive oscillation on a different bot. **Hand-tuned constants do not generalise — that is the entire point of the universal stack.**
 
-**Status legend**: ✅ retired (no longer in source) · 🔄 partially retired (mechanism in place, value now derived) · ⏳ still present, awaiting replacement.
+**Pivot caveat (2026-05-19)**: this audit governs the **Mega-universal path** (`src/applications/balancing_robot/`). The new **Uno-minimal program** (`src/applications/balancing_robot_uno/`, sibling-owned) **intentionally** uses hardcoded PID + PWM constants generated by the offline Python brute-force tuner. Constants in the Uno minimal program are not violations of this audit — they are a design choice of that build. See the [Platform bifurcation](#platform-bifurcation-2026-05-19--mega-universal-vs-uno-minimal) section above.
+
+**Status legend**: ✅ retired (no longer in source) · 🔄 partially retired (mechanism in place, value now derived) · ⏳ still present, awaiting replacement · `[mega]` row applies on Mega-universal path · `[deferred-to-mega]` Uno-flash workaround that no longer needs retiring on Uno (Uno path is intentionally hardcoded; Mega path still needs the derivation) · `[uno-intentional]` design choice in Uno-minimal program, only a violation if it shows up in the Mega tree.
 
 | Status | Violation | Location | Why it must go | Replacement |
 |---|---|---|---|---|
@@ -142,21 +171,23 @@ This table lists every hardcoded tuning value still present in the firmware and 
 | ✅ | Relay tuner amplitude = 150 | (was `main.cpp:103`) | Auto-tuner perturbation magnitude | **Deleted.** RelayFeedbackStrategy excluded from balance build via platformio.ini build_src_filter; main.cpp uses a 10-line `NoOpStrategy` stub. Saves ~1.3 KB flash; AUTO_TUNE state kept in enum but unreachable from public API. |
 | ✅ | `tune_max_duration_sec = 30` | (was `balance_app.cpp:86`) | Tuner timeout | Same — relay tuner is gone. |
 | 🔄 | `cfg.tilt_limit_deg` (was 8.0f override) | `main.cpp` no longer overrides | Operating envelope of recovery, not universal | Override removed 2026-05-18 PM; falls back to cfg default 10° at `balance_app.cpp` `kDefaultTiltLimitDeg`. Derived value (observed envelope × 1.5) still pending — needs balance data. |
-| ⏳ | `kDefaultTiltLimitDeg = 35.0f` | `safety.cpp:10` | Tip-over angle is geometric (CoG above wheel axis) | Compute from accel quaternion at the pitch where lateral accel hits 0.5 g |
-| ⏳ | `SOFT_ZONE_DEG = 1.0f` | `balance_app.cpp:477` | Phase 2.6 gain scheduling needs to know noise floor | Derive: 3 × LP-filtered std-dev of pitch_deg over the most recent quiet RUN window |
-| ⏳ | `SAT_THRESHOLD_PWM = 180` | `balance_app.cpp:520` | STUCK detector PWM threshold | 0.7 × measured saturation_pwm from CHARACTERISE |
-| ⏳ | `STUCK_GYRO_DPS = 5.0f` | `balance_app.cpp:521` | STUCK no-motion threshold | 3 × baseline gyro noise from CHARACTERISE Phase 2.1 |
-| ⏳ | `STUCK_TIMEOUT_MS = 1500` | `balance_app.cpp:522` | Magic latency | Derive: 5 × expected PID response time = 5 × (2π / ω_n) |
-| ⏳ | `Phase 2.5: cmd_mag < 20` | `balance_app.cpp:421` | "Quiet motors" threshold | 0.5 × measured stiction_pwm |
-| ⏳ | `Phase 2.5: gyro > 30 dps` | `balance_app.cpp:421` | "Fast rotation" threshold | 5 × baseline gyro noise |
-| ⏳ | `Phase 2.5 dwell = 100 ms` | `balance_app.cpp:424` | Magic latency | 2 × PID sample period × some sigma multiplier |
-| ⏳ | HELD `a_dev_lpf_ > 6.0f` | `balance_app.cpp:421` | Lift-detect threshold | 3 × baseline accel noise (BNO055 LIA — Phase 4.6.5) |
-| 🔄 | `BOOTSTRAP_FREEZE_MS = 5000` (RLS warmup) | `balance_app.cpp:597` | RLS warmup window for natural-disturbance ID | Bypassed when BOOTSTRAP succeeds (PlantIdentifier seeded with measured K, adaptive_active immediately true). Still applies if BOOTSTRAP fails and operator force-runs anyway. |
-| ⏳ | Absolute pitch kill = ±20° | `main.cpp:411` | Magic safety override | 0.8 × derived tilt_limit_deg |
-| ⏳ | `online_est max_deviation = 5°` | `online_mounting_estimator.cpp` | Magic clamp | Derive: 3 × pitch oscillation amplitude during RUN |
-| ⏳ | `online_est LPF tc = 8 s` | `main.cpp:338` | Filter time constant | Derive from observed pitch dynamics — should match the PID closed-loop time constant |
+| ⏳ `[mega]` | `kDefaultTiltLimitDeg = 35.0f` | `safety.cpp:10` | Tip-over angle is geometric (CoG above wheel axis) | Compute from accel quaternion at the pitch where lateral accel hits 0.5 g |
+| ⏳ `[mega]` `[deferred-to-mega]` | `SOFT_ZONE_DEG = 1.0f` | `balance_app.cpp:477` | Phase 2.6 gain scheduling needs to know noise floor | Derive: 3 × LP-filtered std-dev of pitch_deg over the most recent quiet RUN window. Uno minimal program does not use gain scheduling. |
+| ⏳ `[mega]` `[deferred-to-mega]` | `SAT_THRESHOLD_PWM = 180` | `balance_app.cpp:520` | STUCK detector PWM threshold | 0.7 × measured saturation_pwm from CHARACTERISE. Uno minimal program does not implement STUCK detection. |
+| ⏳ `[mega]` `[deferred-to-mega]` | `STUCK_GYRO_DPS = 5.0f` | `balance_app.cpp:521` | STUCK no-motion threshold | 3 × baseline gyro noise from CHARACTERISE Phase 2.1. Uno minimal: not applicable. |
+| ⏳ `[mega]` `[deferred-to-mega]` | `STUCK_TIMEOUT_MS = 1500` | `balance_app.cpp:522` | Magic latency | Derive: 5 × expected PID response time = 5 × (2π / ω_n). Uno minimal: not applicable. |
+| ⏳ `[mega]` `[deferred-to-mega]` | `Phase 2.5: cmd_mag < 20` | `balance_app.cpp:421` | "Quiet motors" threshold | 0.5 × measured stiction_pwm. Uno minimal program does not detect HELD. |
+| ⏳ `[mega]` `[deferred-to-mega]` | `Phase 2.5: gyro > 30 dps` | `balance_app.cpp:421` | "Fast rotation" threshold | 5 × baseline gyro noise. Uno minimal: not applicable. |
+| ⏳ `[mega]` `[deferred-to-mega]` | `Phase 2.5 dwell = 100 ms` | `balance_app.cpp:424` | Magic latency | 2 × PID sample period × some sigma multiplier. Uno minimal: not applicable. |
+| ⏳ `[mega]` `[deferred-to-mega]` | HELD `a_dev_lpf_ > 6.0f` | `balance_app.cpp:421` | Lift-detect threshold | 3 × baseline accel noise (BNO055 LIA — Phase 4.6.5). Uno minimal: no HELD detection. |
+| 🔄 `[mega]` | `BOOTSTRAP_FREEZE_MS = 5000` (RLS warmup) | `balance_app.cpp:597` | RLS warmup window for natural-disturbance ID | Bypassed when BOOTSTRAP succeeds (PlantIdentifier seeded with measured K, adaptive_active immediately true). Still applies if BOOTSTRAP fails and operator force-runs anyway. |
+| ⏳ `[mega]` | Absolute pitch kill = ±20° | `main.cpp:411` | Magic safety override | 0.8 × derived tilt_limit_deg |
+| ⏳ `[mega]` | `online_est max_deviation = 5°` | `online_mounting_estimator.cpp` | Magic clamp | Derive: 3 × pitch oscillation amplitude during RUN |
+| ⏳ `[mega]` | `online_est LPF tc = 8 s` | `main.cpp:338` | Filter time constant | Derive from observed pitch dynamics — should match the PID closed-loop time constant |
 
 **Phase 4.10c retirement summary (2026-05-18 PM evening)**: 7 of 21 violations retired (33%). The remaining 14 violations were *blocked by* the PID-gains violations — they all need a balancing bot to derive their measurements, and the bot couldn't balance without measured gains. Now that BOOTSTRAP lands a controlled balance regime, the next sessions can systematically retire the remaining rows by replacing each constant with the measurement it depends on.
+
+**2026-05-19 platform-bifurcation re-tagging**: most remaining rows are tagged `[mega]` because they live in the universal stack — the Uno-minimal program does not host these features at all (no STUCK detection, no HELD detector, no gain scheduling, no online mount estimator). On Uno, the equivalent "constants" are simply absent because the corresponding logic was deleted. On Mega, the replacement plans below remain authoritative.
 
 ### What "active replacement plan" means
 

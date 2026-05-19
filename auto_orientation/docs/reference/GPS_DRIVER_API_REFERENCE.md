@@ -2,7 +2,7 @@
 
 **Status**: Phase 2 Documentation  
 **Last Updated**: 2026-05-07  
-**Related Docs**: [GPS Hardware Setup](GPS_HARDWARE_SETUP.md), [Troubleshooting](GPS_TROUBLESHOOTING.md)
+**Related Docs**: [GPS Hardware Setup](../hardware/GPS_HARDWARE_SETUP.md), [Troubleshooting](../hardware/GPS_TROUBLESHOOTING.md)
 
 ## Overview
 
@@ -740,11 +740,11 @@ void loop() {
 
 ## Related Documentation
 
-- [GPS Hardware Setup Guide](GPS_HARDWARE_SETUP.md) - How to connect GPS module
-- [GPS Troubleshooting Guide](GPS_TROUBLESHOOTING.md) - Common issues and solutions
+- [GPS Hardware Setup Guide](../hardware/GPS_HARDWARE_SETUP.md) - How to connect GPS module
+- [GPS Troubleshooting Guide](../hardware/GPS_TROUBLESHOOTING.md) - Common issues and solutions
 - [Coordinate Frame API Reference](COORDINATE_FRAME_API_REFERENCE.md) - Using GPS position with NED frame
-- [Build Guide Phase 2](BUILD_GUIDE_PHASE2.md) - Building with GPS support
-- [PHASE_2_MASTER_IMPLEMENTATION_PLAN.md](PHASE_2_MASTER_IMPLEMENTATION_PLAN.md) - Full implementation details
+- [Build Guide Phase 2](../build/BUILD_GUIDE_PHASE2.md) - Building with GPS support
+- [PHASE_2_MASTER_IMPLEMENTATION_PLAN.md](../phases/PHASE_2_MASTER_IMPLEMENTATION_PLAN.md) - Full implementation details
 
 ---
 

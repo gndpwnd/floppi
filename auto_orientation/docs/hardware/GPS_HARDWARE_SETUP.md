@@ -2,7 +2,7 @@
 
 **Status**: Phase 2 Hardware Documentation  
 **Last Updated**: 2026-05-07  
-**Related Docs**: [GPS Driver API](GPS_DRIVER_API_REFERENCE.md), [Troubleshooting](GPS_TROUBLESHOOTING.md)
+**Related Docs**: [GPS Driver API](../reference/GPS_DRIVER_API_REFERENCE.md), [Troubleshooting](GPS_TROUBLESHOOTING.md)
 
 ## Overview
 
@@ -631,10 +631,10 @@ void setup() {
 
 ## Related Documentation
 
-- [GPS Driver API Reference](GPS_DRIVER_API_REFERENCE.md) - Using the GPS driver
+- [GPS Driver API Reference](../reference/GPS_DRIVER_API_REFERENCE.md) - Using the GPS driver
 - [GPS Troubleshooting](GPS_TROUBLESHOOTING.md) - Common software issues
-- [Build Guide Phase 2](BUILD_GUIDE_PHASE2.md) - Build instructions with GPS
-- [PHASE_2_MASTER_IMPLEMENTATION_PLAN.md](PHASE_2_MASTER_IMPLEMENTATION_PLAN.md) - Full implementation guide
+- [Build Guide Phase 2](../build/BUILD_GUIDE_PHASE2.md) - Build instructions with GPS
+- [PHASE_2_MASTER_IMPLEMENTATION_PLAN.md](../phases/PHASE_2_MASTER_IMPLEMENTATION_PLAN.md) - Full implementation guide
 
 ---
 
