@@ -1,12 +1,26 @@
 # Roadmap: Auto Orientation Framework
 
 **Current phase**: Phase 4 — Auto-orientation framework + balancing-robot reference application
-**Last updated**: 2026-05-12
+**Last updated**: 2026-05-18
 
 This roadmap describes the framework's evolution from the just-completed BNO085 + GPS + EKF stack (Phase 3) toward a multi-MCU, multi-IMU, optionally-WiFi-connected platform with a catalog of reference applications.
 
 For project bounds and rationale, see [scope.md](scope.md).
 For current actionable items, see [todo.md](todo.md).
+
+---
+
+## Sequencing discipline
+
+**This project has a recurring failure mode**: skipping ahead to bench-iterate on hardcoded gains/thresholds when the planned phase work is to *eliminate the hardcoded value* in the first place. Every session that produces a "new tuned constant" instead of "a new measurement-driven replacement for a constant" is a session that regressed the universal vision.
+
+The cure is sequencing discipline. When a phase says "implement CHARACTERISE state" and you find yourself instead changing `stiction_min_pwm = 30` to `stiction_min_pwm = 80`, **stop**. The next move is always: *(a)* land the planned measurement infrastructure, *(b)* then validate at the bench. Bench iteration *before* the infrastructure is in produces session-specific patches, not framework progress.
+
+See [scope.md §Process doctrine](scope.md) for the full rule, the [scope.md §Current scope violations — audit](scope.md#current-scope-violations--audit-2026-05-18) for every remaining hardcoded value with its replacement plan, and [archive/LESSONS_LEARNED_BALANCE_BOT_2026-05-12.md](archive/LESSONS_LEARNED_BALANCE_BOT_2026-05-12.md) for the source incidents. Phase entries below are ordered by the right sequence to follow this discipline — *do not skip ahead*.
+
+### Top priority (2026-05-18 PM)
+
+**Phase 4.10c — BOOTSTRAP state for K_motor identification.** This is the single highest-leverage piece of remaining work. Without measured K_motor, the PID gains are guessed, the bot oscillates, and *every other dynamic adaptation in the framework fails to converge because the bot doesn't stay upright long enough to gather data.* See the scope violation audit — 19 of the 19 current hardcoded values become addressable once the bot can stand. Reference design: [findings/bootstrap_protocol_unstable_plant.md](findings/bootstrap_protocol_unstable_plant.md).
 
 ---
 

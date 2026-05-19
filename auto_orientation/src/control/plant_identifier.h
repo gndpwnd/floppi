@@ -106,6 +106,13 @@ public:
     // emitted is close to the controller's current behaviour).
     void reset(float kp_initial, float kd_initial);
 
+    // Seed θ from a directly-measured K_motor (e.g. BOOTSTRAP pulse response).
+    // Sets covariance to SEED_P (small) so subsequent RLS updates trust the
+    // measurement strongly but still adapt to battery / wear / surface drift.
+    // The new θ is clamped to (k_min, k_max) before being applied. After this
+    // call, recompute_targets_() emits Kp/Kd/Ki derived from the measured K.
+    void seed_k_motor(float k_measured);
+
     // -------- Per-tick update --------------------------------------------
 
     /**

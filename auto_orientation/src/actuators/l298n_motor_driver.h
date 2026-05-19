@@ -83,6 +83,7 @@ class L298NMotorDriver : public DualMotorDriver {
    */
   const L298NPins& pins() const { return pins_; }
   uint8_t stiction_min_pwm() const { return stiction_min_pwm_; }
+  void set_stiction_min_pwm(uint8_t v) { stiction_min_pwm_ = v; }
   bool isInitialized() const { return initialized_; }
 
  private:

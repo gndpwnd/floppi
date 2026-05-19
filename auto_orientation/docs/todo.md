@@ -1,9 +1,57 @@
 # Todo: Auto Orientation Framework
 
 **Current phase**: Phase 4 — Auto-orientation + auto-PID + balancing-robot reference
-**Last updated**: 2026-05-12
+**Last updated**: 2026-05-18 PM late
 
 For phase-level context see [roadmap.md](roadmap.md). For framework bounds see [scope.md](scope.md).
+
+---
+
+## Recently completed (2026-05-18 PM)
+
+See [PHASE2_FLASH_TRIMS_AND_HEURISTICS.md](archive/session_records/2026-05-18_PHASE2_FLASH_TRIMS_AND_HEURISTICS.md).
+
+- Flash budget root-caused (snprintf chain in `BNO055::getStatusString` = 1.3 KB). Freed 1698 B by deleting heavyweight library paths.
+- platformio.ini cleaned to 6 envs with build-flag IMU selection. ESP32/Teensy scaffolded.
+- scope.md updated with env model, IMU selection, flash strategy.
+- Phase 2.1 — measured noise-floor threshold for CHARACTERISE (replaces hardcoded 10 °/s).
+- Phase 2.5 — external-motion HELD trigger (motor quiet AND gyro fast ⇒ HELD).
+- Phase 2.6 — gain scheduling (linear output scaling inside ±2° soft zone).
+- Uno build: 95.9% flash (1336 B free), 70.4% RAM. Flashed and 30 s monitored — zero anomalies.
+
+## Next session (priorities)
+
+BOOTSTRAP shipped (Phase 4.10c) AND was bench-validated 2026-05-18 PM late — see [BOOTSTRAP_FIRST_BENCH](archive/session_records/2026-05-18_PM_LATE_BOOTSTRAP_FIRST_BENCH.md). Bot transitioned IDLE → BOOTSTRAP → RUN with measured K, but **twitched and fell within ~1 s** instead of balancing. Four blockers identified, each with a known fix path:
+
+**Operator-observed THIS session: bot wanders during testing and collides with stuff.** No encoders / optical flow / bumpers → balance loop constrains pitch but not position. Any phase (BOOTSTRAP, CHARACTERISE, RUN) can be derailed by an external impact the algorithm doesn't expect.
+
+**TOP PRIORITY — collision detection via BNO055 linear-accel** (small, ~50–100 B per site, three sites).
+
+1. Read `getVector(VECTOR_LINEARACCEL)` (gravity-removed body-frame accel, already in the library); add a fast peak detector on magnitude. Threshold ~15 m/s² (1.5 g) sustained 2+ ticks = impact.
+2. BOOTSTRAP / CHARACTERISE: spike during any pulse or baseline → abandon sequence, exit to IDLE with `failure_reason=5 (collision)`. Operator repositions in safe area and retries.
+3. RUN: spike → enter HELD (motors off, wait for quiet+level resume).
+4. Optional `USE_BALANCE_AUTO_BOOTSTRAP` build flag to gate boot-time auto-fire — operator may want to position the bot in the test area before motors engage.
+
+**Research items (next 1–2 sessions, more design than code)**:
+
+- Position-cascade outer loop using double-integrated linear accel as a short-term position estimate, with a slow restoring pitch setpoint. Bench-class bots in OSS do this; drift over tens of seconds is bounded enough for indoor testing. Search: "two-wheeled inverted pendulum drift containment IMU only", "linear accel position estimate balance bot".
+- Empirical collision signature characterization from bench traces — confirms the >15 m/s² threshold and distinguishes from balance-recovery accel.
+- Safe-test-area operator workflow doc (mat, barriers, kill-switch placement, reset procedure).
+
+**THEN — fix BOOTSTRAP K-quality so derived gains land near truth.**
+
+1. **Sample-quality gate** (estimated <50 B flash). Skip a pulse if `|g0|` (gyro at pulse start, already in the PulseLog telemetry) is above ~5 dps — the bot still has prior-pulse momentum and the |Δω| measurement is contaminated by braking, not just plant excitation. First bench data showed g0 values of −0.1, −25.5, +20.3, +1.9 across 4 pulses → K spread 0.09–0.74 (8× range) → poisoned mean.
+2. **Longer cooldown** between pulses (150 → 400 ms) to let the bot settle. ~free, just constants.
+3. **Threshold cap** at e.g. 5 dps so operator-handling motion during the 300 ms baseline doesn't make the bench unbootstrappable. Second bench reboot showed thr=50 dps (baseline gyro range ~17 dps from settling motion) — all real pulses failed.
+
+**After clean K_est, then verify RUN actually balances.** If still twitching: reduce ω_n from 8 → 5 rad/s in PlantIdentifier (less aggressive pole-placement; BNO055 NDOF group delay eats phase margin at the current target).
+
+Optional: add periodic RUN telemetry (pitch / output / mount-offset / K_motor every 100 ms) so the bench can see what the balance loop is doing after BOOTSTRAP exits.
+
+After the bot balances for tens of seconds:
+
+1. Phase 2.7 — motor-null-space HELD detector with quaternion projection. Replaces hardcoded `a_dev_lpf_ > 6.0f` HELD threshold from the audit. Per [research_motor_null_space_handling_detection.md](findings/research_motor_null_space_handling_detection.md).
+2. Audit row-by-row: each remaining hardcoded value in `scope.md` gets a derivation cycle (noise-floor measurement → threshold = baseline × sigma). 14/21 violations still open.
 
 ---
 

@@ -4,6 +4,12 @@ Old documents superseded by newer ones, session summaries, completion notes, and
 
 ---
 
+## Durable lessons (READ BEFORE ITERATING)
+
+- [LESSONS_LEARNED_BALANCE_BOT_2026-05-12.md](LESSONS_LEARNED_BALANCE_BOT_2026-05-12.md) — **REQUIRED READING before working on the balance-bot reference app.** Hard-won insights from the 2026-05-12 bench iteration: don't hand-tune unstable plants, NDOF latency gotchas, mounting estimator placeholder bug, why a drone is categorically different, 10 concrete gotchas + 8 rules for the next session.
+
+---
+
 ## Subfolders
 
 | Folder | Contents |

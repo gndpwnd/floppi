@@ -49,6 +49,13 @@
 #include <Adafruit_BNO055.h>
 #include <utility/imumaths.h>
 
+// File-scope Adafruit driver instance — replaces the heap allocation
+// (`new Adafruit_BNO055(...)`) that previously dragged malloc/free into the
+// Uno binary (~586 B). One BNO055 chip per application is the only supported
+// topology; if a future dual-IMU use case needs distinct addresses, swap in
+// placement-new over a member byte buffer.
+static Adafruit_BNO055 g_adafruit_bno055(55, 0x28, &Wire);
+
 // ============================================================================
 // Constructor / Destructor
 // ============================================================================
@@ -73,14 +80,10 @@ BNO055::~BNO055() {
 // ============================================================================
 
 bool BNO055::begin() {
-  // Allocate Adafruit driver. Sensor ID is arbitrary (returned by
-  // Adafruit_Sensor::getSensor()); 55 mirrors the value used in the reference
-  // self-balancing .ino so log lines match.
-  bno_ = new Adafruit_BNO055(55, i2c_address_, &Wire);
-  if (!bno_) {
-    initialized_ = false;
-    return false;
-  }
+  // Point at the file-scope Adafruit driver (constructed at program startup,
+  // no heap involved). i2c_address_ stays as a member for API parity, but only
+  // 0x28 is wired in this static-init path; see file-scope comment above.
+  bno_ = &g_adafruit_bno055;
 
   // Initialize I2C. BNO055 supports 400 kHz, but we follow the reference
   // sketch and let Wire run at its framework default (100 kHz). Faster clocks
@@ -95,7 +98,6 @@ bool BNO055::begin() {
 
   // begin() blocks ~650 ms for the chip's internal boot sequence.
   if (!bno_->begin(OPERATION_MODE_NDOF)) {
-    delete bno_;
     bno_ = nullptr;
     initialized_ = false;
     return false;
@@ -120,10 +122,8 @@ bool BNO055::begin() {
 }
 
 void BNO055::end() {
-  if (bno_) {
-    delete bno_;
-    bno_ = nullptr;
-  }
+  // No heap allocation to free — bno_ points at the file-scope instance.
+  bno_ = nullptr;
   initialized_ = false;
   new_data_ = false;
 }
@@ -231,20 +231,22 @@ bool BNO055::isHealthy() const {
 }
 
 const char* BNO055::getStatusString() const {
-  static char status_buffer[96];
-
+  // Avoid snprintf/vfprintf — that pulls ~1.3 KB of libc onto AVR. Encode the
+  // four cal accuracies into a fixed 6-byte string "Saagm\0" where each digit
+  // is 0..3 (sys/accel/gyro/mag). Callers wanting human-readable output should
+  // print labels themselves: e.g. Serial.print(F("s=")); Serial.print(buf[1]).
+  static char status_buffer[6];
   if (!initialized_) {
-    snprintf(status_buffer, sizeof(status_buffer), "BNO055: NOT INITIALIZED");
+    status_buffer[0] = 'X';
+    status_buffer[1] = 0;
     return status_buffer;
   }
-
-  // Format: "BNO055: sys=3 acc=2 gyr=3 mag=2"
-  snprintf(status_buffer, sizeof(status_buffer),
-           "BNO055: sys=%u acc=%u gyr=%u mag=%u",
-           static_cast<unsigned>(data_.cal_status),
-           static_cast<unsigned>(data_.cal_accel),
-           static_cast<unsigned>(data_.cal_gyro),
-           static_cast<unsigned>(data_.cal_mag));
+  status_buffer[0] = 'S';
+  status_buffer[1] = static_cast<char>('0' + (data_.cal_status & 0x03));
+  status_buffer[2] = static_cast<char>('0' + (data_.cal_accel  & 0x03));
+  status_buffer[3] = static_cast<char>('0' + (data_.cal_gyro   & 0x03));
+  status_buffer[4] = static_cast<char>('0' + (data_.cal_mag    & 0x03));
+  status_buffer[5] = 0;
   return status_buffer;
 }
 

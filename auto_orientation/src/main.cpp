@@ -52,7 +52,7 @@
 #include "control/pid_controller.h"
 #include "control/auto_pid_tuner.h"
 #include "control/plant_identifier.h"
-#include "control/tuners/relay_feedback.h"
+#include "control/tuning_strategy.h"
 #include "navigation/mounting_calibration.h"
 #include "navigation/online_mounting_estimator.h"
 #include "applications/balancing_robot/balance_app.h"
@@ -92,16 +92,33 @@ static L298NPins motor_pins = {
 // physically, which acts as a natural deadband that the PID can live with.
 // If we need stiction compensation again it should be one-shot per direction
 // reversal, not unconditional — but for now: zero floor.
-static L298NMotorDriver     motors(motor_pins, /*stiction_min_pwm=*/0);
+static L298NMotorDriver     motors(motor_pins, /*stiction_min_pwm=*/80);
 
-// Conservative defaults overwritten in begin() via default_config(). Kept in
-// sync with balance_app.cpp's kDefaultInitial* constants — three locations must
-// agree (see IMPLEMENTATION_PLAN.md Anticipated snags).
-static PIDController        balance_pid(18.0f, 3.0f, 10.0f, -255.0f, 255.0f);
+// PID gains are SET BY BOOTSTRAP (Phase 4.10c), not at construction. These
+// constructor args only matter if BOOTSTRAP fails — in which case the bot stays
+// in IDLE and never tries to balance, so any non-negative gains are safe.
+// Output limits are real (±255 = hardware PWM range).
+static PIDController        balance_pid(0.0f, 0.0f, 0.0f, -255.0f, 255.0f);
 
-// Relay strategy: 150 PWM amplitude (well below saturation), 0.5° hysteresis.
-static RelayFeedbackStrategy relay_strategy(/*amp=*/150.0f, /*hyst=*/0.5f);
-static AutoPIDTuner          tuner(relay_strategy);
+// AUTO_TUNE state retained in the enum for API stability, but is no longer
+// wired to any operator gesture — long-press / 'b' / capture-success all
+// chain to BOOTSTRAP (Phase 4.10c) instead. The injected tuning strategy is
+// therefore a no-op that immediately reports failure; it satisfies the
+// BalanceApp constructor without dragging in RelayFeedbackStrategy's 1.3 KB
+// of relay-feedback machinery. Removed from the build_src_filter in
+// platformio.ini (see -<control/tuners/relay_feedback.cpp>).
+class NoOpStrategy : public ITuningStrategy {
+public:
+    void begin(float, float, float, uint32_t) override {}
+    float step(float, const SafetyLimits&, uint32_t) override { return 0.0f; }
+    bool is_done() const override { return true; }
+    TuningResult get_result() const override {
+        TuningResult r{}; r.failure_reason = "no_op_strategy"; return r;
+    }
+    const char* name() const override { return "noop"; }
+};
+static NoOpStrategy          noop_strategy;
+static AutoPIDTuner          tuner(noop_strategy);
 
 static MountingCalibration   mounting;
 static OnlineMountingEstimator online_est;
@@ -126,6 +143,13 @@ static const uint16_t EE_MOUNT_LEN  = 8;
 static const uint8_t  EE_MOUNT_MAGIC = 0xAB;
 static const uint8_t  EE_MOUNT_VER   = 0x01;
 
+// Phase 2 — actuator characterisation record (stiction floor + future fields).
+// Layout: [magic 0xAC][ver 0x01][stiction_pwm][reserved][crc] (8 bytes).
+static const uint16_t EE_ACT_ADDR  = 0x210;
+static const uint16_t EE_ACT_LEN   = 8;
+static const uint8_t  EE_ACT_MAGIC = 0xAC;
+static const uint8_t  EE_ACT_VER   = 0x01;
+
 static uint8_t xor_crc8_(const uint8_t* d, uint16_t n) {
     uint8_t c = 0; for (uint16_t i = 0; i < n; ++i) c ^= d[i]; return c;
 }
@@ -149,6 +173,23 @@ static bool load_mount_offset_(float& deg) {
     return true;
 }
 
+static bool save_actuator_(uint8_t stiction) {
+    uint8_t buf[EE_ACT_LEN] = {0};
+    buf[0] = EE_ACT_MAGIC; buf[1] = EE_ACT_VER; buf[2] = stiction;
+    buf[7] = xor_crc8_(buf, 7);
+    if (!ps::write(EE_ACT_ADDR, buf, EE_ACT_LEN)) return false;
+    return ps::commit();
+}
+
+static bool load_actuator_(uint8_t& stiction) {
+    uint8_t buf[EE_ACT_LEN];
+    if (!ps::read(EE_ACT_ADDR, buf, EE_ACT_LEN)) return false;
+    if (buf[0] != EE_ACT_MAGIC || buf[1] != EE_ACT_VER) return false;
+    if (xor_crc8_(buf, 7) != buf[7]) return false;
+    stiction = buf[2];
+    return true;
+}
+
 // ---- Button handling ---------------------------------------------------------
 static int      g_last_button   = HIGH;
 static uint32_t g_press_start_ms = 0;
@@ -165,16 +206,6 @@ static void poll_button_(uint32_t now_ms) {
         else if (held >= SHORT_PRESS_MS) app.on_short_press(now_ms);
     }
     g_last_button = b;
-}
-
-// ---- BNO055 calibration: load from EEPROM, or wait for the user to rotate ----
-static bool restore_bno_cal_(BNO055& bno) {
-    uint8_t buf[32];   // BNO055 blob is 22 B; padding for header read
-    uint16_t len = 0;
-    if (!restoreFromEEPROM(buf, &len) || len != 22) {
-        return false;
-    }
-    return bno.setCalibrationProfile(buf, len);
 }
 
 static void save_bno_cal_(BNO055& bno) {
@@ -258,7 +289,7 @@ static void pid_tick_isr() {
 void setup() {
     Serial.begin(115200);
     delay(200);
-    Serial.println(F("\nBal"));
+    Serial.println(F("\nB"));
 
     pinMode(PIN_BTN, INPUT_PULLUP);
 
@@ -267,39 +298,56 @@ void setup() {
 
     // IMU
     if (!imu.begin()) {
-        Serial.println(F("BNO FAIL"));
+        Serial.println(F("BF"));
         while (1) { delay(1000); }
     }
 
     // BNO055 calibration: restore from EEPROM, or run the wizard.
-    if (!restore_bno_cal_(imu)) {
-        run_bno_cal_wizard_(imu);
+    {
+        uint8_t cb[32]; uint16_t cl = 0;
+        if (!restoreFromEEPROM(cb, &cl) || cl != 22 ||
+            !imu.setCalibrationProfile(cb, cl)) {
+            run_bno_cal_wizard_(imu);
+        }
     }
 
     // Motors
     motors.begin();
 
+    // Phase 2 — apply saved actuator characterisation if present. Replaces
+    // hardcoded stiction floor with measured value. If no record exists, the
+    // operator should run `k` to characterise this bot.
+    {
+        uint8_t st;
+        if (load_actuator_(st) && st >= 20 && st <= 200) {
+            motors.set_stiction_min_pwm(st);
+        }
+    }
+
     // App
     BalanceAppConfig cfg = BalanceApp::default_config();
     app.begin(cfg, millis());
 
-    // PID gains: Kp=50 Ki=1 Kd=20. Tiny Ki — just enough to feed the
-    // OnlineMountingEstimator (which reads pid_.get_i_term() to drive
-    // mount-offset adaptation). With Ki=1 the integrator can't dominate
-    // the output and windup-saturate the motors before the bot recovers.
-    balance_pid.set_tunings(50.0f, 1.0f, 20.0f);
-    // I-term contribution hard-capped at 40 PWM regardless of output range —
-    // unstable-plant anti-windup. Without this, the integrator could push
-    // the motors to max independently of the position error, defeating
-    // recovery. This is the fix for the "balances 1 second then motors max"
-    // failure mode.
+    // PID gains: NOT SET HERE — BOOTSTRAP (Phase 4.10c) measures K_motor on
+    // RUN entry and derives Kp = ω_n²/K, Kd = 2ζω_n/K, Ki = 0.05·Kp from the
+    // measurement. If the bot powers up with a saved mount, BOOTSTRAP fires
+    // automatically below; otherwise operator triggers it via short-press
+    // (CAPTURE→BOOTSTRAP→RUN auto-chain) or 'b' / long-press (skip capture).
+    //
+    // Anti-windup I-term clamp + D-term LPF time-constant are structural PID
+    // safety properties (not per-bot tunings) — they bound integrator divergence
+    // and BNO055 fused-Euler quantization noise respectively, both physical
+    // properties of the controller architecture rather than the chassis.
     balance_pid.set_i_term_limit(40.0f);
     balance_pid.set_d_term_lpf_tau_sec(0.003f);
 
-    // OnlineMountingEstimator: fast 20 s time constant so the captured
-    // mount-offset error auto-trims within a single bench session.
-    // Drift rate cap 2°/s ensures it can adapt even with a 5° initial bias.
-    online_est.set_lpf_time_constant_sec(20.0f);
+    // OnlineMountingEstimator: 8 s time constant (was 20 s).
+    // 2026-05-18 PM bench finding: at 20 s, the mount offset stayed glued at
+    // 0.87° for an entire 25 s run while the bot drifted in one direction —
+    // classic "true balance point isn't 0° and the estimator never caught up"
+    // failure. 8 s is fast enough that any persistent I-term bias will trim
+    // out within a few seconds of contiguous RUN. Drift cap unchanged.
+    online_est.set_lpf_time_constant_sec(8.0f);
     online_est.set_max_drift_rate_dps(2.0f);
 
     // Mounting offset IS persisted (it's a physical mounting property, not
@@ -315,11 +363,39 @@ void setup() {
 
     Serial.println(F("READY"));
 
-    // "Prop-and-go" auto-RUN: if we know where balance is (mount offset saved),
-    // start balancing immediately with the default gains.
+    // "Prop-and-go" auto-BOOTSTRAP (Phase 4.10c): if a mount offset is saved
+    // AND the bot's current pitch is within ±5° of that saved mount, fire
+    // BOOTSTRAP. Otherwise stay in IDLE — the operator either propped the bot
+    // wrong (recaptureable via 'c') or the saved mount is stale (same fix).
+    //
+    // Stale-mount sanity check guards the 2026-05-18 PM near-failure: a stored
+    // mount of −1.21° while the bot's actual upright pitch was +0.3° → PID
+    // corrected_pitch ≈ +1.5° → drove backward → kill switch at −22°. With
+    // the gate, that scenario lands in IDLE for the operator to recapture
+    // instead of slamming motors at a tipped bot.
     if (have_mount) {
-        delay(2000);  // grace period to get the bot in position
-        app.enter_run_with_current_gains(millis());
+        // Grace period — operator getting hands clear after power-on.
+        delay(2000);
+        // Sample a fresh pitch reading post-grace-period. read_sensors() reads
+        // the IMU and updates app.get_pitch_deg().
+        app.read_sensors(millis());
+        const float pitch_now  = app.get_pitch_deg();
+        const float mount_now  = app.get_mount_offset_deg();
+        const float pitch_err  = pitch_now - mount_now;
+        const float abs_err    = pitch_err < 0.0f ? -pitch_err : pitch_err;
+        // Threshold matches BOOTSTRAP's own pre-condition (10°) minus headroom.
+        // Lenient enough to tolerate normal mount drift, strict enough to
+        // catch a fully-stale EEPROM mount (1.5°+ off).
+        if (abs_err < 5.0f) {
+            app.enter_bootstrap(millis());
+        } else {
+            Serial.print(F("stale_mount p="));
+            Serial.print(pitch_now, 2);
+            Serial.print(F(" m="));
+            Serial.println(mount_now, 2);
+            // Stay in IDLE — operator presses 'c' to recapture, then chain
+            // continues automatically into BOOTSTRAP → RUN.
+        }
     }
 
     // Item 3 — start the 5 ms PID tick ISR. Must be AFTER app.begin() so the
@@ -339,44 +415,22 @@ void loop() {
         if      (c == 'c') app.on_short_press(now);
         else if (c == 't') app.on_long_press(now);
         else if (c == 'a') safety.request_abort();
-        else if (c == 'r') {
-            clearCalibrationFromEEPROM();
-            run_bno_cal_wizard_(imu);
-        } else if (c == 's') {
-            // Phase 4.10 — extended status: state, pitch, mount-offset,
-            // output, live PID gains, learned K_motor + P, target Kp/Kd from
-            // PlantIdentifier. 'A' = ADAPT (bootstrap window cleared), 'B'.
-            float kp, ki, kd;
-            balance_pid.get_tunings(kp, ki, kd);
-            const PlantIdentifierStatus& pi = app.get_plant_status();
-            Serial.print(app.state_name());
-            Serial.print(app.is_adaptive_active() ? F(" A ") : F(" B "));
-            Serial.print(app.get_pitch_deg(), 2); Serial.print(' ');
+        else if (c == 's') {
+            // Status: <state> <pitch> <mount> <output> <stiction>
+            // RLS internals (K, P, Kp, Kd) removed 2026-05-18 to fit CHARACTERISE
+            // implementation in flash budget. Add `g` (gains) command later if needed.
+            Serial.print(app.state_name());          Serial.print(' ');
+            Serial.print(app.get_pitch_deg(), 2);    Serial.print(' ');
             Serial.print(app.get_mount_offset_deg(), 2); Serial.print(' ');
-            Serial.print(app.get_last_output()); Serial.print(F(" K="));
-            Serial.print(pi.k_motor, 3); Serial.print(F(" P="));
-            Serial.print(pi.covariance, 2); Serial.print(F(" Kp="));
-            Serial.print(kp, 1); Serial.print('/');
-            Serial.print(pi.kp_target, 1); Serial.print(F(" Kd="));
-            Serial.print(kd, 1); Serial.print('/');
-            Serial.println(pi.kd_target, 1);
-        } else if (c == 'R') {
-            // Apply .ino gains (session only — NOT persisted), enter RUN.
-            balance_pid.set_tunings(65.0f, 12.0f, 38.0f);
-            app.enter_run_with_current_gains(now);
-        } else if (c == 'm') {
-            // Motor test (Uno flash-trimmed).
-            motors.set_speeds(90, 0);    delay(700);
-            motors.set_speeds(-90, 0);   delay(700);
-            motors.stop();               delay(300);
-            motors.set_speeds(0, 90);    delay(700);
-            motors.set_speeds(0, -90);   delay(600);
-            motors.stop();               delay(500);
-            motors.set_speeds(90, 90);   delay(1500);
-            motors.stop();               delay(500);
-            motors.set_speeds(-90, -90); delay(1500);
-            motors.stop();
-            Serial.println(F("mt"));
+            Serial.print(app.get_last_output());     Serial.print(' ');
+            Serial.println(motors.stiction_min_pwm());
+        } else if (c == 'b') {
+            // Manual BOOTSTRAP trigger — same as long-press, but operator can
+            // bind it to a non-button console. Skips CAPTURE_MOUNTING, uses
+            // whatever mount offset is currently loaded.
+            app.enter_bootstrap(now);
+        } else if (c == 'k') {
+            app.enter_characterise_actuator(now);
         }
     }
 
@@ -388,12 +442,29 @@ void loop() {
     // can manage (~1 kHz typical). The ISR consumes the most recent stash.
     app.read_sensors(now);
     app.drain_state_log(Serial);
+    // BOOTSTRAP / CHARACTERISE per-pulse telemetry — single line per pulse
+    // showing cmd PWM, baseline-relative |Δω| (or |gyro| sum for char), the
+    // threshold the metric was compared to, and whether it passed.
+    static uint8_t last_pulse_seq = 0;
+    app.drain_pulse_log(Serial, last_pulse_seq);
+
+    // 2026-05-18 safety belt-and-suspenders: absolute-pitch kill-switch.
+    // If pitch exceeds ±20° regardless of state, force-stop motors via
+    // safety abort. Catches scenarios where the in-state FALLEN trigger
+    // doesn't fire (BNO055 saturation, ISR stall) and prevents motors
+    // running at 100% with the bot on its side.
+    {
+        float p = app.get_pitch_deg();
+        if (p > 20.0f || p < -20.0f) {
+            motors.stop();
+            safety.request_abort();
+        }
+    }
 
     // Persist state on key transitions so the next boot can auto-RUN.
     static BalanceAppState last_state = BalanceAppState::IDLE;
     BalanceAppState cur = app.get_state();
     if (cur != last_state) {
-        // CAPTURE_MOUNTING -> IDLE means capture finished; save the new offset.
         if (last_state == BalanceAppState::CAPTURE_MOUNTING &&
             cur == BalanceAppState::IDLE) {
             float off = app.get_mount_offset_deg();
@@ -401,19 +472,20 @@ void loop() {
                 Serial.print(F("sv m="));
                 Serial.println(off, 2);
             }
+        } else if (last_state == BalanceAppState::CHAR_ACT &&
+                   cur == BalanceAppState::IDLE) {
+            uint8_t st = app.get_ch_stiction_pwm();
+            if (st >= 30 && st <= 200) {
+                save_actuator_(st);
+                motors.set_stiction_min_pwm(st);
+            }
+            // Stiction reported via `s` status; no separate print needed.
         }
         last_state = cur;
     }
 
-    // Periodic save of the live mounting offset during RUN — captures the
-    // online estimator's drift refinements (no point if state is stable).
-    // Limit to once every 60 s of runtime to spare the EEPROM cell life.
-    static uint32_t last_periodic_save = 0;
-    if (cur == BalanceAppState::RUN && now - last_periodic_save >= 60000) {
-        float off = app.get_mount_offset_deg();
-        save_mount_offset_(off);
-        last_periodic_save = now;
-    }
+    // STUCK detector hint — operator can see "STK" in s output (stiction
+    // reading also helps diagnose). Removed dedicated print to save flash.
 }
 
 #elif defined(USE_IMU_GPS_TELEMETRY)

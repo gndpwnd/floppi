@@ -1,9 +1,54 @@
 # Project Scope: Auto Orientation Framework
 
 **Status**: Framework expansion (Phase 3 of original plan complete: BNO085 + GPS + EKF, 143+ tests passing)
-**Last updated**: 2026-05-12
+**Last updated**: 2026-05-18
 
 > **Design direction**: see [MINIMIZE_ACCELERATIONS_PHILOSOPHY.md](MINIMIZE_ACCELERATIONS_PHILOSOPHY.md) for the project's current direction on the balancing-robot reference application.
+
+---
+
+## Build environments (post-2026-05-18 cleanup)
+
+The platformio.ini is intentionally tiny. Four balance-robot envs (only two enabled today; ESP32/Teensy scaffolded for future port) and two orientation-framework envs.
+
+| Env name | Status | Board | Flash | Default IMU | Notes |
+|---|---|---|---|---|---|
+| `uno_balance` | **active** | Arduino Uno | 32 KB | BNO055 | Current bench bot. Tight: ~5% headroom. |
+| `mega_balance` | **active** | Arduino Mega 2560 | 256 KB | BNO055 | Development headroom; 88% flash free. Use this for new features that don't fit Uno yet. |
+| `esp32_balance` | *scaffolded* | ESP32 dev | 1.3 MB | BNO055 | Needs MsTimer2 → esp_timer port; WiFi cascade landed. |
+| `teensy_balance` | *scaffolded* | Teensy 4.0 | 1.9 MB | BNO055 | Needs MsTimer2 → IntervalTimer port; FPU + 600 MHz. |
+| `mega_orientation` | active | Arduino Mega 2560 | 256 KB | BNO085 | Original Phase 3 framework (orientation + GPS + EKF). |
+| `mega_orientation_calibration` | active | Arduino Mega 2560 | 256 KB | BNO085 | Verbose serial for cal wizard. |
+| `native_test` | active | host PC | n/a | n/a | Unity unit tests via `pio test -e native_test`. |
+
+### IMU selection (compile-time)
+
+Every balance env defaults to **BNO055** (matches the reference .ino). To override:
+
+```bash
+# Use BNO085 instead of BNO055 on Mega:
+pio run -e mega_balance --project-option="build_flags=-D USE_BNO085 -U USE_BNO055"
+
+# Use MPU6050 + external magnetometer (Phase 5+):
+pio run -e mega_balance --project-option="build_flags=-D USE_MPU6050 -U USE_BNO055"
+```
+
+The drivers compile-out when their `USE_<IMU>` flag is not set, so the binary only ships the chip you've actually wired.
+
+### Flash strategy on Uno (32 KB target)
+
+The 2026-05-18 session bottomed out at 4 bytes free, blocking Phase 2.x implementation. **The fix is not to keep trimming;** it is to delete heavyweight library code paths:
+
+| Save | Mechanism | Implemented |
+|---|---|---|
+| 1574 B | `BNO055::getStatusString` rewritten to avoid `snprintf` (drops `vfprintf` + `snprintf` from the binary) | ✅ 2026-05-18 |
+| ~124 B + 140 B RAM | `Adafruit_BNO055` moved from heap allocation (`new`) to file-scope static instance | ✅ 2026-05-18 |
+| ~1.3 KB | Remove `RelayFeedbackStrategy::step` (relay tuner obsoleted by RLS — backlog #7) | pending |
+| ~432 B | Replace `Serial.print(float, N)` with `int * 100` + manual decimal formatter | pending |
+
+Current state: 94.7% flash, 1702 B free on Uno. All Phase 2.x features (noise floor + FALLEN heuristic + gain scheduling + motor-null-space HELD) fit comfortably.
+
+The `mega_balance` env exists specifically so future features that *don't* fit Uno can still land; we just gate them on `__AVR_ATmega2560__` or a build-flag.
 
 ---
 
@@ -18,6 +63,134 @@ Auto Orientation is an **open-source 3D-orientation framework** for embedded sys
 - **A growing catalog of reference applications** built on the framework, starting with a self-balancing robot and reaching out to drones, gimbals, photogrammetry rigs, and educational kits.
 
 The framework is **not** a flight controller. It is the layer underneath flight controllers, balance bots, gimbals, and any other system that needs to know its orientation accurately and persistently.
+
+---
+
+## Non-negotiable design constraints (universal balance vision)
+
+Reinforced during the 2026-05-18 bench session ([session record](archive/session_records/2026-05-18_BENCH_MOTOR_STICTION_DIAGNOSIS.md)). These are **hard constraints, not aspirations** — see [UNIVERSAL_BALANCE_BOT_VISION.md](UNIVERSAL_BALANCE_BOT_VISION.md) for the long-form rationale.
+
+### The control philosophy: more / less, not absolutes
+
+See [UNIVERSAL_BALANCE_BOT_VISION.md §Control philosophy](UNIVERSAL_BALANCE_BOT_VISION.md). The controller reasons in deltas — *"need more torque" / "need less torque" / "need to reverse"* — never in absolute PWM values. CHARACTERISE and online learning discover the **landmarks** (stiction floor, saturation point, K_motor); the balance loop navigates within them via gradients. Any code that asks "is PWM equal to 80?" or "is Kp set to 65?" is asking the wrong question — the right question is always "is the response we're getting more / less than we wanted, and what should the next command look like?"
+
+### The rule
+
+**The ONLY values that may be hardcoded are MCU pin assignments.** Everything else — every threshold, every gain, every limit, every dwell, every filter time-constant, every PWM value — must come from one of:
+
+- **Boot-time automated calibration** (e.g. CHARACTERISE state — pulse PWM, learn stiction + saturation; mount-offset capture — average pitch over still window).
+- **Online learning** during normal operation (e.g. RLS K_motor identifier; OnlineMountingEstimator; sensor-noise running variance).
+- **Sensor primitives** (e.g. NDOF group delay is a chip property, gravity vector is the accelerometer mean).
+
+If you find yourself writing a literal numeric value into source code that isn't a pin number, that's a **scope violation**. Examples that have all been violations during this project's history and must be removed: `Kp = 65`, `Kd = 38`, `Kd = 10`, `tilt_limit_deg = 8`, `stiction_min_pwm = 80`, `HELD lateral-gyro threshold 90`, `STUCK threshold 180`. *Some* of these still exist in the current source (2026-05-18) — they are stopgaps explicitly tagged for replacement, not features.
+
+### Specific quantities that MUST be auto-measured
+
+- **Stiction floor (per wheel)** — minimum PWM that produces wheel motion. Measured by Phase 2 CHARACTERISE state. **Per-wheel, not combined** — rubber bands shift, brushes wear unevenly, one wheel can have 30% more stiction than the other and this is the operator's typical bench reality.
+- **PWM saturation point (per wheel)** — PWM beyond which response stops growing. Measured by CHARACTERISE.
+- **Motor direction asymmetry** — forward vs reverse gain ratio per wheel. Discovered, not declared.
+- **Initial PID gains** (Kp / Ki / Kd) — seeded from measured K_motor + closed-form PD-from-K_motor, refined online by RLS ([Phase 4.10](findings/dynamic_pwm_accel_learning.md)).
+- **Balance point / mount offset** — captured by `MountingCalibration` and tracked online by `OnlineMountingEstimator`.
+- **HELD vs INFLUENCED vs STUCK thresholds** — derived from motor-null-space residuals and the bot's own observed noise floor, not constants.
+- **Tilt / FALLEN limits** — derived from the operating envelope the controller has demonstrated, not constants.
+- **Sensor noise floor** — running variance of each axis, not assumed.
+
+### What changes between sessions (and the bot must handle automatically)
+
+- **Battery state** — voltage sag shifts effective stiction by 30-50 PWM.
+- **Surface grip** — carpet, hardwood, rubber bands, drift wheels — change actuator response significantly.
+- **Mount drift** — accelerometer bias creep, mechanical settling, payload addition.
+- **Motor wear** — brush dust, axle friction, asymmetric wheel wear.
+- **Per-wheel stiction divergence** — rubber bands fall off, friction tape peels.
+
+None of these may require the operator to recompile, edit a config file, or hand-tune a knob. The framework's job is to notice and adapt — either continuously, or on operator-triggered re-characterisation via a single serial command.
+
+### Three operating regimes the framework must distinguish
+
+Captured from operator session 2026-05-18 ([backlog row 13](findings/operator_ideas_backlog.md)):
+
+- **BALANCING** — bot self-correcting via wheel torque. The autonomous state.
+- **INFLUENCED** — operator places bot at a new pitch but no motor-null-space motion (lift, lateral shove, rotation). Don't disable balance — absorb the new state and keep going.
+- **HELD** — motion in motor-null-space axes. External force dominating. Motors off until quiet.
+- **STUCK** — output saturated but no motion. External restraint or wheel jam. Motors off immediately.
+
+A naive "HELD = any lateral gyro" detector conflates all four. The proper detector projects IMU motion into the motor-null subspace (Phase 2.7 — research delivered [research_motor_null_space_handling_detection.md](findings/research_motor_null_space_handling_detection.md)).
+
+### Observable + diagnosable from serial
+
+The state machine stays small. Every state name appears in `s` status output and `[state] -> X` transition logs. No hidden modes. No magic numbers in production. If the operator can't see why the bot just made a decision, that's a scope violation.
+
+### Compile-time regression test
+
+Any future PR that adds a literal numeric constant outside of pin assignments must justify why it cannot be measured. CI will eventually grep for the pattern and fail builds that violate this — *that* is the goal state, not a future stretch goal.
+
+---
+
+## Current scope violations — audit (2026-05-18, updated PM-evening Phase 4.10c landed)
+
+This table lists every hardcoded tuning value still present in the firmware and the *concrete* replacement that retires it. Each violation must have an active replacement plan. **No exceptions for "it works well enough."** The 2026-05-18 PM bench session demonstrated empirically that even reasonable-looking hardcoded gains (Kp=50 inherited from the reference .ino) produce destructive oscillation on a different bot. **Hand-tuned constants do not generalise — that is the entire point.**
+
+**Status legend**: ✅ retired (no longer in source) · 🔄 partially retired (mechanism in place, value now derived) · ⏳ still present, awaiting replacement.
+
+| Status | Violation | Location | Why it must go | Replacement |
+|---|---|---|---|---|
+| ✅ | `kDefaultInitialKp = 50.0f` | (was `balance_app.cpp:75` / `main.cpp:323`) | PID gain depends on chassis mass / motor torque / wheel radius — none universal | **BOOTSTRAP state** (Phase 4.10c landed 2026-05-18 PM) measures K_motor from controlled pulses, derives Kp = ω_n²/K_motor analytically. PID gains never set from constants in main.cpp; BOOTSTRAP pushes them on success. |
+| ✅ | `kDefaultInitialKi = 2.0f` | (was `balance_app.cpp:76`) | Same | Same; Ki = 0.05·Kp from same K_motor measurement |
+| ✅ | `kDefaultInitialKd = 20.0f` | (was `balance_app.cpp:77`) | Same | Kd = 2ζω_n/K_motor |
+| ✅ | `R` command gains 65/12/38 | (was `main.cpp:386`) | Legacy .ino-flavour hand-tune | Removed. Operator path is `c` (capture+bootstrap) or `b` (manual bootstrap from IDLE). |
+| ✅ | FALLEN restart `±80 PWM` clamp | (was `balance_app.cpp:710`) | Hardcoded balance-mode PWM cap | Removed. FALLEN short-press now re-routes through BOOTSTRAP, so K_motor is re-measured + gains re-derived under current battery/surface conditions. |
+| ✅ | Relay tuner amplitude = 150 | (was `main.cpp:103`) | Auto-tuner perturbation magnitude | **Deleted.** RelayFeedbackStrategy excluded from balance build via platformio.ini build_src_filter; main.cpp uses a 10-line `NoOpStrategy` stub. Saves ~1.3 KB flash; AUTO_TUNE state kept in enum but unreachable from public API. |
+| ✅ | `tune_max_duration_sec = 30` | (was `balance_app.cpp:86`) | Tuner timeout | Same — relay tuner is gone. |
+| 🔄 | `cfg.tilt_limit_deg` (was 8.0f override) | `main.cpp` no longer overrides | Operating envelope of recovery, not universal | Override removed 2026-05-18 PM; falls back to cfg default 10° at `balance_app.cpp` `kDefaultTiltLimitDeg`. Derived value (observed envelope × 1.5) still pending — needs balance data. |
+| ⏳ | `kDefaultTiltLimitDeg = 35.0f` | `safety.cpp:10` | Tip-over angle is geometric (CoG above wheel axis) | Compute from accel quaternion at the pitch where lateral accel hits 0.5 g |
+| ⏳ | `SOFT_ZONE_DEG = 1.0f` | `balance_app.cpp:477` | Phase 2.6 gain scheduling needs to know noise floor | Derive: 3 × LP-filtered std-dev of pitch_deg over the most recent quiet RUN window |
+| ⏳ | `SAT_THRESHOLD_PWM = 180` | `balance_app.cpp:520` | STUCK detector PWM threshold | 0.7 × measured saturation_pwm from CHARACTERISE |
+| ⏳ | `STUCK_GYRO_DPS = 5.0f` | `balance_app.cpp:521` | STUCK no-motion threshold | 3 × baseline gyro noise from CHARACTERISE Phase 2.1 |
+| ⏳ | `STUCK_TIMEOUT_MS = 1500` | `balance_app.cpp:522` | Magic latency | Derive: 5 × expected PID response time = 5 × (2π / ω_n) |
+| ⏳ | `Phase 2.5: cmd_mag < 20` | `balance_app.cpp:421` | "Quiet motors" threshold | 0.5 × measured stiction_pwm |
+| ⏳ | `Phase 2.5: gyro > 30 dps` | `balance_app.cpp:421` | "Fast rotation" threshold | 5 × baseline gyro noise |
+| ⏳ | `Phase 2.5 dwell = 100 ms` | `balance_app.cpp:424` | Magic latency | 2 × PID sample period × some sigma multiplier |
+| ⏳ | HELD `a_dev_lpf_ > 6.0f` | `balance_app.cpp:421` | Lift-detect threshold | 3 × baseline accel noise (BNO055 LIA — Phase 4.6.5) |
+| 🔄 | `BOOTSTRAP_FREEZE_MS = 5000` (RLS warmup) | `balance_app.cpp:597` | RLS warmup window for natural-disturbance ID | Bypassed when BOOTSTRAP succeeds (PlantIdentifier seeded with measured K, adaptive_active immediately true). Still applies if BOOTSTRAP fails and operator force-runs anyway. |
+| ⏳ | Absolute pitch kill = ±20° | `main.cpp:411` | Magic safety override | 0.8 × derived tilt_limit_deg |
+| ⏳ | `online_est max_deviation = 5°` | `online_mounting_estimator.cpp` | Magic clamp | Derive: 3 × pitch oscillation amplitude during RUN |
+| ⏳ | `online_est LPF tc = 8 s` | `main.cpp:338` | Filter time constant | Derive from observed pitch dynamics — should match the PID closed-loop time constant |
+
+**Phase 4.10c retirement summary (2026-05-18 PM evening)**: 7 of 21 violations retired (33%). The remaining 14 violations were *blocked by* the PID-gains violations — they all need a balancing bot to derive their measurements, and the bot couldn't balance without measured gains. Now that BOOTSTRAP lands a controlled balance regime, the next sessions can systematically retire the remaining rows by replacing each constant with the measurement it depends on.
+
+### What "active replacement plan" means
+
+Every row above has a concrete derivation listed. **A row without a plan is a bug in the audit, not an acceptable violation.** If a value cannot be derived from a measurement, the value should not exist — find a different control architecture.
+
+### What's NOT a violation
+
+- `0.0f` initializers, `memset` clears — these are zeros, not tunings
+- Sample-rate-derived constants (`pid_sample_ms = 5` is the timer period, derived from MsTimer2 hardware)
+- I²C/UART baud rates (protocol-level, not tuning)
+- Loop iteration limits in algorithms (e.g., `for (int i = 0; i < N; ++i)` where N is a structural count, not a tuning value)
+- The number of pulses in CHARACTERISE (6 is a structural choice in the algorithm, not a tuning)
+
+### Immediate next step
+
+The single most impactful violation to retire is **PID gains via BOOTSTRAP** (`kDefaultInitialKp/Ki/Kd`). Without measured gains, no amount of mount-offset adaptation or HELD heuristics can stop the bot from oscillating to failure. Implementation: Phase 4.10c — see [bootstrap_protocol_unstable_plant.md](findings/bootstrap_protocol_unstable_plant.md).
+
+After BOOTSTRAP lands, every other violation in the table becomes addressable because the bot will actually balance long enough to collect the data needed for the remaining derivations.
+
+---
+
+## Process doctrine — how NOT to get stuck
+
+This project has been derailed multiple times by **iterating on hardcoded constants instead of building the measurement system that would make those constants unnecessary**. The pattern is seductive: a number looks slightly wrong, you change it, the bot behaves slightly differently, you change it again, hours pass. Each tweak feels like progress. Cumulatively it is a random walk that produces session-specific patches and zero progress toward the universal vision.
+
+Codifying this lesson — bench-session 2026-05-18 distilled the rule the hard way:
+
+1. **If you change a numeric constant in source code, you have just made the framework less universal, not more.** The "right" number doesn't exist. Tomorrow's battery, surface, or rubber-band changes invalidate it.
+2. **When tempted to tweak a value, instead ask: what measurement would replace this constant?** Then build the measurement. *Every* such measurement is in the design backlog already ([`findings/operator_ideas_backlog.md`](findings/operator_ideas_backlog.md)) — pick the smallest one and implement it.
+3. **Safety bandaids are a category exception, but only briefly.** A kill-switch or STUCK detector with a hardcoded threshold can land *as long as* it's tagged with a TODO pointing to the measurement-derived replacement on the backlog. The hardcoded form must not survive to a release.
+4. **The lessons-learned doc ([`archive/LESSONS_LEARNED_BALANCE_BOT_2026-05-12.md`](archive/LESSONS_LEARNED_BALANCE_BOT_2026-05-12.md)) is mandatory reading before any bench session.** It documents this exact failure mode. If you find yourself about to start a bench iteration on gains, re-read it first.
+5. **Bench-session-summary documents are not deliverables.** Producing a beautifully-formatted record of an unproductive session is itself the trap. Deliverables are *measurement-replacing implementations* that survive past the session.
+
+Cross-references: [roadmap.md §Sequencing discipline](roadmap.md), [findings/operator_ideas_backlog.md](findings/operator_ideas_backlog.md), [archive/LESSONS_LEARNED_BALANCE_BOT_2026-05-12.md](archive/LESSONS_LEARNED_BALANCE_BOT_2026-05-12.md).
 
 ---
 

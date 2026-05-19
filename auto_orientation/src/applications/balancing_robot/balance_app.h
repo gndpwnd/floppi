@@ -74,7 +74,23 @@ enum class BalanceAppState : uint8_t {
     AUTO_TUNE         = 2,
     RUN               = 3,
     HELD              = 4,   // bot picked up — motors off, ready to resume
-    FALLEN            = 5    // sticky tipover — operator must restart
+    FALLEN            = 5,   // sticky tipover — operator must restart
+    CHAR_ACT          = 6,   // Phase 2 — PWM sweep, measure stiction floor
+    BOOTSTRAP         = 7    // Phase 4.10c — measure K_motor, derive Kp/Ki/Kd
+};
+
+// Phase 4.10c BOOTSTRAP result. Populated when BOOTSTRAP exits (either to
+// RUN with measured K_motor, or back to IDLE on failure).
+struct BootstrapResult {
+    float    k_motor;          // measured plant gain (deg/s² per PWM)
+    float    derived_kp;       // ω_n²/K_motor (pushed to PID on success)
+    float    derived_kd;       // 2ζω_n/K_motor
+    float    derived_ki;       // 0.05 × Kp
+    uint8_t  pulses_valid;     // count of pulses with detectable response
+    uint8_t  pulses_total;     // total pulses applied (fixed by algorithm)
+    uint8_t  failure_reason;   // 0=ok, 1=pitch_out_of_range, 2=no_response,
+                               // 3=k_out_of_bounds, 4=user_abort
+    bool     converged;        // true iff K_motor was pushed to PlantIdentifier
 };
 
 /**
@@ -207,6 +223,8 @@ public:
             case BalanceAppState::RUN:              out.println(F("RUN")); break;
             case BalanceAppState::HELD:             out.println(F("HELD")); break;
             case BalanceAppState::FALLEN:           out.println(F("FALLEN")); break;
+            case BalanceAppState::BOOTSTRAP:        out.println(F("BOOT")); break;
+            default:                                out.println(F("?")); break;
         }
     }
 
@@ -242,6 +260,56 @@ public:
      * No-op if not currently in IDLE.
      */
     void enter_run_with_current_gains(uint32_t now_ms);
+
+    // Phase 2 — start CHARACTERISE sweep. No-op unless state == IDLE.
+    void enter_characterise_actuator(uint32_t now_ms);
+
+    // Phase 2 — measured stiction floor (0 = no measurement / not finished).
+    uint8_t get_ch_stiction_pwm() const { return ch_stiction_pwm_; }
+
+    // Phase 4.10c — start BOOTSTRAP: apply symmetric ±PWM pulses, measure
+    // gyro acceleration response, derive K_motor and seed the PlantIdentifier
+    // + push Kp/Ki/Kd to the PID before entering RUN.
+    //
+    // Preconditions: state == IDLE AND |pitch_deg − online_est offset| <
+    // BOOTSTRAP_MAX_INIT_PITCH (default 10°). If not, transitions back to
+    // IDLE immediately with failure_reason = pitch_out_of_range.
+    //
+    // On success: PID gains updated from measured K_motor, state → RUN with
+    // adaptive_active = true (no bootstrap-freeze window — pulses already
+    // produced the K we need). On failure: state → IDLE, motors stopped.
+    void enter_bootstrap(uint32_t now_ms);
+
+    // Phase 4.10c — last BOOTSTRAP outcome. Zeros if BOOTSTRAP never ran.
+    const BootstrapResult& get_bootstrap_result() const { return bootstrap_result_; }
+
+    // Per-pulse diagnostic log, shared by BOOTSTRAP and CHARACTERISE so loop()
+    // can stream each pulse's command + gyro response without violating
+    // ISR-Serial.print rules. `seq` increments after every populated record;
+    // drainer compares against its last-seen seq to spot new entries.
+    struct PulseLog {
+        uint8_t  seq;
+        uint8_t  source;          // 0 = bootstrap, 1 = characterise
+        uint8_t  pulse_idx;
+        int16_t  cmd_pwm;         // signed per-wheel PWM applied this pulse
+        int16_t  gyro_start_x10;  // gyro_y at pulse start (×10 dps)
+        int16_t  metric_x10;      // bootstrap: |Δω| ×10; char: Σ|gyro|·dt ×10
+        int16_t  thr_x10;         // threshold the metric was compared to
+        uint8_t  passed;          // 0/1 — metric > thr
+    };
+    const PulseLog& get_pulse_log() const { return pulse_log_; }
+    template <class TPrint>
+    void drain_pulse_log(TPrint& out, uint8_t& last_seq) {
+        if (pulse_log_.seq == last_seq) return;
+        last_seq = pulse_log_.seq;
+        out.print(pulse_log_.source == 0 ? F("bs#") : F("ch#"));
+        out.print(pulse_log_.pulse_idx);
+        out.print(F(" pwm=")); out.print(pulse_log_.cmd_pwm);
+        out.print(F(" g0=")); out.print(pulse_log_.gyro_start_x10 / 10.0f, 1);
+        out.print(F(" m=")); out.print(pulse_log_.metric_x10 / 10.0f, 1);
+        out.print(F(" thr=")); out.print(pulse_log_.thr_x10 / 10.0f, 1);
+        out.print(F(" ok=")); out.println(pulse_log_.passed);
+    }
 
     // ----- Inspection -----------------------------------------------------
 
@@ -357,6 +425,38 @@ private:
     void step_run_(uint32_t now_ms);
     void step_held_(uint32_t now_ms);
     void step_fallen_(uint32_t now_ms);
+    void step_char_act_(uint32_t now_ms);
+    void step_bootstrap_(uint32_t now_ms);
+
+    // Phase 2 CHAR_ACT state — pulse-sweep accumulator + result.
+    // Phase 2.1: response threshold is now MEASURED (baseline noise × 3),
+    // not the previous hardcoded 4000 (== avg 10 deg/s). Eliminates the
+    // false-positive that produced stiction=30 on 2026-05-18.
+    uint8_t  ch_last_idx_;       // most recent pulse index seen
+    uint16_t ch_gyro_acc_x10_;   // sum of |gyro_pitch_dps| * 10 over current pulse
+    uint16_t ch_response_thr_;   // measured threshold from baseline phase
+    uint8_t  ch_stiction_pwm_;   // measured stiction floor (0 = not found)
+
+    // Phase 4.10c BOOTSTRAP state — pulse loop accumulators + final result.
+    // The step handler walks a small state machine indexed by bs_phase_idx_:
+    //   0     : baseline noise window — accumulate |α| noise floor
+    //   1..N  : alternating ±pulse + cooldown windows
+    //   N+1   : finalize — median K_motor + push gains + transition
+    // Phase index doubles as "are we currently driving the motors" via the
+    // bs_pulse_active_ flag which step_bootstrap_ sets on pulse-window entry.
+    uint8_t  bs_phase_idx_;         // current bootstrap phase (0..7)
+    uint8_t  bs_pulse_count_;       // number of K samples successfully captured
+    bool     bs_pulse_active_;      // are motors currently driven this tick
+    float    bs_pulse_start_gyro_;  // gyro_y at pulse-start (for Δω measurement)
+    float    bs_noise_alpha_max_;   // peak |α| seen during baseline window
+    float    bs_prev_gyro_;         // for inter-tick gyro α differentiation
+    float    bs_k_sum_;             // running sum of valid K samples
+    BootstrapResult bootstrap_result_;
+
+    // Per-pulse telemetry buffer (see PulseLog struct above). Written from the
+    // ISR-side step_bootstrap_ / step_char_act_ at pulse-completion boundaries;
+    // drained by loop() via drain_pulse_log().
+    PulseLog pulse_log_;
 
     // Helpers
     void  read_imu_(uint32_t now_ms);

@@ -43,6 +43,12 @@ constexpr float DEFAULT_K_MAX    = 5.0f;     // K_motor upper bound (bench class
 // meaningfully toward the data without being dominated by the seed prior.
 constexpr float INITIAL_P        = 1.0f;
 
+// Covariance after seed_k_motor() pushes a directly-measured K. Much smaller
+// than INITIAL_P — we trust the bootstrap measurement and only let the RLS
+// nudge θ over time (battery sag, surface change). Sized so a single noisy
+// sample can't undo a clean pulse measurement.
+constexpr float SEED_P           = 0.05f;
+
 // σ-modification leak coefficient. Multiplied by (θ − θ_prior) when outside
 // the band — small enough to be invisible during normal operation, large
 // enough to drag the estimate back from a bad sample over a few seconds.
@@ -138,6 +144,22 @@ void PlantIdentifier::reset(float kp_initial, float kd_initial) {
     (void)kd_initial;   // reserved — currently only Kp shapes the prior
 
     P_                = INITIAL_P;
+    status_.samples   = 0;
+    status_.frozen    = false;
+    recompute_targets_();
+}
+
+void PlantIdentifier::seed_k_motor(float k_measured) {
+    // Clamp into the configured bench-class band. A bootstrap measurement
+    // outside the band almost certainly means the rig is wrong (motor lead
+    // reversed, IMU axis mismatch, no motion at all), not a real plant —
+    // but we still want a defined θ for the controller to use rather than
+    // a divide-by-near-zero blow-up.
+    float k = k_measured;
+    if (k < k_min_) k = k_min_;
+    if (k > k_max_) k = k_max_;
+    theta_            = k;
+    P_                = SEED_P;
     status_.samples   = 0;
     status_.frozen    = false;
     recompute_targets_();

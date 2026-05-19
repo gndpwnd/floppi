@@ -112,11 +112,19 @@ void OnlineMountingEstimator::mark_saved(uint32_t now_ms) {
 float OnlineMountingEstimator::update(float i_term, float pitch_deg,
                                       bool tipover_active, bool windup_active,
                                       float gyro_pitch_dps, uint32_t now_ms) {
-    // pitch_deg currently unused by the LPF math — reserved for future
-    // cross-checks (e.g., reject if pitch is wildly outside the estimate).
-    // Cast to void to silence unused-parameter warnings without restructuring
-    // the public API.
-    (void)pitch_deg;
+    // 2026-05-18 PM bench finding: the original I-term-driven target
+    //   target = reference + i_term * 0.01
+    // could only shift ±0.4° from reference (i_term cap = 40) AND averaged
+    // near zero when the bot oscillated, so the estimate never caught the
+    // true balance point. The architectural fix per the "more/less" control
+    // philosophy: when the bot is freely balancing, pitch oscillates around
+    // the true balance point. That MEAN pitch IS what we want to track.
+    //
+    // i_term is now used only as a sanity/health signal (large I-term ⇒ the
+    // loop hasn't found balance ⇒ either we're already frozen via windup or
+    // the LPF will catch the mean once balance is reached). Kept in the
+    // signature for API stability and future telemetry.
+    (void)i_term;
 
     if (!initialized_) {
         // Caller forgot to call initialize() — be defensive: latch on the
@@ -165,16 +173,20 @@ float OnlineMountingEstimator::update(float i_term, float pitch_deg,
         return estimate_deg_;
     }
 
-    // --- Slow LPF toward (reference + i_term * gain_to_angle) ------------
+    // --- Slow LPF toward pitch_deg (the live sensor reading) ------------
     //
     // Discrete form of dx/dt = (target - x) / tc:
     //   x += (1/tc) * dt_s * (target - x)
     //
-    // With tc = 300 s and dt_s = 0.005 s (200 Hz):
-    //   alpha_per_step = 0.005 / 300 ≈ 1.67e-5
-    // i.e., each sample nudges the estimate by ~0.00002 of the residual,
-    // which is exactly the "minutes to drift one degree" behaviour we want.
-    const float target_deg = reference_deg_ + i_term * gain_to_angle_;
+    // Target = pitch_deg directly. When the bot is freely balancing,
+    // pitch oscillates around the true balance point, and the LPF averages
+    // to that mean. Freeze gates above (windup / high gyro) prevent updates
+    // during bad data (saturated control, recovery transients).
+    //
+    // gain_to_angle_ is retained as a no-op until a future refactor removes
+    // it from the configuration API (used to scale I-term targets).
+    (void)gain_to_angle_;
+    const float target_deg = pitch_deg;
     const float alpha      = 1.0f / lpf_time_constant_sec_;
     float candidate        = estimate_deg_ + alpha * dt_s * (target_deg - estimate_deg_);
 

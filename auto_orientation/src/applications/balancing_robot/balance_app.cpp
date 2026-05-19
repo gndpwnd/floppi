@@ -38,6 +38,19 @@
 #include "balance_app.h"
 
 #include <math.h>     // sqrtf (only used in capture variance — not a hot path)
+// PROGMEM / pgm_read_byte: AVR keeps tables in flash. Other platforms (Teensy,
+// ESP32, native test) put tables in regular memory; we shim the macros to
+// plain pointer access so the same source compiles everywhere.
+#if defined(__AVR__) || defined(ARDUINO_ARCH_AVR)
+  #include <avr/pgmspace.h>
+#else
+  #ifndef PROGMEM
+    #define PROGMEM
+  #endif
+  #ifndef pgm_read_byte
+    #define pgm_read_byte(addr) (*reinterpret_cast<const uint8_t*>(addr))
+  #endif
+#endif
 
 // CAL_PRINTLN/CAL_PRINTF macros from config/mode.h are nice but require
 // Serial.* which doesn't exist on the native test host. We provide a tiny
@@ -147,7 +160,34 @@ BalanceApp::BalanceApp(OrientationSensor& imu,
       applied_ki_(0.0f),
       run_entered_ms_(0),
       adaptive_active_(false),
-      pending_state_log_(0xFF) {
+      pending_state_log_(0xFF),
+      ch_last_idx_(0xFF),
+      ch_gyro_acc_x10_(0),
+      ch_response_thr_(0),
+      ch_stiction_pwm_(0),
+      bs_phase_idx_(0),
+      bs_pulse_count_(0),
+      bs_pulse_active_(false),
+      bs_pulse_start_gyro_(0.0f),
+      bs_noise_alpha_max_(0.0f),
+      bs_prev_gyro_(0.0f),
+      bs_k_sum_(0.0f) {
+    pulse_log_.seq            = 0;
+    pulse_log_.source         = 0;
+    pulse_log_.pulse_idx      = 0;
+    pulse_log_.cmd_pwm        = 0;
+    pulse_log_.gyro_start_x10 = 0;
+    pulse_log_.metric_x10     = 0;
+    pulse_log_.thr_x10        = 0;
+    pulse_log_.passed         = 0;
+    bootstrap_result_.k_motor         = 0.0f;
+    bootstrap_result_.derived_kp      = 0.0f;
+    bootstrap_result_.derived_kd      = 0.0f;
+    bootstrap_result_.derived_ki      = 0.0f;
+    bootstrap_result_.pulses_valid    = 0;
+    bootstrap_result_.pulses_total    = 0;
+    bootstrap_result_.failure_reason  = 0;
+    bootstrap_result_.converged       = false;
     raw_gyro_dps_[0] = 0.0f;
     raw_gyro_dps_[1] = 0.0f;
     raw_gyro_dps_[2] = 0.0f;
@@ -238,6 +278,8 @@ void BalanceApp::tick(uint32_t now_ms) {
         case BalanceAppState::RUN:              step_run_(now_ms);       break;
         case BalanceAppState::HELD:             step_held_(now_ms);      break;
         case BalanceAppState::FALLEN:           step_fallen_(now_ms);    break;
+        case BalanceAppState::CHAR_ACT:         step_char_act_(now_ms);  break;
+        case BalanceAppState::BOOTSTRAP:        step_bootstrap_(now_ms); break;
     }
 }
 
@@ -301,11 +343,12 @@ void BalanceApp::step_capture_(uint32_t now_ms) {
             // pitch-only path is the structurally-correct hook.
             online_est_.reset_to_reference(cap_pitch_mean_, now_ms);
             mount_status_ = online_est_.get_status();
-            // SAFETY: do NOT auto-transition to AUTO_TUNE here. Auto-tune
-            // drives motors aggressively; the operator must explicitly opt
-            // in by long-pressing the button (or 't' over serial) once the
-            // bot is positioned on its tuning stand.
-            enter_state_(BalanceAppState::IDLE, now_ms);
+            // Auto-chain to BOOTSTRAP. With mount captured, the bot is upright
+            // and propped; BOOTSTRAP runs ±PWM pulses to measure K_motor and
+            // derives Kp/Kd/Ki before entering RUN. If pitch drifted between
+            // capture-end and bootstrap-start, BOOTSTRAP's own pre-condition
+            // check (|pitch| < 10°) catches it and bails to IDLE.
+            enter_state_(BalanceAppState::BOOTSTRAP, now_ms);
         } else {
             // Too jittery — back to IDLE. User will re-press to retry.
             enter_state_(BalanceAppState::IDLE, now_ms);
@@ -392,10 +435,39 @@ void BalanceApp::step_run_(uint32_t now_ms) {
     // catches sudden lifts. Gated by USE_BALANCE_HELD_DETECTION — operator
     // can disable for the simplest possible "balance forever" mode.
 #ifdef USE_BALANCE_HELD_DETECTION
-    if (motion_filters_init_ &&
-        (g_lateral_dps_lpf_ > 30.0f || a_dev_lpf_ > 3.0f)) {
+    // Phase 2.5 (universal balance vision, backlog #9) + lateral-gyro fallback.
+    //
+    // Trigger 1 — externally-driven motion: motor command is small but pitch
+    // gyro shows fast rotation. The motion is NOT caused by motor torque, so
+    // an external force is moving the bot (operator lifted, shoved, or the
+    // bot is falling). This is the operator's "motion without motor command =
+    // falling" heuristic, re-framed as HELD trigger so the bot doesn't fight
+    // the external force. Cheap (no quaternion math) and complementary to
+    // the lateral-gyro / accel-dev test below.
+    //
+    // Trigger 2 — lenient lateral-gyro (legacy, 2026-05-18 thresholds): catches
+    // sustained handling/lifting that the cheap test misses. Tripled from the
+    // original to avoid firing on recovery transients. Phase 2.7 will replace
+    // this with full motor-null-space projection.
+    // Bench finding 2026-05-18 PM (Phase D 25 s observation): the lateral-gyro
+    // threshold at 90 dps fires on every wheel-engaged recovery transient and
+    // is the root cause of the RUN↔HELD oscillation. Removed it. The remaining
+    // signals are physically grounded:
+    //   - Phase 2.5 ext_motion (cmd quiet + pitch gyro fast) — bot is moving
+    //     but PID isn't pushing → external force (handle, fall, restraint)
+    //   - accel-deviation > 6 m/s² — gravity vector dropped → bot lifted
+    // The legacy lateral-gyro path will return when Phase 2.7 ships the proper
+    // motor-null-space projection (which can't be confused by yaw/roll induced
+    // during a pitch recovery).
+    const int16_t last_cmd_mag = last_output_ < 0 ? -last_output_ : last_output_;
+    const float pitch_gyro_now = raw_gyro_dps_[1];
+    const float abs_pitch_gyro = pitch_gyro_now < 0.0f ? -pitch_gyro_now : pitch_gyro_now;
+    const bool ext_motion = (last_cmd_mag < 20) && (abs_pitch_gyro > 30.0f);
+    const bool lift_detected = motion_filters_init_ && (a_dev_lpf_ > 6.0f);
+    if (ext_motion || lift_detected) {
         if (hold_enter_count_ < 65535) hold_enter_count_ += 1;
-        if (hold_enter_count_ >= 30) {
+        const uint16_t dwell = ext_motion ? 20 : 60;
+        if (hold_enter_count_ >= dwell) {
             enter_state_(BalanceAppState::HELD, now_ms);
             return;
         }
@@ -413,8 +485,25 @@ void BalanceApp::step_run_(uint32_t now_ms) {
     pid_.set_setpoint(0.0f);
     const float meas           = corrected_pitch_();
     const float gyro_pitch_dps = raw_gyro_dps_[1];  // Y-axis = pitch rate
-    const float out = pid_.compute_with_rate(meas, gyro_pitch_dps,
+    float out = pid_.compute_with_rate(meas, gyro_pitch_dps,
                                               cfg_.pid_sample_ms);
+
+    // Phase 2.6 — gain scheduling (backlog #10). Scale output linearly inside
+    // a soft zone around balance. Eliminates the operator's "motors too high
+    // speed near balance" complaint by reducing D-term-dominated PWM bursts
+    // on micro gyro noise. Outside the soft zone, output is unscaled — full
+    // recovery authority.
+    //
+    // 2026-05-18 PM bench finding: 2° was too wide. At 1° pitch, output was
+    // only 50% of PID command, not enough to arrest a real fall. Tightened
+    // to 1° so recovery authority returns to 100% at half the tilt. The bot
+    // gets full PID command for any real disturbance and gentle output only
+    // for genuine balance-point trim.
+    const float abs_pitch_for_sched = meas < 0.0f ? -meas : meas;
+    constexpr float SOFT_ZONE_DEG = 1.0f;
+    if (abs_pitch_for_sched < SOFT_ZONE_DEG) {
+        out *= (abs_pitch_for_sched / SOFT_ZONE_DEG);
+    }
     const int16_t pwm = (int16_t)out;
 
     // Item 4 — soft-cutoff when tipped past the linear region
@@ -444,25 +533,29 @@ void BalanceApp::step_run_(uint32_t now_ms) {
         last_output_ = pwm;
     }
 
-    // Saturation timeout: if the PID is pegged near the RUN cap for too long,
-    // the controller is fighting an impossible state (wrong polarity, stuck
-    // wheel, mount-offset way off). Warn — but do NOT transition to FALLEN;
-    // Item 4's soft-cutoff makes the sticky-FALLEN escape obsolete and the
-    // bot can recover autonomously the moment the operator rights it.
+    // STUCK detector (2026-05-18 operator-proposed): PID saturated AND no
+    // angular motion = something restraining the wheels (operator holding,
+    // chassis trapped, motor stalled). Today's bench data caught a 38 s
+    // episode of out=+255 / pitch frozen at -2.41° while operator was
+    // physically restraining the bot. Without this detector, motors stall
+    // against external force and damage themselves.
+    //
+    // Condition: |output| >= 180 (saturated) AND |gyro_pitch| < 5 deg/s
+    // (no rotation actually happening) for >= 1500 ms.
+    // Action: stop motors, request abort -> IDLE on next tick.
     static const int16_t  SAT_THRESHOLD_PWM = 180;
-    static const uint32_t SAT_TIMEOUT_MS    = 3000;
+    static const float    STUCK_GYRO_DPS    = 5.0f;
+    static const uint32_t STUCK_TIMEOUT_MS  = 1500;
     const int16_t mag = pwm < 0 ? -pwm : pwm;
-    if (mag >= SAT_THRESHOLD_PWM) {
+    const float abs_gy = gyro_pitch_dps < 0 ? -gyro_pitch_dps : gyro_pitch_dps;
+    if (mag >= SAT_THRESHOLD_PWM && abs_gy < STUCK_GYRO_DPS) {
         if (sat_run_start_ms_ == 0) {
             sat_run_start_ms_ = now_ms;
-        } else if (now_ms - sat_run_start_ms_ > SAT_TIMEOUT_MS) {
-            // Item 3 — no Serial.print in ISR path. Reset the timer; if the
-            // hardware fault persists the operator will notice from the
-            // status command (s) and from the soft-cutoff zeroing motors
-            // when |pitch| > 25° anyway.
+        } else if (now_ms - sat_run_start_ms_ > STUCK_TIMEOUT_MS) {
             sat_run_start_ms_ = 0;
-            // Stay in RUN — soft-cutoff (Item 4) already protects motors
-            // when the bot is tipped; there's nothing useful FALLEN adds.
+            motors_.stop();
+            last_output_ = 0;
+            safety_.request_abort();   // -> IDLE on next tick
         }
     } else {
         sat_run_start_ms_ = 0;
@@ -637,13 +730,15 @@ void BalanceApp::on_short_press(uint32_t now_ms) {
             enter_state_(BalanceAppState::RUN, now_ms);
             break;
         case BalanceAppState::FALLEN:
-            // Operator-initiated restart from sticky FALLEN. Bypasses the
-            // enter_run_with_current_gains() IDLE-only guard because the
-            // button is unambiguous operator intent.
-            pid_.set_output_limits(-80.0f, 80.0f);
+            // Operator-initiated restart from sticky FALLEN. Route through
+            // BOOTSTRAP rather than direct-RUN so the bot re-measures K_motor
+            // (battery may have sagged, surface may have changed during the
+            // tipover) and re-derives gains for current conditions. Skips the
+            // IDLE-only guard via direct state transition because the button
+            // press is unambiguous operator intent.
             pid_.set_setpoint(0.0f);
             pid_.reset();
-            enter_state_(BalanceAppState::RUN, now_ms);
+            enter_state_(BalanceAppState::BOOTSTRAP, now_ms);
             break;
         default:
             // CAPTURE / TUNE / RUN ignore short press in the skeleton.
@@ -655,13 +750,16 @@ void BalanceApp::on_long_press(uint32_t now_ms) {
     // Long press is the universal "get me out" signal.
     safety_.request_abort();
 
-    // Special case: in IDLE, long-press also kicks off AUTO_TUNE skipping
-    // the mounting capture. This is the "I trust the saved offset" gesture.
+    // Special case: in IDLE, long-press kicks off BOOTSTRAP skipping the
+    // mounting capture (use the currently-loaded offset). Phase 4.10c — see
+    // step_bootstrap_(). The relay-feedback AUTO_TUNE path is no longer wired
+    // to long-press; RLS plant-ID via BOOTSTRAP + continuous RUN-time
+    // adaptation replaces it.
     if (state_ == BalanceAppState::IDLE) {
         // Clear the abort we just set — we're acting on the long-press here
         // as an explicit transition request, not as an abort.
         safety_.clear_abort();
-        enter_state_(BalanceAppState::AUTO_TUNE, now_ms);
+        enter_state_(BalanceAppState::BOOTSTRAP, now_ms);
     }
 }
 
@@ -676,13 +774,14 @@ float BalanceApp::get_mount_offset_deg() const {
 const char* BalanceApp::state_name() const {
     switch (state_) {
         case BalanceAppState::IDLE:             return "IDLE";
-        case BalanceAppState::CAPTURE_MOUNTING: return "CAPTURE_MOUNTING";
-        case BalanceAppState::AUTO_TUNE:        return "AUTO_TUNE";
+        case BalanceAppState::CAPTURE_MOUNTING: return "CAP";
+        case BalanceAppState::AUTO_TUNE:        return "TUNE";
         case BalanceAppState::RUN:              return "RUN";
         case BalanceAppState::HELD:             return "HELD";
-        case BalanceAppState::FALLEN:           return "FALLEN";
+        case BalanceAppState::FALLEN:           return "FAL";
+        case BalanceAppState::BOOTSTRAP:        return "BOOT";
+        default:                                return "?";   // CHAR_ACT, etc
     }
-    return "UNKNOWN";
 }
 
 // ---------------------------------------------------------------------------
@@ -780,7 +879,411 @@ void BalanceApp::enter_state_(BalanceAppState s, uint32_t now_ms) {
             last_output_ = 0;
             pid_.reset();
             break;
+        case BalanceAppState::CHAR_ACT:
+            motors_.stop();
+            last_output_ = 0;
+            ch_last_idx_ = 0xFF;       // sentinel: first tick triggers pulse-0 init
+            ch_gyro_acc_x10_ = 0;
+            ch_response_thr_ = 0;      // computed in baseline phase
+            ch_stiction_pwm_ = 0;
+            break;
+        case BalanceAppState::BOOTSTRAP:
+            motors_.stop();
+            last_output_ = 0;
+            bs_phase_idx_         = 0;
+            bs_pulse_count_       = 0;
+            bs_pulse_active_      = false;
+            bs_pulse_start_gyro_  = 0.0f;
+            // bs_prev_gyro_ + bs_noise_alpha_max_ are re-purposed during the
+            // baseline window as running gyro_min / gyro_max. Seed both from
+            // the current gyro so the running comparison is well-defined on
+            // the very first baseline tick (before that tick has had a chance
+            // to compare against itself). Replaces the previous per-tick |α|
+            // accumulator, which compared 5 ms tick-diffs against the pulse's
+            // 100 ms-averaged signal — apples-to-oranges, ~5–20× over-
+            // threshold at realistic BNO055 noise levels.
+            bs_prev_gyro_         = raw_gyro_dps_[1];
+            bs_noise_alpha_max_   = raw_gyro_dps_[1];
+            bs_k_sum_             = 0.0f;
+            bootstrap_result_.pulses_valid   = 0;
+            bootstrap_result_.pulses_total   = 0;
+            bootstrap_result_.k_motor        = 0.0f;
+            bootstrap_result_.derived_kp     = 0.0f;
+            bootstrap_result_.derived_kd     = 0.0f;
+            bootstrap_result_.derived_ki     = 0.0f;
+            bootstrap_result_.failure_reason = 0;
+            bootstrap_result_.converged      = false;
+            break;
     }
+}
+
+// ---------------------------------------------------------------------------
+// Phase 2 — actuator characterisation. Pulses motors at successively higher
+// PWM values, accumulates |gyro_pitch| over each pulse, records the first PWM
+// that produces measurable angular response as the stiction floor. Universal
+// across bots, surfaces, batteries — replaces hardcoded stiction_min_pwm.
+// ---------------------------------------------------------------------------
+void BalanceApp::enter_characterise_actuator(uint32_t now_ms) {
+    if (state_ == BalanceAppState::IDLE) {
+        enter_state_(BalanceAppState::CHAR_ACT, now_ms);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Phase 4.10c BOOTSTRAP — measure K_motor from controlled ±PWM pulses, derive
+// Kp/Kd/Ki via pole-placement (Kp = ω_n²/K, Kd = 2ζω_n/K), push to PID, enter
+// RUN already tuned to this specific chassis. Universal across bots, surfaces,
+// batteries, payloads — retires the hardcoded Kp/Ki/Kd seed.
+//
+// Algorithm: short symmetric pulses (±100, ±150 PWM), measure peak gyro α via
+// finite-difference on raw_gyro_dps_[1], K_i = |Δω/dt| / |pwm_total_i|.
+// Mean over valid pulses → K_motor. Reference design:
+// docs/findings/bootstrap_protocol_unstable_plant.md.
+//
+// Pre-condition: |corrected_pitch| < BOOTSTRAP_MAX_INIT_PITCH (10°). Operator
+// is presumed to have propped the bot upright after CAPTURE_MOUNTING.
+//
+// Pulse parameters are STRUCTURAL design choices (analogous to "6 pulses in
+// CHARACTERISE"), not per-bot tunings: 4 pulses × 100ms each is long enough to
+// excite measurable acceleration above noise floor, short enough that the bot
+// doesn't drift past the linear regime during identification. Magnitudes
+// (100/150 PWM/wheel) sit firmly above any reasonable stiction floor and well
+// below saturation (255).
+// ---------------------------------------------------------------------------
+void BalanceApp::enter_bootstrap(uint32_t now_ms) {
+    if (state_ != BalanceAppState::IDLE) {
+        return;
+    }
+    enter_state_(BalanceAppState::BOOTSTRAP, now_ms);
+}
+
+void BalanceApp::step_bootstrap_(uint32_t now_ms) {
+    // Phase layout (all relative to state_entered_ms_):
+    //   0..299     ms   PHASE 0 baseline — motors off, peak |α| noise capture
+    //   300..399   ms   PULSE 0  +100 PWM/wheel
+    //   400..499   ms   COOL  0  motors off, capture Δω → K_0
+    //   500..599   ms   PULSE 1  -100 PWM/wheel
+    //   600..699   ms   COOL  1  → K_1
+    //   700..799   ms   PULSE 2  +150 PWM/wheel
+    //   800..899   ms   COOL  2  → K_2
+    //   900..999   ms   PULSE 3  -150 PWM/wheel
+    //   1000..1099 ms   COOL  3  → K_3
+    //   ≥ 1100     ms   FINALISE  → push gains, enter RUN (or IDLE on fail)
+    static const uint16_t BASELINE_MS = 300;
+    static const uint16_t PULSE_MS    = 150;
+    static const uint16_t COOLDOWN_MS = 150;
+    static const uint8_t  N_PULSES    = 4;
+    // Per-wheel pulse magnitudes. Alternating signs are applied below.
+    // Bench finding 2026-05-18 evening: 100/150 PWM did not always overcome
+    // motor stiction + battery sag, producing zero |Δω| and a `no_response`
+    // bail-out. Raised to 180/240 so the smaller pulse is well above any
+    // reasonable stiction floor and the larger pulse approaches saturation
+    // (255). Pulse duration also raised 100→150 ms to give slow motors more
+    // time to reach steady acceleration before the cooldown latch.
+    static const uint8_t  PULSE_PWMS[4] PROGMEM = {180, 180, 240, 240};
+    // Safety: abort if pitch leaves ±15° during identification — bot is
+    // tipping over and pulses would only make it worse.
+    static const float    BOOTSTRAP_ABORT_PITCH = 15.0f;
+    // Pre-condition: pitch must start within ±10° of the bot's calibrated
+    // upright. Anything beyond means the bot wasn't propped upright before
+    // bootstrap began — fail fast rather than firing motors at a tipped bot.
+    static const float    BOOTSTRAP_MAX_INIT_PITCH = 10.0f;
+
+    // Operator abort always honoured.
+    if (safety_.abort_requested()) {
+        safety_.clear_abort();
+        motors_.stop();
+        last_output_ = 0;
+        bootstrap_result_.failure_reason = 4;
+        bootstrap_result_.converged      = false;
+        enter_state_(BalanceAppState::IDLE, now_ms);
+        return;
+    }
+
+    const uint16_t elapsed = (uint16_t)(now_ms - state_entered_ms_);
+    const float    pitch_corr = corrected_pitch_();
+    const float    abs_pitch  = pitch_corr < 0.0f ? -pitch_corr : pitch_corr;
+    const float    gyro_now   = raw_gyro_dps_[1];
+    const float    dt_sec     = (float)cfg_.pid_sample_ms * 0.001f;
+
+    // Entry guard: during the baseline window (motors off, no impulse), pitch
+    // must stay within ±BOOTSTRAP_MAX_INIT_PITCH. If the operator propped the
+    // bot at a steep angle, the upcoming pulse phase would worsen it — fail
+    // fast instead. This gate runs every baseline tick (not just the first)
+    // so even a slow tip during the 300 ms baseline triggers a bail.
+    if (elapsed < BASELINE_MS && abs_pitch > BOOTSTRAP_MAX_INIT_PITCH) {
+        motors_.stop();
+        last_output_ = 0;
+        bootstrap_result_.failure_reason = 1;
+        bootstrap_result_.converged      = false;
+        enter_state_(BalanceAppState::IDLE, now_ms);
+        return;
+    }
+
+    // Runtime safety: pitch left the safe envelope during a pulse — bail.
+    if (abs_pitch > BOOTSTRAP_ABORT_PITCH) {
+        motors_.stop();
+        last_output_ = 0;
+        bootstrap_result_.failure_reason = 1;
+        bootstrap_result_.converged      = false;
+        enter_state_(BalanceAppState::IDLE, now_ms);
+        return;
+    }
+
+    // ---- PHASE 0: baseline noise floor ----
+    // Track peak-to-peak gyro_y over the entire baseline window. This is in the
+    // SAME units (dps) as the |Δω| measured during a pulse, so the downstream
+    // "did this pulse beat the noise?" gate is apples-to-apples. The previous
+    // implementation tracked per-tick |α| (5 ms tick-diff / dt), which over-
+    // estimated noise by the ratio of the chip's true sample interval (10 ms
+    // at 100 Hz NDOF) to our 5 ms tick — a real motor response at ~80 dps²
+    // never cleared the resulting threshold.
+    (void)dt_sec;
+    if (elapsed < BASELINE_MS) {
+        motors_.stop();
+        last_output_ = 0;
+        bs_pulse_active_ = false;
+        if (gyro_now < bs_prev_gyro_)        bs_prev_gyro_       = gyro_now;
+        if (gyro_now > bs_noise_alpha_max_)  bs_noise_alpha_max_ = gyro_now;
+        return;
+    }
+
+    // ---- PHASE 1..N: pulses + cooldowns ----
+    if (bs_phase_idx_ < N_PULSES) {
+        const uint16_t cycle_start_ms = BASELINE_MS +
+                                        (uint16_t)bs_phase_idx_ * (PULSE_MS + COOLDOWN_MS);
+        const uint16_t cycle_elapsed  = elapsed - cycle_start_ms;
+
+        if (cycle_elapsed < PULSE_MS) {
+            // Pulse-window: drive motors at signed PWM, latch start-of-pulse gyro.
+            if (!bs_pulse_active_) {
+                bs_pulse_active_     = true;
+                bs_pulse_start_gyro_ = gyro_now;
+            }
+            const uint8_t pwm_mag = pgm_read_byte(&PULSE_PWMS[bs_phase_idx_]);
+            // Sign alternates: even idx = +, odd idx = -. Net momentum cancels
+            // across the full sequence so the bot doesn't drift in one direction.
+            const int16_t signed_pwm = (bs_phase_idx_ & 1)
+                                       ? -(int16_t)pwm_mag
+                                       :  (int16_t)pwm_mag;
+            motors_.set_speeds(signed_pwm, signed_pwm);
+            last_output_ = signed_pwm;
+            return;
+        }
+
+        if (cycle_elapsed < (PULSE_MS + COOLDOWN_MS)) {
+            // Cooldown window — motors off. On entry, capture Δω from the just-
+            // completed pulse and compute K_i. We do this exactly once per
+            // cycle by transitioning bs_pulse_active_ false on the first
+            // cooldown tick.
+            if (bs_pulse_active_) {
+                motors_.stop();
+                last_output_ = 0;
+                bs_pulse_active_ = false;
+
+                const float dgyro = gyro_now - bs_pulse_start_gyro_;
+                const float abs_dgyro = dgyro < 0.0f ? -dgyro : dgyro;
+                // Compare the pulse's gyro excursion directly to the baseline
+                // peak-to-peak gyro range — both quantities are in dps and span
+                // a comparable time window (pulse 150 ms, baseline 300 ms, so
+                // the noise envelope baseline_range slightly over-counts by
+                // √2; we accept that conservative margin). Floor the threshold
+                // at 0.5 dps so a synthetic / perfectly-still gyro doesn't
+                // accept zero-mean noise as signal.
+                const float baseline_range = bs_noise_alpha_max_ - bs_prev_gyro_;
+                float thr_dps = 3.0f * baseline_range;
+                if (thr_dps < 0.5f) thr_dps = 0.5f;
+                const bool passed = abs_dgyro > thr_dps;
+
+                const uint8_t pwm_mag = pgm_read_byte(&PULSE_PWMS[bs_phase_idx_]);
+                if (passed) {
+                    // K = α / pwm_total = (|Δω|/τ) / pwm_total. Both wheels are
+                    // driven identically → pwm_total = 2 × per-wheel.
+                    const float pulse_sec = (float)PULSE_MS * 0.001f;
+                    const float pwm_total = 2.0f * (float)pwm_mag;
+                    const float k_i       = abs_dgyro / (pulse_sec * pwm_total);
+                    bs_k_sum_     += k_i;
+                    bs_pulse_count_++;
+                }
+
+                // Per-pulse telemetry record — drained by loop() (see
+                // BalanceApp::drain_pulse_log). Lets the bench operator see
+                // motor command + gyro response per pulse, which is the only
+                // way to tell "motors didn't move" from "gyro didn't measure".
+                const int16_t signed_pwm = (bs_phase_idx_ & 1)
+                                           ? -(int16_t)pwm_mag
+                                           :  (int16_t)pwm_mag;
+                pulse_log_.source         = 0;
+                pulse_log_.pulse_idx      = bs_phase_idx_;
+                pulse_log_.cmd_pwm        = signed_pwm;
+                pulse_log_.gyro_start_x10 = (int16_t)(bs_pulse_start_gyro_ * 10.0f);
+                pulse_log_.metric_x10     = (int16_t)(abs_dgyro * 10.0f);
+                pulse_log_.thr_x10        = (int16_t)(thr_dps * 10.0f);
+                pulse_log_.passed         = passed ? 1 : 0;
+                pulse_log_.seq++;
+            }
+            return;
+        }
+
+        // Cycle complete — advance phase index for next tick.
+        bs_phase_idx_++;
+        return;
+    }
+
+    // ---- FINALISE ----
+    motors_.stop();
+    last_output_ = 0;
+    bootstrap_result_.pulses_total = N_PULSES;
+    bootstrap_result_.pulses_valid = bs_pulse_count_;
+
+    // Need at least half the pulses to have produced a measurable response —
+    // otherwise either the motors are disconnected, the gyro axis is wrong,
+    // or stiction is unusually high.
+    if (bs_pulse_count_ < (N_PULSES / 2)) {
+        bootstrap_result_.failure_reason = 2;   // no_response
+        bootstrap_result_.converged      = false;
+        enter_state_(BalanceAppState::IDLE, now_ms);
+        return;
+    }
+
+    const float k_measured = bs_k_sum_ / (float)bs_pulse_count_;
+    bootstrap_result_.k_motor = k_measured;
+
+    // Hand the measured K to the PlantIdentifier. It clamps to its (k_min,
+    // k_max) class bounds and recomputes the pole-placement target gains.
+    plant_id_.seed_k_motor(k_measured);
+    const PlantIdentifierStatus& ps = plant_id_.get_status();
+
+    // Sanity: if seed_k_motor had to clamp aggressively, the measurement was
+    // likely garbage (motors didn't move, axis swapped). Bail before pushing
+    // wild gains to the PID.
+    const float k_clamped_diff = k_measured > ps.k_motor
+                                 ? k_measured - ps.k_motor
+                                 : ps.k_motor - k_measured;
+    const float k_rel_diff = k_measured > 1e-6f ? k_clamped_diff / k_measured
+                                                 : 1.0f;
+    if (k_rel_diff > 0.5f) {
+        bootstrap_result_.failure_reason = 3;   // k_out_of_bounds
+        bootstrap_result_.converged      = false;
+        enter_state_(BalanceAppState::IDLE, now_ms);
+        return;
+    }
+
+    bootstrap_result_.derived_kp     = ps.kp_target;
+    bootstrap_result_.derived_kd     = ps.kd_target;
+    bootstrap_result_.derived_ki     = ps.ki_target;
+    bootstrap_result_.failure_reason = 0;
+    bootstrap_result_.converged      = true;
+
+    // Push gains so step_run_'s enter_state_ side-effect sees them as the
+    // "current" PID state when it back-seeds plant_id_.
+    pid_.set_tunings(ps.kp_target, ps.ki_target, ps.kd_target);
+    enter_state_(BalanceAppState::RUN, now_ms);
+    // adaptive_active_ defaults to false on RUN entry; bypass the bootstrap-
+    // freeze window because pulse identification already gave us a clean K.
+    // Same value adaptive_active_ would reach after BOOTSTRAP_FREEZE_MS in
+    // step_run_'s run_plant_id_ — we just save those 5 seconds since we no
+    // longer need that warm-up to estimate K from natural disturbances.
+    adaptive_active_   = true;
+    run_entered_ms_    = now_ms - 10000;   // back-date so freeze window expires
+}
+
+void BalanceApp::step_char_act_(uint32_t now_ms) {
+    // Phase 2.1 layout:
+    //   [0..200 ms]      BASELINE — motors off, measure |gyro_pitch| noise floor
+    //   [200..1400 ms]   SWEEP    — 6 pulses x 200 ms, alternating direction
+    //
+    // Response threshold = max(3 × baseline_acc, RESP_FLOOR). The hardcoded
+    // 10 deg/s threshold from the first 2026-05-18 implementation was the
+    // root cause of the suspicious stiction=30 reading: settling oscillation
+    // at bot-placement exceeded the threshold before motors even pulsed.
+    // The measured-floor approach is universal — works on any bot, surface,
+    // mounting orientation, and during natural gyro noise.
+    static const uint8_t  PWM_TABLE[]  PROGMEM = {30, 60, 90, 120, 150, 200};
+    static const uint8_t  N_PULSES     = 6;
+    static const uint16_t PULSE_MS     = 200;
+    static const uint16_t BASELINE_MS  = 200;
+    static const uint16_t RESP_FLOOR   = 800;   // ~2 deg/s avg over 200 ms
+
+    const uint16_t elapsed = (uint16_t)(now_ms - state_entered_ms_);
+
+    // ---- Phase 2.1 baseline phase ----
+    if (elapsed < BASELINE_MS) {
+        motors_.stop();
+        const float gy = raw_gyro_dps_[1];
+        const float ag = gy < 0.0f ? -gy : gy;
+        ch_gyro_acc_x10_ += (uint16_t)(ag * 10.0f);
+        return;
+    }
+
+    // Transition from baseline → sweep: lock in threshold, reset accumulator.
+    if (ch_last_idx_ == 0xFF) {
+        uint32_t thr = (uint32_t)ch_gyro_acc_x10_ * 3;
+        if (thr < RESP_FLOOR) thr = RESP_FLOOR;
+        if (thr > 60000) thr = 60000;
+        ch_response_thr_ = (uint16_t)thr;
+        ch_last_idx_     = 0;
+        ch_gyro_acc_x10_ = 0;
+    }
+
+    // ---- Sweep phase ----
+    const uint16_t sweep_ms = elapsed - BASELINE_MS;
+    const uint8_t  idx      = sweep_ms / PULSE_MS;
+
+    if (idx >= N_PULSES) {
+        motors_.stop();
+        const bool last_passed = ch_gyro_acc_x10_ > ch_response_thr_;
+        // Emit final pulse's telemetry before transitioning out.
+        const uint8_t last_pwm_mag = pgm_read_byte(&PWM_TABLE[N_PULSES - 1]);
+        pulse_log_.source         = 1;
+        pulse_log_.pulse_idx      = N_PULSES - 1;
+        pulse_log_.cmd_pwm        = ((N_PULSES - 1) & 1)
+                                    ? -(int16_t)last_pwm_mag
+                                    :  (int16_t)last_pwm_mag;
+        pulse_log_.gyro_start_x10 = 0;
+        pulse_log_.metric_x10     = (int16_t)ch_gyro_acc_x10_;
+        pulse_log_.thr_x10        = (int16_t)ch_response_thr_;
+        pulse_log_.passed         = last_passed ? 1 : 0;
+        pulse_log_.seq++;
+        if (ch_stiction_pwm_ == 0 && last_passed) {
+            ch_stiction_pwm_ = last_pwm_mag;
+        }
+        enter_state_(BalanceAppState::IDLE, now_ms);
+        return;
+    }
+
+    if (idx != ch_last_idx_) {
+        // Emit telemetry for the just-completed pulse before switching to the
+        // next PWM. ch_last_idx_ == 0xFF means we're transitioning out of the
+        // baseline window — nothing to log yet.
+        if (ch_last_idx_ != 0xFF) {
+            const uint8_t prev_pwm = pgm_read_byte(&PWM_TABLE[ch_last_idx_]);
+            const bool prev_passed = ch_gyro_acc_x10_ > ch_response_thr_;
+            pulse_log_.source         = 1;
+            pulse_log_.pulse_idx      = ch_last_idx_;
+            pulse_log_.cmd_pwm        = (ch_last_idx_ & 1)
+                                        ? -(int16_t)prev_pwm
+                                        :  (int16_t)prev_pwm;
+            pulse_log_.gyro_start_x10 = 0;
+            pulse_log_.metric_x10     = (int16_t)ch_gyro_acc_x10_;
+            pulse_log_.thr_x10        = (int16_t)ch_response_thr_;
+            pulse_log_.passed         = prev_passed ? 1 : 0;
+            pulse_log_.seq++;
+            if (ch_stiction_pwm_ == 0 && prev_passed) {
+                ch_stiction_pwm_ = prev_pwm;
+            }
+        }
+        ch_last_idx_ = idx;
+        ch_gyro_acc_x10_ = 0;
+    }
+
+    const uint8_t pwm = pgm_read_byte(&PWM_TABLE[idx]);
+    const int16_t signed_pwm = (idx & 1) ? -(int16_t)pwm : (int16_t)pwm;
+    motors_.set_speeds(signed_pwm, signed_pwm);
+
+    const float gy = raw_gyro_dps_[1];
+    const float ag = gy < 0.0f ? -gy : gy;
+    ch_gyro_acc_x10_ += (uint16_t)(ag * 10.0f);
 }
 
 void BalanceApp::read_imu_(uint32_t /*now_ms*/) {

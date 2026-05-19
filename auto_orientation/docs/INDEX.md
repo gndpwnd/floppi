@@ -22,11 +22,13 @@ Navigation map for `auto_orientation/docs/`. Each subfolder is themed; open its 
 | [MULTI_ORIENTATION_BALANCE_VISION.md](MULTI_ORIENTATION_BALANCE_VISION.md) | Phase 4.11+ direction — balance past 90°, arbitrary mounting orientation, ballbot future |
 | [AUTO_TUNING_REALITY_CHECK.md](AUTO_TUNING_REALITY_CHECK.md) | Why universal dynamic auto-tuning is sequential, not one-shot; the bootstrap-protocol explanation |
 | [PHASE_4_STRUCTURAL_FIXES.md](PHASE_4_STRUCTURAL_FIXES.md) | Phase 4 coordinating doc — items 1-5, all landed 2026-05-12 |
+| [THEORETICALLY_SOUND_PROGRAM_PLAN.md](THEORETICALLY_SOUND_PROGRAM_PLAN.md) | ACTIVE — sim-first validation plan triggered by 2026-05-12 bench session: crystal flag + motors-not-powered confounded all PID iteration. Validate algorithm in sim before re-engaging motors. |
 | [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) | Tiered execution plan for the balancing-robot reference app |
 | [KNOWN_ISSUES.md](KNOWN_ISSUES.md) | 19 issues (KI-2..KI-20) ranked by severity |
 | [roadmap.md](roadmap.md) | Project roadmap, milestones (Phase 0 -> v1.0 -> v1.1 -> future) |
 | [scope.md](scope.md) | In-scope / out-of-scope boundaries |
 | [todo.md](todo.md) | Current task list |
+| [findings/operator_ideas_backlog.md](findings/operator_ideas_backlog.md) | Durable index of operator-suggested ideas (status, source, technical translation) |
 
 ---
 
