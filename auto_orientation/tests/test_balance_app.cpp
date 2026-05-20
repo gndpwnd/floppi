@@ -282,24 +282,17 @@ static void test_short_press_idle_to_capture() {
 static void test_long_press_anywhere_sets_abort() {
     printf("\nTest: long press always sets abort flag\n");
 
-    // From RUN: abort should be set, then next step() returns to IDLE
+    // From RUN: abort should be set, then next step() returns to IDLE.
+    // Drop straight into RUN via enter_run_with_current_gains() — Phase 4.10c
+    // moved long-press in IDLE to BOOTSTRAP, so the test's previous
+    // IDLE→AUTO_TUNE→RUN shortcut is no longer reachable from the public API.
     {
         AppFixture f;
         BalanceAppConfig cfg = BalanceApp::default_config();
         f.app.begin(cfg, 1000);
-        // Force into RUN via short-press + capture finish + tune success
-        // (faster path: drop into RUN via a long-press IDLE->AUTO_TUNE,
-        // succeed tune, then step into RUN).
-        f.strategy.set_steps_until_done(1);
-        f.strategy.set_success(70.0f, 10.0f, 30.0f);
-        f.app.on_long_press(1000);   // IDLE -> AUTO_TUNE (special path)
-        TEST_ASSERT(f.app.get_state() == BalanceAppState::AUTO_TUNE,
-                    "long press in IDLE transitions to AUTO_TUNE");
-        // One step finishes the tune and lands in RUN
-        f.imu.set_pitch(0.0f);
-        f.app.step(1010);
+        f.app.enter_run_with_current_gains(1000);
         TEST_ASSERT(f.app.get_state() == BalanceAppState::RUN,
-                    "post-tune state == RUN");
+                    "enter_run_with_current_gains → RUN");
 
         // Now long-press from RUN
         f.app.on_long_press(1020);
@@ -318,8 +311,7 @@ static void test_long_press_anywhere_sets_abort() {
         AppFixture f;
         BalanceAppConfig cfg = BalanceApp::default_config();
         f.app.begin(cfg, 1000);
-        f.strategy.set_steps_until_done(1);
-        f.app.on_long_press(1000);
+        f.app.enter_run_with_current_gains(1000);
         f.imu.set_pitch(0.0f);
         f.app.step(1010);
         TEST_ASSERT(f.app.get_state() == BalanceAppState::RUN, "in RUN");
@@ -339,15 +331,12 @@ static void test_long_press_anywhere_sets_abort() {
 }
 
 static void test_capture_to_tune_transition() {
-    printf("\nTest: stable pitch during CAPTURE_MOUNTING -> AUTO_TUNE\n");
+    printf("\nTest: stable pitch during CAPTURE_MOUNTING -> BOOTSTRAP\n");
     AppFixture f;
     BalanceAppConfig cfg = BalanceApp::default_config();
     cfg.capture_duration_ms = 200;       // short window for the test
     cfg.capture_pitch_var_deg = 0.5f;    // tight enough
     f.app.begin(cfg, 0);
-    // Mock tuner needs many steps so we can observe the AUTO_TUNE state
-    // before it converges and moves on to RUN.
-    f.strategy.set_steps_until_done(1000);
 
     f.app.on_short_press(0);
     TEST_ASSERT(f.app.get_state() == BalanceAppState::CAPTURE_MOUNTING,
@@ -355,17 +344,18 @@ static void test_capture_to_tune_transition() {
 
     // Feed stable samples at pitch=1.5° (stillness OK). Step exactly until
     // the capture window closes (~210 ms in) and the transition fires.
+    // Phase 4.10c: capture success auto-chains to BOOTSTRAP (was IDLE/AUTO_TUNE).
     f.imu.set_pitch(1.5f);
-    bool reached_tune = false;
+    bool reached_bootstrap = false;
     for (int i = 0; i < 30; ++i) {
         f.app.step(10u + (uint32_t)i * 10u);
-        if (f.app.get_state() == BalanceAppState::AUTO_TUNE) {
-            reached_tune = true;
+        if (f.app.get_state() == BalanceAppState::BOOTSTRAP) {
+            reached_bootstrap = true;
             break;
         }
     }
-    TEST_ASSERT(reached_tune,
-                "stable pitch capture -> AUTO_TUNE");
+    TEST_ASSERT(reached_bootstrap,
+                "stable pitch capture -> BOOTSTRAP");
     // The mounting offset should now reflect ~1.5°
     const float off = f.app.get_mount_offset_deg();
     TEST_ASSERT(off > 1.4f && off < 1.6f,
@@ -397,56 +387,21 @@ static void test_tune_to_run_on_success() {
     BalanceAppConfig cfg = BalanceApp::default_config();
     f.app.begin(cfg, 1000);
     f.strategy.set_steps_until_done(3);
-    f.strategy.set_success(99.0f, 7.0f, 25.0f);
-
-    // Long-press in IDLE jumps straight to AUTO_TUNE (skipping capture).
-    f.app.on_long_press(1000);
-    TEST_ASSERT(f.app.get_state() == BalanceAppState::AUTO_TUNE,
-                "long-press IDLE -> AUTO_TUNE");
-
-    f.imu.set_pitch(0.0f);
-    for (int i = 0; i < 5; ++i) {
-        f.app.step(1010u + (uint32_t)i * 5u);
-    }
-    TEST_ASSERT(f.app.get_state() == BalanceAppState::RUN,
-                "tune success -> RUN");
-
-    // Verify gains were written to the PID.
-    float kp = 0, ki = 0, kd = 0;
-    f.pid.get_tunings(kp, ki, kd);
-    TEST_ASSERT(fabsf(kp - 99.0f) < 0.01f, "PID kp == 99 after apply");
-    TEST_ASSERT(fabsf(ki - 7.0f) < 0.01f, "PID ki == 7 after apply");
-    TEST_ASSERT(fabsf(kd - 25.0f) < 0.01f, "PID kd == 25 after apply");
-
-    const TuningResult& tr = f.app.get_tune_result();
-    TEST_ASSERT(tr.converged, "tune_result.converged == true");
+    (void)f.strategy;
+    // Phase 4.10c (2026-05-18): AUTO_TUNE is no longer reachable via the
+    // public API — long_press(IDLE) now enters BOOTSTRAP, capture-success
+    // chains to BOOTSTRAP. The success path (push gains → enter RUN) is
+    // covered by test_balance_app_bootstrap.cpp Test 3. AUTO_TUNE remains
+    // in the enum for backwards compatibility but is dev-trigger-only.
+    printf("  SKIP: AUTO_TUNE success-path moved to BOOTSTRAP\n");
 }
 
 static void test_tune_to_idle_on_failure() {
     printf("\nTest: failed tune restores gains and returns to IDLE\n");
-    AppFixture f;
-    BalanceAppConfig cfg = BalanceApp::default_config();
-    f.app.begin(cfg, 1000);
-    // Capture initial gains
-    float kp0 = 0, ki0 = 0, kd0 = 0;
-    f.pid.get_tunings(kp0, ki0, kd0);
-
-    f.strategy.set_steps_until_done(2);
-    f.strategy.set_failure("simulated_fail");
-    f.app.on_long_press(1000);  // IDLE -> AUTO_TUNE
-    f.imu.set_pitch(0.0f);
-    for (int i = 0; i < 5; ++i) {
-        f.app.step(1010u + (uint32_t)i * 5u);
-    }
-    TEST_ASSERT(f.app.get_state() == BalanceAppState::IDLE,
-                "tune failure -> IDLE");
-
-    // Gains should be restored.
-    float kp = 0, ki = 0, kd = 0;
-    f.pid.get_tunings(kp, ki, kd);
-    TEST_ASSERT(fabsf(kp - kp0) < 0.01f, "kp restored after failed tune");
-    TEST_ASSERT(fabsf(ki - ki0) < 0.01f, "ki restored after failed tune");
-    TEST_ASSERT(fabsf(kd - kd0) < 0.01f, "kd restored after failed tune");
+    // Phase 4.10c: same reason as above — AUTO_TUNE failure path obsolete.
+    // BOOTSTRAP failure → IDLE is covered by test_balance_app_bootstrap.cpp
+    // Tests 1, 2, and 6.
+    printf("  SKIP: AUTO_TUNE failure-path moved to BOOTSTRAP\n");
 }
 
 // FALLEN tests require fall detection to be compiled in. The default Uno
@@ -547,8 +502,10 @@ static void test_state_name_strings() {
     TEST_ASSERT(strcmp(f.app.state_name(), "IDLE") == 0,
                 "state_name == IDLE");
     f.app.on_short_press(1000);
-    TEST_ASSERT(strcmp(f.app.state_name(), "CAPTURE_MOUNTING") == 0,
-                "state_name == CAPTURE_MOUNTING");
+    // state_name() returns "CAP" (short form for serial-friendly logging),
+    // not the full enum name.
+    TEST_ASSERT(strcmp(f.app.state_name(), "CAP") == 0,
+                "state_name == CAP");
 }
 
 static void test_safety_thresholds_pushed_from_config() {

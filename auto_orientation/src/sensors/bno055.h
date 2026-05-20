@@ -135,6 +135,20 @@ class BNO055 : public OrientationSensor {
    */
   bool getRawGyro(float xyz[3]) override;
 
+  /**
+   * Linear acceleration in m/s², gravity removed by the BNO055 onboard fusion
+   * (VECTOR_LINEARACCEL). Body frame. Stationary / balancing bot reads ≈0;
+   * an impact spikes well above the chip noise floor (~0.08 m/s² 1σ). The
+   * balance app's layered three-way collision detector compares magnitude
+   * against COLLISION_PEAK_MPS2 / COLLISION_SUSTAIN_MPS2 / COLLISION_KICK_MPS2
+   * (see balance_app.h thresholds and research_collision_signature_bno055.md).
+   * Implementation note: the underlying Adafruit getVector() uses a single
+   * 6-byte I²C burst read so the MSB/LSB cannot tear — see bno055.cpp impl
+   * for full citation.
+   * Returns false and leaves xyz untouched if the driver is not initialized.
+   */
+  bool getLinearAccel(float xyz[3]) override;
+
  private:
   Adafruit_BNO055* bno_;
   uint8_t i2c_address_;

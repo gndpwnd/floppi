@@ -125,38 +125,37 @@ static void test_no_drift_when_i_term_zero() {
 // TEST 3: SLOW DRIFT TOWARD I-TERM TARGET
 // ============================================================================
 
-static void test_slow_drift_toward_i_term() {
-    printf("\nTest 3: Slow drift toward I-term target\n");
+static void test_slow_drift_toward_pitch() {
+    printf("\nTest 3: Slow drift toward pitch_deg target (Phase 2026-05-18 PM)\n");
 
+    // 2026-05-18 PM: OnlineMountingEstimator target changed from
+    // (reference + i_term × gain) to pitch_deg directly. Reason: when the
+    // bot oscillates around balance, i_term averages to zero so the old
+    // formulation never converged to the true balance point. The mean of
+    // pitch_deg during balancing IS the balance point.
     OnlineMountingEstimator est;
     est.initialize(0.0f, 0u);
-    // Use a moderate time constant so the test runs reasonably fast.
     est.set_lpf_time_constant_sec(10.0f);   // tc = 10 s
-    est.set_gain_to_angle(0.01f);            // i_term * 0.01 = target deg
 
-    // With i_term = 100, target = 1.0°. Apply for 30 s — about 3 time
-    // constants, so the LPF should land within ~5% of the target.
-    // BUT: the rate limit is 0.5°/s by default; over 30 s that allows
-    // up to 15° of change, so it does not bind here.
+    // Feed pitch=1.0° steadily for 30 s. The LPF target is pitch (1.0°), so
+    // after ~3 time-constants the estimate should converge near 1.0° subject
+    // to the default 0.5°/s rate cap. Over 30 s, 15° of change is allowed —
+    // not binding here.
     float result = simulate_run(est,
-                                /*i_term=*/100.0f, /*pitch=*/0.0f,
+                                /*i_term=*/0.0f, /*pitch=*/1.0f,
                                 /*tipover=*/false, /*windup=*/false,
                                 /*gyro=*/0.0f,
-                                /*dt_ms=*/5u, /*n_steps=*/6000,  // 30 s at 200 Hz
+                                /*dt_ms=*/5u, /*n_steps=*/6000,
                                 /*start_ms=*/0u);
 
-    // Should be close to 1.0 but not exactly — exponential approach.
-    // After 3 tc, residual ≈ exp(-3) ≈ 0.05 → estimate ≈ 0.95.
-    assert_true(result > 0.85f, "estimate moved a meaningful fraction toward target");
-    assert_true(result < 1.0f + EPSILON, "estimate has not overshot target");
+    assert_true(result > 0.85f, "estimate converged toward pitch target");
+    assert_true(result < 1.0f + EPSILON, "estimate has not overshot pitch target");
 
-    // And it must NOT have moved there in one step — check that the first
-    // few samples produce a small movement.
+    // One step should produce only a tiny movement (LPF time-constant gate).
     OnlineMountingEstimator est2;
     est2.initialize(0.0f, 0u);
     est2.set_lpf_time_constant_sec(10.0f);
-    est2.set_gain_to_angle(0.01f);
-    float one_step = est2.update(100.0f, 0.0f, false, false, 0.0f, 5u);
+    float one_step = est2.update(0.0f, 1.0f, false, false, 0.0f, 5u);
     assert_true(one_step < 0.01f, "one update step moves only tiny amount");
 
     ++g_passes;
@@ -177,10 +176,11 @@ static void test_hard_bound_clamps() {
     est.set_max_drift_rate_dps(10.0f);       // allow big steps so the bound is what binds
     est.set_gain_to_angle(0.01f);
 
-    // i_term = 10000 → target = 100° (way past the 5° bound).
+    // pitch=100° → target = 100° (way past the 5° bound).
     // After many seconds, the LPF wants 100°, but the clamp must hold at 5°.
+    // (Phase 2026-05-18 PM: target source changed from i_term to pitch_deg.)
     float result = simulate_run(est,
-                                /*i_term=*/10000.0f, /*pitch=*/0.0f,
+                                /*i_term=*/0.0f, /*pitch=*/100.0f,
                                 /*tipover=*/false, /*windup=*/false,
                                 /*gyro=*/0.0f,
                                 /*dt_ms=*/5u, /*n_steps=*/4000,  // 20 s
@@ -195,7 +195,7 @@ static void test_hard_bound_clamps() {
     est2.set_max_drift_rate_dps(10.0f);
     est2.set_gain_to_angle(0.01f);
     float result2 = simulate_run(est2,
-                                 /*i_term=*/-10000.0f, /*pitch=*/0.0f,
+                                 /*i_term=*/0.0f, /*pitch=*/-100.0f,
                                  /*tipover=*/false, /*windup=*/false,
                                  /*gyro=*/0.0f,
                                  /*dt_ms=*/5u, /*n_steps=*/4000,
@@ -223,12 +223,13 @@ static void test_rate_limit() {
 
     // Target = 5°. Without rate limit the LPF would slam there in ~0.3 s.
     // Rate limit allows at most 0.1°/s, so after 10 s we should be at ≤1.0°.
+    // (Phase 2026-05-18 PM: target source is pitch_deg, not i_term × gain.)
     uint32_t t = 0u;
     uint32_t prev_t = 0u;
     float prev_estimate = 0.0f;
     for (int i = 0; i < 200; ++i) {     // 1 s at 200 Hz
         t += 5u;
-        float current = est.update(500.0f, 0.0f, false, false, 0.0f, t);
+        float current = est.update(0.0f, 5.0f, false, false, 0.0f, t);
         float dt_s = static_cast<float>(t - prev_t) * 0.001f;
         float step = current - prev_estimate;
         float step_per_s = step / dt_s;
@@ -260,14 +261,14 @@ static void test_freeze_tipover() {
     est.set_lpf_time_constant_sec(1.0f);
     est.set_gain_to_angle(0.01f);
 
-    // First, let the estimate drift to ~0.5° without the freeze.
-    simulate_run(est, 100.0f, 0.0f, false, false, 0.0f, 5u, 200, 0u);
+    // First, let the estimate drift to ~0.5° without the freeze (drive via pitch).
+    simulate_run(est, 0.0f, 1.0f, false, false, 0.0f, 5u, 200, 0u);
     float pre_freeze = est.get_estimate_deg();
     assert_true(pre_freeze > 0.1f, "pre-freeze estimate moved off reference");
 
-    // Now activate tipover and pound with large i_term — should not move.
+    // Now activate tipover and pound with large pitch — should not move.
     float result = simulate_run(est,
-                                /*i_term=*/10000.0f, /*pitch=*/45.0f,
+                                /*i_term=*/0.0f, /*pitch=*/45.0f,
                                 /*tipover=*/true, /*windup=*/false,
                                 /*gyro=*/0.0f,
                                 /*dt_ms=*/5u, /*n_steps=*/1000,
@@ -297,7 +298,7 @@ static void test_freeze_windup() {
 
     // Push with windup_active=true. Estimate must not move.
     float result = simulate_run(est,
-                                /*i_term=*/10000.0f, /*pitch=*/0.0f,
+                                /*i_term=*/0.0f, /*pitch=*/100.0f,
                                 /*tipover=*/false, /*windup=*/true,
                                 /*gyro=*/0.0f,
                                 /*dt_ms=*/5u, /*n_steps=*/2000,
@@ -323,7 +324,7 @@ static void test_freeze_user() {
     est.set_user_freeze(true);
 
     float result = simulate_run(est,
-                                /*i_term=*/10000.0f, /*pitch=*/0.0f,
+                                /*i_term=*/0.0f, /*pitch=*/100.0f,
                                 /*tipover=*/false, /*windup=*/false,
                                 /*gyro=*/0.0f,
                                 /*dt_ms=*/5u, /*n_steps=*/2000,
@@ -334,7 +335,7 @@ static void test_freeze_user() {
 
     // Unfreeze; adaptation should resume.
     est.set_user_freeze(false);
-    simulate_run(est, 100.0f, 0.0f, false, false, 0.0f, 5u, 600, 10000u);
+    simulate_run(est, 0.0f, 1.0f, false, false, 0.0f, 5u, 600, 10000u);
     assert_true(est.get_estimate_deg() > 0.05f, "estimate resumes after unfreeze");
     assert_true(est.get_status().freeze_reason == FREEZE_NONE, "freeze cleared after unfreeze");
 
@@ -356,7 +357,7 @@ static void test_freeze_high_gyro() {
 
     // 100 °/s exceeds the 60 °/s threshold.
     float result = simulate_run(est,
-                                /*i_term=*/10000.0f, /*pitch=*/0.0f,
+                                /*i_term=*/0.0f, /*pitch=*/100.0f,
                                 /*tipover=*/false, /*windup=*/false,
                                 /*gyro=*/100.0f,
                                 /*dt_ms=*/5u, /*n_steps=*/2000,
@@ -370,7 +371,7 @@ static void test_freeze_high_gyro() {
     est2.set_lpf_time_constant_sec(1.0f);
     est2.set_gain_to_angle(0.01f);
     float result2 = simulate_run(est2,
-                                 /*i_term=*/10000.0f, /*pitch=*/0.0f,
+                                 /*i_term=*/0.0f, /*pitch=*/100.0f,
                                  /*tipover=*/false, /*windup=*/false,
                                  /*gyro=*/-100.0f,
                                  /*dt_ms=*/5u, /*n_steps=*/2000,
@@ -382,7 +383,7 @@ static void test_freeze_high_gyro() {
     est3.initialize(0.0f, 0u);
     est3.set_lpf_time_constant_sec(1.0f);
     est3.set_gain_to_angle(0.01f);
-    simulate_run(est3, 100.0f, 0.0f, false, false, /*gyro=*/30.0f,
+    simulate_run(est3, 0.0f, 1.0f, false, false, /*gyro=*/30.0f,
                  5u, 600, 0u);
     assert_true(est3.get_estimate_deg() > 0.01f, "estimate moves at moderate gyro rate");
 
@@ -403,7 +404,7 @@ static void test_reset_to_reference() {
     est.set_gain_to_angle(0.01f);
 
     // Drift the estimate off reference.
-    simulate_run(est, 100.0f, 0.0f, false, false, 0.0f, 5u, 1000, 0u);
+    simulate_run(est, 0.0f, 1.0f, false, false, 0.0f, 5u, 1000, 0u);
     assert_true(est.get_estimate_deg() > 0.1f, "estimate drifted off original reference");
 
     // Re-capture says the new reference is -3.2°. Estimator must reset.
@@ -434,14 +435,14 @@ static void test_confidence_decreases_with_drift() {
     float conf_at_ref = est.get_status().confidence_0_to_1;
     assert_near(conf_at_ref, 1.0f, EPSILON, "confidence = 1.0 at reference");
 
-    // Drift partway out.
-    simulate_run(est, 250.0f, 0.0f, false, false, 0.0f, 5u, 600, 0u);
+    // Drift partway out (target = 2.5°, well within ±5° bound).
+    simulate_run(est, 0.0f, 2.5f, false, false, 0.0f, 5u, 600, 0u);
     float conf_mid = est.get_status().confidence_0_to_1;
     assert_true(conf_mid < conf_at_ref, "confidence drops as estimate drifts");
     assert_true(conf_mid > 0.0f, "confidence stays positive within the bound");
 
-    // Drive all the way to the rail.
-    simulate_run(est, 10000.0f, 0.0f, false, false, 0.0f, 5u, 4000, 5000u);
+    // Drive all the way to the rail (pitch=100° → clamp at 5°).
+    simulate_run(est, 0.0f, 100.0f, false, false, 0.0f, 5u, 4000, 5000u);
     float conf_rail = est.get_status().confidence_0_to_1;
     assert_true(conf_rail < conf_mid, "confidence keeps dropping toward bound");
     assert_true(conf_rail < 0.05f, "confidence near zero at the hard bound");
@@ -462,8 +463,8 @@ static void test_status_struct() {
     est.set_lpf_time_constant_sec(1.0f);
     est.set_gain_to_angle(0.01f);
 
-    // Drift a bit.
-    simulate_run(est, 50.0f, 0.0f, false, false, 0.0f, 5u, 400, 1000u);
+    // Drift a bit (pitch=0.5° → small target).
+    simulate_run(est, 0.0f, 0.5f, false, false, 0.0f, 5u, 400, 1000u);
 
     MountingCalibrationStatus s = est.get_status();
     assert_near(s.estimate_deg, est.get_estimate_deg(), EPSILON,
@@ -497,14 +498,14 @@ static void test_millis_rollover() {
     est.set_gain_to_angle(0.01f);
 
     // Push forward a few samples, then wrap.
-    float before = est.update(100.0f, 0.0f, false, false, 0.0f, near_max + 500u);
+    float before = est.update(0.0f, 1.0f, false, false, 0.0f, near_max + 500u);
     // Wrap: now_ms < last_update_ms_. The estimator must not crash or
     // produce a wild dt; it just no-ops this sample.
-    float after = est.update(100.0f, 0.0f, false, false, 0.0f, 100u);
+    float after = est.update(0.0f, 1.0f, false, false, 0.0f, 100u);
     assert_near(after, before, EPSILON, "no spurious update on wrap");
 
     // Next sample after the wrap should adapt normally.
-    float after2 = est.update(100.0f, 0.0f, false, false, 0.0f, 200u);
+    float after2 = est.update(0.0f, 1.0f, false, false, 0.0f, 200u);
     assert_true(after2 >= before, "adaptation resumes post-wrap");
 
     ++g_passes;
@@ -524,9 +525,9 @@ static void test_dt_less_than_one_ms() {
     est.set_gain_to_angle(0.01f);
 
     // First update at t=1ms moves the estimate by some tiny amount.
-    float first = est.update(100.0f, 0.0f, false, false, 0.0f, 1u);
+    float first = est.update(0.0f, 1.0f, false, false, 0.0f, 1u);
     // Second update at the same timestamp must not move the estimate again.
-    float second = est.update(100.0f, 0.0f, false, false, 0.0f, 1u);
+    float second = est.update(0.0f, 1.0f, false, false, 0.0f, 1u);
     assert_near(first, second, EPSILON, "same-timestamp call is a no-op");
 
     ++g_passes;
@@ -544,7 +545,7 @@ int main() {
 
     test_initialization();
     test_no_drift_when_i_term_zero();
-    test_slow_drift_toward_i_term();
+    test_slow_drift_toward_pitch();
     test_hard_bound_clamps();
     test_rate_limit();
     test_freeze_tipover();

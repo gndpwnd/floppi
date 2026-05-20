@@ -232,7 +232,7 @@ s.close()
 
 ## 🎓 Understanding the Algorithm
 
-See: [BNO085_ALGORITHM_AND_REPLICATION.md](BNO085_ALGORITHM_AND_REPLICATION.md)
+See: [../theory/BNO085_ALGORITHM_AND_REPLICATION.md](../theory/BNO085_ALGORITHM_AND_REPLICATION.md)
 
 **Quick version:**
 - BNO085 has a small computer inside running CEVA's MotionEngine firmware

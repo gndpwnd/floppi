@@ -1,12 +1,28 @@
 # Roadmap: Auto Orientation Framework
 
-**Current phase**: Phase 4 — Auto-orientation framework + balancing-robot reference application
-**Last updated**: 2026-05-12
+**Current phase**: Phase 4 — Auto-orientation framework + balancing-robot reference application (now bifurcated into 4M Mega-universal and 4U Uno-minimal — see below)
+**Last updated**: 2026-05-19 (platform-bifurcation pivot — Mega-only universal stack + Uno-minimal hardcoded program with offline Python brute-force tuner)
 
 This roadmap describes the framework's evolution from the just-completed BNO085 + GPS + EKF stack (Phase 3) toward a multi-MCU, multi-IMU, optionally-WiFi-connected platform with a catalog of reference applications.
 
 For project bounds and rationale, see [scope.md](scope.md).
 For current actionable items, see [todo.md](todo.md).
+
+---
+
+## Sequencing discipline
+
+**This project has a recurring failure mode**: skipping ahead to bench-iterate on hardcoded gains/thresholds when the planned phase work is to *eliminate the hardcoded value* in the first place. Every session that produces a "new tuned constant" instead of "a new measurement-driven replacement for a constant" is a session that regressed the universal vision.
+
+The cure is sequencing discipline. When a phase says "implement CHARACTERISE state" and you find yourself instead changing `stiction_min_pwm = 30` to `stiction_min_pwm = 80`, **stop**. The next move is always: *(a)* land the planned measurement infrastructure, *(b)* then validate at the bench. Bench iteration *before* the infrastructure is in produces session-specific patches, not framework progress.
+
+See [scope.md §Process doctrine](scope.md) for the full rule, the [scope.md §Current scope violations — audit](scope.md#current-scope-violations--audit-2026-05-18) for every remaining hardcoded value with its replacement plan, and [archive/LESSONS_LEARNED_BALANCE_BOT_2026-05-12.md](archive/LESSONS_LEARNED_BALANCE_BOT_2026-05-12.md) for the source incidents. Phase entries below are ordered by the right sequence to follow this discipline — *do not skip ahead*.
+
+### Top priority (2026-05-18 PM late — updated 2026-05-19 pivot)
+
+**Strategic pivot landed 2026-05-19: the balance-bot reference application splits into two builds.** The universal/adaptive stack (BOOTSTRAP, RLS, OnlineMountingEstimator, collision detection, position containment) becomes **Mega-only** because it needs wheel encoders and flash headroom that Uno cannot host. The Uno gets a **separate minimal hardcoded program** with PID + PWM constants brute-forced offline via a new Python tuner. New roadmap structure: **Phase 4M** (Mega-universal cleanup) and **Phase 4U** (Uno-minimal + Python tuner) replace what used to be Phase 4.10c+4.11 as the active fronts. See [scope.md §Platform bifurcation](scope.md#platform-bifurcation-2026-05-19--mega-universal-vs-uno-minimal) and the operator-memory note `project_strategic_pivot_2026-05-19.md`.
+
+**Phase 4.10c — BOOTSTRAP state for K_motor identification: LANDED 2026-05-18 PM evening (commit 7a4d27f).** BOOTSTRAP measures K_motor from ±PWM pulses, derives Kp/Kd/Ki via pole-placement, pushes gains to PID before RUN. Hardcoded Kp=50/Ki=2/Kd=20 + `R` command + relay tuner all REMOVED. 7/21 scope violations retired. First bench validation (2026-05-18 PM late) showed bot transitioned IDLE → BOOTSTRAP → RUN with measured K≈0.38 but twitched and fell within ~1 s. The pivot decision came from this outcome: rather than continue debugging BOOTSTRAP on a Uno that's flash-constrained and lacks encoders, BOOTSTRAP work moves to Phase 4M (Mega) where wheel-encoder odometry can validate K_motor directly. See [findings/bootstrap_protocol_unstable_plant.md](findings/bootstrap_protocol_unstable_plant.md), [archive/session_records/2026-05-18_PM_BOOTSTRAP_PHASE_4_10C_LANDED.md](archive/session_records/2026-05-18_PM_BOOTSTRAP_PHASE_4_10C_LANDED.md), and [archive/session_records/2026-05-18_PM_LATE_BOOTSTRAP_FIRST_BENCH.md](archive/session_records/2026-05-18_PM_LATE_BOOTSTRAP_FIRST_BENCH.md).
 
 ---
 
@@ -43,8 +59,8 @@ For current actionable items, see [todo.md](todo.md).
 
 **Status (2026-05-12 late evening)**: **Phase 4.1–4.7 + 4.10 LANDED in firmware**. Builds clean on `arduino_uno_balancing` (99.9% flash, 78.4% RAM, 7 PlantIdentifier tests pass). Hardware validation deferred — bot not currently plugged in.
 
-- **Sub-phases done**: 4.1 (persistent storage HAL), 4.2 (cal blob versioning), 4.3 (mounting capture), 4.4 (online estimator), 4.5 (BNO055 driver), 4.5a (PIDController), 4.5b (relay-feedback tuner), 4.6 (BNO055 + raw-gyro accessors), 4.7 (balance app), 4.7a (state machine), 4.7b (HELD detection), 4.10 (universal RLS auto-tune).
-- **Designed but not coded**: 4.7c (multi-axis anomaly detector), 4.10c (full 5-stage bootstrap machine), 4.11 (multi-orientation Level 2).
+- **Sub-phases done**: 4.1 (persistent storage HAL), 4.2 (cal blob versioning), 4.3 (mounting capture), 4.4 (online estimator), 4.5 (BNO055 driver), 4.5a (PIDController), 4.5b (relay-feedback tuner — DELETED 2026-05-18 PM evening), 4.6 (BNO055 + raw-gyro accessors), 4.7 (balance app), 4.7a (state machine), 4.7b (HELD detection), 4.10 (universal RLS auto-tune), **4.10c (BOOTSTRAP K_motor measurement — LANDED 2026-05-18 PM evening)**, 2.1 (CHARACTERISE measured noise-floor), 2.5 (external-motion HELD), 2.6 (gain scheduling).
+- **Designed but not coded**: 4.7c (multi-axis anomaly detector), 4.11 (multi-orientation Level 2), 2.7 (motor-null-space HELD).
 
 See: [PHASE_4_STRUCTURAL_FIXES.md](PHASE_4_STRUCTURAL_FIXES.md), [archive/session_records/2026-05-12_evening_phase4_landing.md](archive/session_records/2026-05-12_evening_phase4_landing.md), [UNIVERSAL_BALANCE_BOT_VISION.md](UNIVERSAL_BALANCE_BOT_VISION.md), [MINIMIZE_ACCELERATIONS_PHILOSOPHY.md](MINIMIZE_ACCELERATIONS_PHILOSOPHY.md), [MULTI_ORIENTATION_BALANCE_VISION.md](MULTI_ORIENTATION_BALANCE_VISION.md), [AUTO_TUNING_REALITY_CHECK.md](AUTO_TUNING_REALITY_CHECK.md).
 
@@ -121,6 +137,106 @@ See: [findings/bno055_driver_and_multi_imu_strategy.md](findings/bno055_driver_a
 - `arduino_mega_balancing` env builds clean; scenario test passes
 - All previous 143+ tests still pass
 - Phase 4 completion summary doc written to `docs/phases/`
+
+---
+
+## Phase 4M — Mega-only universal-stack cleanup
+
+**Goal**: Finish the universal/adaptive balance-bot vision on Mega-class hardware, free from the Uno flash ceiling that derailed the 2026-05-18 bench session. This is the home of BOOTSTRAP, RLS, OnlineMountingEstimator, collision detection, position containment, wheel-encoder odometry, and every future "the bot learns its own dynamics" feature.
+
+**Status**: opened 2026-05-19 by the platform-bifurcation pivot. See `project_strategic_pivot_2026-05-19.md`. The sibling agent's `docs/MEGA_UNIVERSAL_PLAN.md` (forthcoming) holds the detailed plan; this section is the roadmap anchor.
+
+**Working assumption**: Mega's flash budget is generous (~88 % free even with current universal stack). Optimize new code for **clarity**, not size. Don't repeat the Uno-driven micro-optimization patterns that produced unreadable `snprintf`-replacement chains.
+
+### 4M.0 — Restore reverted collision detection
+
+Late in the 2026-05-19 session, a P0/P1 audit-fix agent inadvertently reverted the just-landed collision-detection code in `balance_app.{h,cpp}`. The supporting scaffolding survives — `bno055::getLinearAccel`, the `OrientationSensor::getLinearAccel` virtual in `sensor_base.h`, and the untracked `tests/test_balance_app_collision.cpp`. Re-implement the three-gate detector + state-handler integration cleanly using [findings/research_collision_signature_bno055.md](findings/research_collision_signature_bno055.md) (12 g / 8+3-tick / 6+200 dps thresholds). Apply to BOOTSTRAP, CHARACTERISE, and RUN entry/exit paths.
+
+### 4M.1 — Wheel-encoder hardware abstraction
+
+- New module: `src/sensors/wheel_encoder.{h,cpp}` (or `quadrature_encoder.{h,cpp}`) — generic A/B-phase quadrature interface with platform-specific ISR backends.
+- Mega backend uses external-interrupt pins (INT0/INT1/INT4/INT5) for both wheels — Uno cannot host this because it only has two external-interrupt pins, and one is needed for the BNO055 INT line.
+- Per-wheel position (ticks), velocity (ticks/s), and direction.
+- See [findings/research_wheel_encoders_mega_2026-05-19.md](findings/research_wheel_encoders_mega_2026-05-19.md) (forthcoming, sibling-owned) for hardware recommendations and pin choices.
+
+### 4M.2 — Encoder-driven K_motor verification
+
+- Replace BOOTSTRAP's IMU-only K_motor measurement (Δgyro / ΔPWM) with an encoder-driven version (Δwheel_velocity / ΔPWM) — direct, no plant-coupling noise.
+- Keep IMU-only measurement as the fallback when encoders are absent.
+- Cross-check: encoder K and IMU K must agree within a tolerance before BOOTSTRAP exits to RUN.
+
+### 4M.3 — Stiction / saturation per-wheel from encoder pulses
+
+- Phase 2 CHARACTERISE upgrade: pulse each wheel independently with ramping PWM; first PWM that produces a non-zero encoder tick = stiction floor; PWM where tick rate stops growing = saturation.
+- Per-wheel asymmetry (left vs right) was speculated in [UNIVERSAL_BALANCE_BOT_VISION.md](UNIVERSAL_BALANCE_BOT_VISION.md); encoders make it measurable.
+
+### 4M.11 — Position containment (was Phase 4.11)
+
+The Phase 4.11 position-containment work that was queued for Uno via pitch double-integration now becomes a Mega job with **wheel-encoder odometry preferred** over IMU-only pitch double-integration.
+
+- New module: `src/control/position_loop.{h,cpp}` — cascade outer loop: position error (encoder ticks) → pitch setpoint command → inner balance loop.
+- Slow restoring action (~0.5 Hz bandwidth) so the bot drifts back toward the start position without fighting the balance loop.
+- Pitch double-integration becomes a documented fallback for IMU-only operation.
+- Reference: 2026-05-19 operator observation that the bot wanders during testing and collides with stuff — encoder odometry is the robust fix.
+
+### 4M.k — K-quality + audit-fix follow-through
+
+The P0/P1 audit fixes landed in this session (gyro torn-read atomicity, `plant_id_.reset()` no-overwrite, K-quality gate, baseline cap, BOOTSTRAP per-pulse telemetry) all apply to the Mega-universal code path. Continue retiring the remaining 14 audit rows in [scope.md §Current scope violations — audit](scope.md#current-scope-violations--audit-2026-05-18-updated-pm-evening-phase-410c-landed-re-tagged-2026-05-19-for-platform-bifurcation) — each one becomes addressable once the bot balances long enough on Mega to collect the derivation data.
+
+### Phase 4M success metrics
+
+- Mega build with full universal stack + wheel encoders + collision detection compiles and flashes
+- BOOTSTRAP K_motor agrees IMU vs encoder within tolerance
+- Bot balances for >60 s without collision-detector false positives
+- Position containment keeps the bot within a configurable radius of the start point for >2 min
+- Remaining audit rows in scope.md drop below 5
+
+---
+
+## Phase 4U — Uno minimal hardcoded balancer + Python brute-force tuner
+
+**Goal**: A small, single-purpose Uno program that does one thing — balance — using hardcoded PID + PWM constants generated by an offline Python tuner. **No on-MCU learning. No auto-tune. No BOOTSTRAP.** The reference target is `archive/balancing_robot_reference/SelfBallancingRobot3.ino`. When the operator wants to re-tune (new battery, new wheels, new surface), they run the Python tool offline and reflash.
+
+**Status**: opened 2026-05-19 by the platform-bifurcation pivot. Sibling agents own the source scaffold (`src/applications/balancing_robot_uno/`) and the Python tooling (`tools/sim/`).
+
+### 4U.1 — Source scaffold
+
+- New tree: `src/applications/balancing_robot_uno/`
+  - `balance_uno_app.{h,cpp}` — read pitch, run PID, drive motors. ~150 LOC ceiling.
+  - Consumes a generated header `balance_constants_uno.h` (sibling-owned) with `constexpr` PID + PWM values.
+- Reuses existing `src/sensors/bno055.cpp`, `src/actuators/l298n_motor_driver.cpp` — no new sensor or actuator code.
+- Compile gate: `USE_BALANCING_ROBOT_UNO` (mutually exclusive with `USE_BALANCING_ROBOT`).
+
+### 4U.2 — Build environment
+
+- New env (or repurpose `uno_balance`): `arduino_uno_minimal` targeting Uno with `USE_BALANCING_ROBOT_UNO` flag.
+- Aggressive flash trimming is unnecessary because the universal stack is absent — the program should fit easily under 60 % flash.
+
+### 4U.3 — Python brute-force tuner
+
+- Lives in `auto_orientation/tools/sim/` (sibling-owned this session).
+- Wraps existing `balance_bot_sim.py` plant model.
+- Grid-search or evolutionary search across PID gain space + PWM scaling space.
+- Fitness = time balanced before tip-over under randomized disturbance injection.
+- Output: a generated header `balance_constants_uno.h` with `constexpr` Kp/Ki/Kd + stiction_min_pwm + saturation_pwm.
+
+### 4U.4 — Header generator + Uno-side consumer
+
+- Tool emits the header on every tuner run; build script copies it into `src/applications/balancing_robot_uno/generated/`.
+- Uno code includes it directly — no JSON, no runtime config, no EEPROM.
+
+### 4U.5 — First brute-force run + bench validation
+
+- Run the Python tuner to convergence on the simulated plant.
+- Flash Uno, prop bot upright, release.
+- Pass criterion: bot balances ≥ 30 s on a flat indoor surface without operator intervention.
+
+### Phase 4U success metrics
+
+- Uno minimal build at <60 % flash with full balance program
+- Python tuner produces stable gains in <10 min of search
+- Bot balances ≥ 30 s on first bench try after fresh tune
+- Re-tune workflow is documented in `docs/applications/balancing_robot_uno/README.md`
 
 ---
 
@@ -313,4 +429,4 @@ These show up in agent findings but are not yet on a phase plan. Promoted to a p
 
 ---
 
-*Last updated: 2026-05-12. When a phase enters or exits, update both this file and `todo.md`. Per-session work logs go to `docs/archive/session_records/`.*
+*Last updated: 2026-05-19 (doc audit). When a phase enters or exits, update both this file and `todo.md`. Per-session work logs go to `docs/archive/session_records/`.*

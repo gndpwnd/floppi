@@ -65,18 +65,26 @@ Phase 4 implementation and diagnosis. Five parallel research agents and two codi
 ### Diagnosis & tuning
 
 - [balance_failure_diagnosis_2026-05-12.md](balance_failure_diagnosis_2026-05-12.md) — Root-cause analysis of "motors slam during balance" — legacy gains, NDOF latency, Kd × quantization noise, contaminated online estimator.
-- [conservative_balance_gains_recommendation.md](conservative_balance_gains_recommendation.md) — Specific Kp/Ki/Kd starting points for an under-instrumented small inverted pendulum.
+- [conservative_balance_gains_recommendation.md](conservative_balance_gains_recommendation.md) — Specific Kp/Ki/Kd starting points for an under-instrumented small inverted pendulum. **Superseded by BOOTSTRAP (Phase 4.10c) — kept for historical context.**
+- [midrange_balance_gains.md](midrange_balance_gains.md) — Middle-ground Kp/Ki/Kd between the conservative and legacy regimes. **Also superseded by BOOTSTRAP — kept for historical context.**
 - [latency_budget_2026-05-12.md](latency_budget_2026-05-12.md) — End-to-end sensor→actuator latency breakdown; BNO055 NDOF group delay is the dominant 20-40 ms contributor.
+- [bno055_latency_and_pitch_fusion.md](bno055_latency_and_pitch_fusion.md) — Uno-specific BNO055 latency analysis + pitch fusion options (NDOF vs gyro-integration + accel-fusion).
+- [theoretical_audit_balance_stack.md](theoretical_audit_balance_stack.md) — Full theoretical-soundness audit of the balance control stack (2026-05-18).
 
 ### State machine
 
 - [balance_held_fallen_state_machine.md](balance_held_fallen_state_machine.md) — Original HELD/FALLEN design using lateral-gyro detector. Lenient resume variant landed in firmware.
 - [multi_axis_anomaly_handling_detection.md](multi_axis_anomaly_handling_detection.md) — Phase 4.7c proposal: Welford z-scores → Mahalanobis upgrade for true multi-axis anomaly detection.
+- [research_motor_null_space_handling_detection.md](research_motor_null_space_handling_detection.md) — Phase 2.7 proposal: project BNO055 linear-acceleration into the motor-null subspace via a learned `body_heading_unit`; detects handling without conflating sensor mounting skew or non-level ground. Includes flash/RAM budget for Uno.
 
 ### Universal auto-tune (Phase 4.10)
 
 - [dynamic_pwm_accel_learning.md](dynamic_pwm_accel_learning.md) — The system-ID design: scalar RLS for K_motor + closed-form PD-from-K_motor. **Coded and shipped 2026-05-12.**
-- [bootstrap_protocol_unstable_plant.md](bootstrap_protocol_unstable_plant.md) — 6-stage sequenced bootstrap (SEED → MOUNT_CONVERGED → PLANT_IDENTIFIED → GAINS_REFINED → ADAPTIVE). Full state machine designed; simple 5 s timer implemented.
+- [bootstrap_protocol_unstable_plant.md](bootstrap_protocol_unstable_plant.md) — 6-stage sequenced bootstrap (SEED → MOUNT_CONVERGED → PLANT_IDENTIFIED → GAINS_REFINED → ADAPTIVE). Implemented as Phase 4.10c BOOTSTRAP state (2026-05-18 PM evening).
+
+### Phase 2 — CHARACTERISE actuator (planning)
+
+- [phase2_characterise_final_plan.md](phase2_characterise_final_plan.md) — Final implementation plan for Phase 2 CHARACTERISE state (per-wheel stiction + saturation sweep). Pending implementation.
 
 ### Background research (5 parallel agents)
 
@@ -86,6 +94,20 @@ Phase 4 implementation and diagnosis. Five parallel research agents and two codi
 - [research_osoyoo_reference_implementation.md](research_osoyoo_reference_implementation.md) — Code review of the Osoyoo balancing-car kit (local copy at `~/tmp/osoyoo/`). Three concrete fixes informed Phase A.
 - [research_multi_orientation_balance_feasibility.md](research_multi_orientation_balance_feasibility.md) — Feasibility of balancing past 90° / arbitrary orientation. Level 2 firmware-only (Phase 4.11) is the recommended next step.
 
+### Cross-project synthesis (drone ↔ balance bot, 2026-05-12 evening final round)
+
+Three parallel agents triggered by the user's question "how does the flight_controller keep the drone stable without flipping over? Can we use the same approach?"
+
+- [research_flight_controller_pid_lessons.md](research_flight_controller_pid_lessons.md) — Deep-dive into `flight_controller/`'s PID architecture (controlANGLE / controlRATE), gain choices, and existing auto-cal research. Concludes: drone uses hardcoded dRehmFlight constants — no auto-tune. Cross-project lessons that DO transfer (sensor cal hygiene, cascade architecture, TPA-as-K_motor-scaling) vs. those that DON'T (mixer, trim-hover bootstrap, decoupled multi-axis).
+- [research_bno055_calibration_audit.md](research_bno055_calibration_audit.md) — End-to-end audit of the BNO055 cal flow in auto_orientation. Identifies 6 failure modes ranked by likelihood. Concludes: the cal flow is structurally sound; the likely real problem was the OnlineMountingEstimator placeholder-zero bug (Phase A Item 2, now fixed). Includes a 5-step diagnostic protocol for the next bench session.
+- [research_drone_vs_balance_bot_stability.md](research_drone_vs_balance_bot_stability.md) — Control-theory answer to "why is a drone simpler?" Drone is open-loop *neutrally stable* in attitude (linearised hover = pure double integrator); balance bot is open-loop *unstable* (gravity contributes +m·g·L·θ → exponential growth at ~120 ms time constant). That one sign difference is the root cause of every downstream tuning asymmetry.
+
 ---
 
-*Last updated: 2026-05-12 (late evening). Add new findings as you discover them.*
+## Backlog & cross-reference
+
+- [operator_ideas_backlog.md](operator_ideas_backlog.md) — Durable index of every operator-suggested feature or design principle, with date, source link, status, and one-line technical translation. The source-of-truth for which ideas are deferred, in-progress, or done. Snapshot tables in session records are point-in-time copies of this index.
+
+---
+
+*Last updated: 2026-05-19 (doc audit — indexed midrange_balance_gains, bno055_latency_and_pitch_fusion, theoretical_audit_balance_stack, phase2_characterise_final_plan; marked balance-gain rec docs as superseded by BOOTSTRAP). Add new findings as you discover them.*

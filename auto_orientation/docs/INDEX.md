@@ -13,20 +13,31 @@ Navigation map for `auto_orientation/docs/`. Each subfolder is themed; open its 
 
 ---
 
+## Strategic notes
+
+| File | Purpose |
+|------|---------|
+| [MEGA_UNIVERSAL_PLAN.md](MEGA_UNIVERSAL_PLAN.md) | **2026-05-19 pivot** — detailed plan for the Mega-only universal/adaptive balance stack (BOOTSTRAP, RLS, encoders, position containment) |
+| [applications/balancing_robot_uno/README.md](applications/balancing_robot_uno/README.md) | **2026-05-19 pivot** — Uno-minimal hardcoded balancer + Python brute-force tuner workflow |
+
+---
+
 ## Planning (top-level, edited frequently)
 
 | File | Purpose |
 |------|---------|
-| [UNIVERSAL_BALANCE_BOT_VISION.md](UNIVERSAL_BALANCE_BOT_VISION.md) | The design north star — universal code, no per-bot config, learn dynamics from operating data |
+| [UNIVERSAL_BALANCE_BOT_VISION.md](UNIVERSAL_BALANCE_BOT_VISION.md) | The design north star — universal code, no per-bot config, learn dynamics from operating data. **Now Mega-only as of 2026-05-19** |
 | [MINIMIZE_ACCELERATIONS_PHILOSOPHY.md](MINIMIZE_ACCELERATIONS_PHILOSOPHY.md) | Controller-architecture companion to the vision — what was removed, what was kept, compile-switch matrix |
 | [MULTI_ORIENTATION_BALANCE_VISION.md](MULTI_ORIENTATION_BALANCE_VISION.md) | Phase 4.11+ direction — balance past 90°, arbitrary mounting orientation, ballbot future |
 | [AUTO_TUNING_REALITY_CHECK.md](AUTO_TUNING_REALITY_CHECK.md) | Why universal dynamic auto-tuning is sequential, not one-shot; the bootstrap-protocol explanation |
 | [PHASE_4_STRUCTURAL_FIXES.md](PHASE_4_STRUCTURAL_FIXES.md) | Phase 4 coordinating doc — items 1-5, all landed 2026-05-12 |
+| [THEORETICALLY_SOUND_PROGRAM_PLAN.md](THEORETICALLY_SOUND_PROGRAM_PLAN.md) | ACTIVE — sim-first validation plan triggered by 2026-05-12 bench session: crystal flag + motors-not-powered confounded all PID iteration. Validate algorithm in sim before re-engaging motors. |
 | [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) | Tiered execution plan for the balancing-robot reference app |
 | [KNOWN_ISSUES.md](KNOWN_ISSUES.md) | 19 issues (KI-2..KI-20) ranked by severity |
 | [roadmap.md](roadmap.md) | Project roadmap, milestones (Phase 0 -> v1.0 -> v1.1 -> future) |
 | [scope.md](scope.md) | In-scope / out-of-scope boundaries |
 | [todo.md](todo.md) | Current task list |
+| [findings/operator_ideas_backlog.md](findings/operator_ideas_backlog.md) | Durable index of operator-suggested ideas (status, source, technical translation) |
 
 ---
 
@@ -67,4 +78,4 @@ Navigation map for `auto_orientation/docs/`. Each subfolder is themed; open its 
 
 ---
 
-*Last updated: 2026-05-12 (late evening — Phase 4 structural fixes + 4.10 RLS auto-tune landed). Maintained by: project planning sessions. If you add a doc, add a one-line entry to the appropriate subfolder INDEX.md.*
+*Last updated: 2026-05-19 (doc audit; Phase 4.10c BOOTSTRAP landed 2026-05-18 PM evening per commit 7a4d27f). Maintained by: project planning sessions. If you add a doc, add a one-line entry to the appropriate subfolder INDEX.md.*

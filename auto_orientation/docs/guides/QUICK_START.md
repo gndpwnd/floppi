@@ -425,7 +425,7 @@ HDOP > 10   →  Poor      (avoid relying on this)
    - Location selection
    - Power management for extended operation
 
-4. **Questions?** See [FAQs](../FAQS.md)
+4. **Questions?** See [FAQs](../getting_started/FAQS.md)
    - Common questions answered
    - Accuracy specifications
    - Adding more sensors

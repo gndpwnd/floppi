@@ -1,5 +1,56 @@
 # Universal Self-Balancing Robot — The Vision
-Last updated: 2026-05-12
+
+Last updated: 2026-05-19 (banner added for platform-bifurcation pivot)
+
+> **2026-05-19 update — this vision now applies to Mega builds only.**
+>
+> After the 2026-05-18 PM-late bench session left Uno at 97.5 % flash without reliable balance, the project pivoted: the universal/adaptive design captured below moves to Mega-class hardware (where wheel encoders and flash headroom can host it), and **Uno builds get a separate hardcoded program** with PID + PWM constants generated offline by a Python brute-force tuner. The universal design here trades flash for autonomy; Uno can't host the trade.
+>
+> - Uno-minimal program landing doc: [docs/applications/balancing_robot_uno/README.md](applications/balancing_robot_uno/README.md)
+> - Pivot rationale and platform bifurcation: [scope.md §Platform bifurcation](scope.md#platform-bifurcation-2026-05-19--mega-universal-vs-uno-minimal)
+> - Roadmap entries: [roadmap.md §Phase 4M](roadmap.md#phase-4m--mega-only-universal-stack-cleanup) (Mega-universal) and [roadmap.md §Phase 4U](roadmap.md#phase-4u--uno-minimal-hardcoded-balancer--python-brute-force-tuner) (Uno-minimal)
+> - Operator-memory canonical record: `project_strategic_pivot_2026-05-19.md`
+>
+> The rest of this document — control philosophy, "more/less" framing, the seven things the operator should never interact with — applies unchanged to the Mega-universal target.
+
+## Control philosophy: "more / less" — not "set to N"
+
+The single sharpest reframe of this project. The controller does **not** reason in absolute units. It reasons in **deltas**:
+
+- *"need more torque than I'm giving"* — increase PWM toward the saturation limit
+- *"need less torque than I'm giving"* — decrease PWM toward zero or reverse
+- *"need to reverse direction"* — cross zero
+
+A specific number ("set PWM to 80") is never the right framing in production. The number only matters as a **landmark on a map** that the bot learned during calibration:
+
+- **Stiction floor** = the smallest PWM that produces ANY wheel motion. Below it, "more" of zero is still zero — the controller knows to skip past it.
+- **Saturation point** = the PWM beyond which response stops growing. Above it, "more" doesn't help — the controller knows to give up and rely on geometry.
+- **K_motor** = the local slope of "PWM in" vs "angular acceleration out." Tells the controller how much "more" actually buys you.
+
+These three numbers — stiction floor, saturation point, K_motor — are the bot's **map of its own actuator**. CHARACTERISE (Phase 2) and the RLS plant identifier (Phase 4.10) discover them. The active balance loop just navigates within them via gradients.
+
+### What this means in code
+
+| Old (absolute) framing | New (delta) framing |
+|---|---|
+| `stiction_min_pwm = 80` | "if commanded PWM < stiction_floor, snap to stiction_floor in the commanded direction" |
+| `Kp = 65` | "current Kp produced overshoot — try less / try more" (RLS adapts) |
+| `tilt_limit_deg = 8` | "tilt is past the operating envelope the bot has demonstrated balance over" |
+| `HELD_threshold = 90 dps` | "lateral motion exceeds the motor-null-space residual we've established as normal" |
+
+The right side never has a hardcoded literal. It refers to a *measured* quantity, learned by the bot.
+
+### Why this matters operationally
+
+When the bot oscillates wildly (a real failure mode the 2026-05-18 bench session caught), the diagnosis is NEVER "the gain value is wrong." It's:
+
+- *"the controller is asking for more than the actuator can deliver"* (saturation: gain too high, can't catch fall) — solution: ramp gain DOWN
+- *"the controller is asking for less than the plant requires"* (under-response: gain too low, bot tips before output engages) — solution: ramp gain UP
+- *"the controller doesn't know where balance actually is"* (mount offset stuck) — solution: estimator needs better evidence integration
+
+The RLS-based plant identifier (Phase 4.10) implements exactly this loop: observe what the plant does in response to commands, adjust gain *targets*, rate-limit-ramp live gains toward those targets. Never set a number from outside; always derive it from the gradient of response-to-command.
+
+---
 
 ## The user's framing
 
@@ -103,3 +154,32 @@ The 2026-05-12 evening session kept iterating tactically — bump Kp, drop Kd, l
 - [findings/multi_axis_anomaly_handling_detection.md](findings/multi_axis_anomaly_handling_detection.md) — same idea for handling detection.
 - [findings/auto_pid_tuning_research.md](findings/auto_pid_tuning_research.md) — the existing relay-feedback auto-tuner (already implemented; operator just needs to press `t`).
 - [MASTER_DESIGN.md](findings/MASTER_DESIGN.md) — the overall framework design that this vision sits on top of.
+- [findings/operator_ideas_backlog.md](findings/operator_ideas_backlog.md) — durable cross-reference index of all operator-suggested ideas (the table here is a snapshot; that file is the index).
+
+---
+
+## 2026-05-18 additions
+
+Reinforced and extended during the bench session ([session record](archive/session_records/2026-05-18_BENCH_MOTOR_STICTION_DIAGNOSIS.md)). Three new operator-proposed ideas joined the design backlog. Each is tracked in detail in [findings/operator_ideas_backlog.md](findings/operator_ideas_backlog.md).
+
+### Idea 1 — Cleaner FALLEN heuristic: motion without commanded motion
+
+> "If the robot is moving without intentional motor command, then it is falling."
+
+Translation: `|last_commanded_output_pwm| < SMALL (≈20)` for ≥100 ms AND `|gyro_pitch_dps| > LARGE (≈30)` ⇒ state transition to FALLEN. Physics rationale: with motors silent and the bot still upright, the only force producing pitch rotation is gravity acting on the imbalanced CoM. Complements the existing lateral-gyro HELD detector — adds a *complementary* signal that distinguishes "falling because controller couldn't recover" from "I am being held". Cost: ~30-50 bytes of code. Status: **deferred to Phase 2.5**, after CHARACTERISE lands. Source: [session record §Operator-proposed FALLEN heuristic](archive/session_records/2026-05-18_BENCH_MOTOR_STICTION_DIAGNOSIS.md).
+
+### Idea 2 — Nonlinear gain scaling near balance (gain scheduling)
+
+> "Variable motor speed: gentle near balance, aggressive far from it."
+
+Translation: the linear PID drives the motors just as hard for sub-degree noise wobbles as it does for the same fractional displacement during a real fall. Fix is **gain scheduling**: low effective gain inside a small "soft zone" around 0°, higher gain outside. Two compact formulations (dead-zoned proportional, quadratic scaling); see [session record §Operator-proposed idea — nonlinear gain scaling](archive/session_records/2026-05-18_BENCH_MOTOR_STICTION_DIAGNOSIS.md) for the math. Real control-engineering technique (Khalil §13 gain scheduling). Cost: ~20 bytes of code and one float parameter. Status: **deferred to Phase 2.6**, after CHARACTERISE and the FALLEN heuristic land.
+
+### Idea 3 — Auto-discover min/max PWM via sensor feedback
+
+> "Find the stiction floor and saturation point from sensor data, not from a constant."
+
+Translation: on boot (or via `k` command), pulse PWM through {30,50,70,90,110,130,150,200} for 200 ms each (alternating direction), accumulate `|gyro_pitch|` per pulse, identify the first PWM that exceeds the response threshold (= stiction floor) and the PWM where response stops growing (= saturation point). Save to EEPROM at 0x210, apply via new runtime setter `L298NMotorDriver::set_stiction_min_pwm()`. Status: **in progress — being implemented now as Phase 2 CHARACTERISE state**. Source: [session record §Phase 2 plan](archive/session_records/2026-05-18_BENCH_MOTOR_STICTION_DIAGNOSIS.md). Prior research: [findings/dynamic_pwm_accel_learning.md §8 step 3](findings/dynamic_pwm_accel_learning.md).
+
+### Why these matter to the vision
+
+All three close gaps where bot-specific knowledge was leaking into either source code (`stiction_min_pwm = 0` → 30 → ?) or fixed thresholds (lateral-gyro magnitude, linear PID gains). Each replaces a hardcoded constant or assumed behaviour with a measured / online-learned signal. They are not feature creep — they are the next concrete instances of the "nothing bot-specific that could be measured" constraint codified in [scope.md](scope.md).

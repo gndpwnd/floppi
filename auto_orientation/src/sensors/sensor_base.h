@@ -111,10 +111,18 @@ class OrientationSensor : public Sensor {
   // and leave xyz untouched (caller should zero-initialize).
   //
   // Units (matching Adafruit_BNO055 native units to avoid lossy conversion):
-  //   getRawGyro:  body-frame angular rate in deg/s (xyz)
-  //   getRawAccel: body-frame linear acceleration in m/s² (xyz)
-  virtual bool getRawGyro(float xyz[3])  { (void)xyz; return false; }
-  virtual bool getRawAccel(float xyz[3]) { (void)xyz; return false; }
+  //   getRawGyro:        body-frame angular rate in deg/s (xyz)
+  //   getRawAccel:       body-frame linear acceleration in m/s² (xyz)
+  //   getLinearAccel:    body-frame GRAVITY-REMOVED linear accel in m/s²
+  //                      (xyz). On the BNO055 this is the fusion output
+  //                      VECTOR_LINEARACCEL — gravity is already subtracted
+  //                      by the onboard fusion. Used by the balance app to
+  //                      detect impacts/collisions: a stationary or balancing
+  //                      bot should read ≈0; an impact spikes well above the
+  //                      sensor noise floor (~1 m/s² LSB on BNO055).
+  virtual bool getRawGyro(float xyz[3])     { (void)xyz; return false; }
+  virtual bool getRawAccel(float xyz[3])    { (void)xyz; return false; }
+  virtual bool getLinearAccel(float xyz[3]) { (void)xyz; return false; }
 };
 
 // ============================================================================

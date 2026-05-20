@@ -2,11 +2,11 @@
 
 ## Quick Navigation
 
-👉 **Start here**: [TESTING_QUICKSTART.md](TESTING_QUICKSTART.md) (30-second overview)
+👉 **Start here**: the 30-second overview is just below in this file.
 
-📚 **Full documentation**: [docs/integration_test_guide.md](docs/integration_test_guide.md) (detailed test guide)
+📚 **Full documentation**: [integration_test_guide.md](integration_test_guide.md) (detailed test guide)
 
-📋 **Completion summary**: [INTEGRATION_TEST_SUMMARY.md](INTEGRATION_TEST_SUMMARY.md) (what was built)
+📋 **Completion summary**: [../archive/INTEGRATION_TEST_SUMMARY.md](../archive/INTEGRATION_TEST_SUMMARY.md) (what was built)
 
 ## In 30 Seconds
 
@@ -238,7 +238,7 @@ All requirements met:
 
 ## Support
 
-See [docs/integration_test_guide.md](docs/integration_test_guide.md) for:
+See [integration_test_guide.md](integration_test_guide.md) for:
 - Detailed test explanations
 - Expected outputs
 - Troubleshooting guide
