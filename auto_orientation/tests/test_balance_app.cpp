@@ -495,6 +495,76 @@ static void test_short_press_restarts_from_fallen() {
 }
 #endif  // USE_BALANCE_FALL_DETECTION
 
+// ----------------------------------------------------------------------------
+// STUCK detector test (audit P1-COV-3 — audit_code_quality_balance_stack_
+// 2026-05-19.md §7).
+//
+// Condition (balance_app.cpp step_run_, post-collision/HELD checks):
+//   |pwm output| >= SAT_THRESHOLD_PWM (180) AND |gyro_pitch_dps| < STUCK_GYRO_DPS
+//   (5.0) for >= STUCK_TIMEOUT_MS (1500).
+//
+// Observable side effect:
+//   1. motors_.stop()
+//   2. last_output_ = 0
+//   3. safety_.request_abort()
+//   → next tick: step_run_ observes abort_requested(), clear_abort(), enter
+//     IDLE.
+//
+// The test holds a steady high pitch so the PID command pegs near the output
+// limit, while gyro_pitch_dps stays at 0 (default MockIMU does not override
+// getRawGyro, so raw_gyro_dps_[1] never moves off zero). After >1500 ms of
+// such hold, we expect the state to drop to IDLE and abort to have been
+// requested-and-cleared by step_run_.
+// ----------------------------------------------------------------------------
+static void test_stuck_detector_fires_on_saturated_zero_gyro() {
+    printf("\nTest: STUCK detector (output saturated + gyro=0 >1500ms) → IDLE\n");
+    AppFixture f;
+    BalanceAppConfig cfg = BalanceApp::default_config();
+    // Disable adaptive plumbing so applied_* doesn't ramp Kp away from the
+    // initial value during the long hold — keeps the saturation signal
+    // perfectly steady throughout the 1500 ms window.
+    cfg.enable_online_adaptation = false;
+    f.app.begin(cfg, 1000);
+
+    // Enter RUN directly so we can observe step_run_'s detector. PID limits
+    // default to ±255 per enter_run_with_current_gains.
+    f.app.enter_run_with_current_gains(1000);
+    TEST_ASSERT(f.app.get_state() == BalanceAppState::RUN,
+                "entered RUN for STUCK exercise");
+
+    // Pitch held at 5° (outside the 1° soft zone, inside the 25° soft-cutoff).
+    // With cfg.initial_kp = 50, P-term alone produces 5° × 50 = 250 PWM/° which
+    // clamps to +255 — well above the 180 SAT_THRESHOLD_PWM. Gyro stays at 0
+    // (MockIMU's default get*) so abs_gy is 0 < STUCK_GYRO_DPS.
+    f.imu.set_pitch(5.0f);
+
+    // Step for 1600 ms at 5 ms/tick = 320 ticks. After 1500 ms the STUCK
+    // detector should fire (motors stop + safety.request_abort()); the very
+    // next tick observes abort_requested() and routes RUN → IDLE.
+    bool reached_idle = false;
+    uint32_t saw_idle_at = 0;
+    for (int i = 0; i < 320; ++i) {
+        const uint32_t t = 1000u + (uint32_t)(i + 1) * 5u;
+        f.app.step(t);
+        if (f.app.get_state() == BalanceAppState::IDLE) {
+            reached_idle = true;
+            saw_idle_at = t;
+            break;
+        }
+    }
+    TEST_ASSERT(reached_idle,
+                "STUCK detector eventually routes RUN → IDLE");
+    // Sanity-check the timing — it should not fire prematurely. 1000 + 1500
+    // = 2500 ms is the earliest the timeout can elapse, and step_run_ runs
+    // one more tick afterward to observe abort. So we expect >= 2505 ms.
+    TEST_ASSERT(saw_idle_at >= 2500u,
+                "STUCK transition occurred only after the 1500 ms timeout");
+    TEST_EQ_INT(f.motors.last_left(), 0,
+                "motors stopped after STUCK fires");
+    TEST_EQ_INT(f.app.get_last_output(), 0,
+                "last_output zeroed after STUCK fires");
+}
+
 static void test_state_name_strings() {
     printf("\nTest: state_name() returns expected strings\n");
     AppFixture f;
@@ -576,6 +646,7 @@ int main() {
     test_motors_stopped_in_idle_and_fallen();
     test_short_press_restarts_from_fallen();
 #endif
+    test_stuck_detector_fires_on_saturated_zero_gyro();
     test_state_name_strings();
     test_safety_thresholds_pushed_from_config();
     test_safety_basics();

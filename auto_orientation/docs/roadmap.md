@@ -1,7 +1,25 @@
 # Roadmap: Auto Orientation Framework
 
 **Current phase**: Phase 4 — Auto-orientation framework + balancing-robot reference application (now bifurcated into 4M Mega-universal and 4U Uno-minimal — see below)
-**Last updated**: 2026-05-19 PM (multi-agent landing wave — collision detection re-landed, wheel encoder driver + integration LANDED, Phase 4M.12 PWM auto-discovery code LANDED, Uno minimal P0+P1 batches LANDED, tuner contract fixed, Phase 4.11a design complete)
+**Last updated**: 2026-05-20 (reconciliation pass after repo sync ec4ef53 — err0r device work merged; Phase 4M.0/4M.1/4M.12 verified LANDED; 5 audits + state reconciliation + calibration security fixes + mega_orientation RAM fix all landed today; architecture plan landed)
+
+### 2026-05-20 status snapshot
+
+| Item | Status | Reference |
+|---|---|---|
+| Phase 4M.0 — collision detection | **LANDED + VERIFIED** (27/27 tests) | [findings/state_reconciliation_2026-05-20.md](findings/state_reconciliation_2026-05-20.md) §1 |
+| Phase 4M.1 — wheel encoder driver | **LANDED + VERIFIED** | [findings/state_reconciliation_2026-05-20.md](findings/state_reconciliation_2026-05-20.md) §3 |
+| Phase 4M.12 — PWM range auto-discovery (code) | **LANDED + VERIFIED** | [findings/state_reconciliation_2026-05-20.md](findings/state_reconciliation_2026-05-20.md) §2 |
+| Phase 4M.11 — `e` cmd + EEPROM CPM/radius | **PENDING** (Workstream D) | [findings/architecture_plan_2026-05-20.md](findings/architecture_plan_2026-05-20.md) §2 |
+| Phase 4M.2 — K cross-check (IMU vs encoder) | **PENDING** (Workstream F) | [findings/architecture_plan_2026-05-20.md](findings/architecture_plan_2026-05-20.md) §2 |
+| Phase 4M.13 — velocity / position outer loop | **PENDING** (Workstream F; design ready) | [findings/phase_4_11a_design_2026-05-19.md](findings/phase_4_11a_design_2026-05-19.md), [findings/architecture_plan_2026-05-20.md](findings/architecture_plan_2026-05-20.md) §2 |
+| Calibration security (CRC8-CCITT + length + version + overflow) | **LANDED** — `CAL_FORMAT_VERSION` 0x01→0x02 | [findings/security_fix_calibration_2026-05-20.md](findings/security_fix_calibration_2026-05-20.md) |
+| `mega_orientation` RAM | **GREEN** at 74.5 % (F2 reclaim landed) | [findings/mega_ram_fix_2026-05-20.md](findings/mega_ram_fix_2026-05-20.md) |
+| Tuner workflow (Python tuner ↔ Uno consumer) | **GREEN** — `pio run -e uno_balance` clean; stale warning resolved | [findings/tuner_format_alignment_2026-05-20.md](findings/tuner_format_alignment_2026-05-20.md) |
+| Phase 4U scaffolding (Uno-minimal app + brute_tune.py + README) | **DONE** — first tuner run YELLOW: 8 s sim vs 30 s target | (next-session work: bench-validate) |
+| Architecture plan + 5 audits + state reconciliation | **LANDED** (148 total findings) | [findings/architecture_plan_2026-05-20.md](findings/architecture_plan_2026-05-20.md), `findings/audit_*_2026-05-20.md`, [findings/state_reconciliation_2026-05-20.md](findings/state_reconciliation_2026-05-20.md) |
+| Workstream B — AUTO_TUNE dead-code deletion + `held_entry_reason_` telemetry | **COMPLETE** — `uno_balance` + `mega_balance` builds SUCCESS | [archive/session_records/2026-05-20_multi_agent_sync_audits_and_fixes.md](archive/session_records/2026-05-20_multi_agent_sync_audits_and_fixes.md) |
+| `json_formatter` 3 P1 bugs + new test coverage (json_formatter / calibration_storage / bootstrap_k_preservation) + build fixes | **LANDED** | [archive/session_records/2026-05-20_multi_agent_sync_audits_and_fixes.md](archive/session_records/2026-05-20_multi_agent_sync_audits_and_fixes.md) |
 
 This roadmap describes the framework's evolution from the just-completed BNO085 + GPS + EKF stack (Phase 3) toward a multi-MCU, multi-IMU, optionally-WiFi-connected platform with a catalog of reference applications.
 
@@ -148,43 +166,46 @@ See: [findings/bno055_driver_and_multi_imu_strategy.md](findings/bno055_driver_a
 
 **Working assumption**: Mega's flash budget is generous (~88 % free even with current universal stack). Optimize new code for **clarity**, not size. Don't repeat the Uno-driven micro-optimization patterns that produced unreadable `snprintf`-replacement chains.
 
-### 4M.0 — Restore reverted collision detection — LANDED 2026-05-19 PM
+### 4M.0 — Restore reverted collision detection — LANDED 2026-05-19 PM (VERIFIED 2026-05-20)
 
-Late in the 2026-05-19 morning, a P0/P1 audit-fix agent inadvertently reverted the just-landed collision-detection code in `balance_app.{h,cpp}`. **Re-implemented during the 2026-05-19 PM multi-agent wave.** Three-gate detector live with constants in `balance_app.h:178-182`: PEAK 12 m/s² single-tick / SUSTAIN 8 m/s² for 3 ticks / KICK 6 m/s² with |gyro| > 200 dps. 27/27 native tests in `tests/test_balance_app_collision.cpp` pass. Detector loop at `balance_app.cpp:1639-1648` matches [findings/research_collision_signature_bno055.md](findings/research_collision_signature_bno055.md) §6 row-for-row.
+Late in the 2026-05-19 morning, a P0/P1 audit-fix agent inadvertently reverted the just-landed collision-detection code in `balance_app.{h,cpp}`. **Re-implemented during the 2026-05-19 PM multi-agent wave.** Three-gate detector live with constants in `balance_app.h:178-182`: PEAK 12 m/s² single-tick / SUSTAIN 8 m/s² for 3 ticks / KICK 6 m/s² with |gyro| > 200 dps. 27/27 native tests in `tests/test_balance_app_collision.cpp` pass. Detector loop at `balance_app.cpp:1639-1648` matches [findings/research_collision_signature_bno055.md](findings/research_collision_signature_bno055.md) §6 row-for-row. **2026-05-20 verification:** post-merge (commit ec4ef53), API surface and constants confirmed present in source (`balance_app.h:178-182, :549, :753`; `balance_app.cpp:906, :1645-1648`); 27/27 tests still pass — see [findings/state_reconciliation_2026-05-20.md](findings/state_reconciliation_2026-05-20.md) §1.
 
-### 4M.1 — Wheel-encoder hardware abstraction — LANDED 2026-05-19 PM
+### 4M.1 — Wheel-encoder hardware abstraction — LANDED 2026-05-19 PM (VERIFIED 2026-05-20)
 
 - New module: `src/sensors/wheel_encoder.{h,cpp}` (PJRC Encoder lib added to `mega_balance` env). 17/17 native tests pass.
 - Mega backend uses external-interrupt pins. Pin map fixed in `src/config/pins.h`: `L_ENC_A=18`, `L_ENC_B=19`, `R_ENC_A=2`, `R_ENC_B=3` — Uno cannot host this because it only has two external-interrupt pins, and one is needed for the BNO055 INT line.
 - Per-wheel position (ticks), velocity (ticks/s), and direction.
 - Reference: [findings/research_wheel_encoders_mega_2026-05-19.md](findings/research_wheel_encoders_mega_2026-05-19.md) (landed 2026-05-19 AM) for hardware recommendations and pin choices.
 - Operator bring-up: [guides/encoder_bench_bringup.md](guides/encoder_bench_bringup.md) (landed 2026-05-19 PM, ~450 lines).
+- **2026-05-20 verification:** header + impl + tests confirmed present after sync ec4ef53 — see [findings/state_reconciliation_2026-05-20.md](findings/state_reconciliation_2026-05-20.md) §3.
 
-### 4M.2 — Encoder-driven K_motor verification
+### 4M.2 — Encoder-driven K_motor verification — PENDING (Workstream F)
 
 - Replace BOOTSTRAP's IMU-only K_motor measurement (Δgyro / ΔPWM) with an encoder-driven version (Δwheel_velocity / ΔPWM) — direct, no plant-coupling noise.
 - Keep IMU-only measurement as the fallback when encoders are absent.
 - Cross-check: encoder K and IMU K must agree within a tolerance before BOOTSTRAP exits to RUN.
+- Ordering: queued in [findings/architecture_plan_2026-05-20.md](findings/architecture_plan_2026-05-20.md) §2 as Workstream F (alongside 4M.13 velocity outer loop).
 
 ### 4M.3 — Stiction / saturation per-wheel from encoder pulses
 
 - Phase 2 CHARACTERISE upgrade: pulse each wheel independently with ramping PWM; first PWM that produces a non-zero encoder tick = stiction floor; PWM where tick rate stops growing = saturation.
 - Per-wheel asymmetry (left vs right) was speculated in [UNIVERSAL_BALANCE_BOT_VISION.md](UNIVERSAL_BALANCE_BOT_VISION.md); encoders make it measurable.
 
-### 4M.11 — Wheel-encoder integration into balance_app — LANDED 2026-05-19 PM
+### 4M.11 — Wheel-encoder integration into balance_app — sampling LANDED 2026-05-19 PM, `e` cmd + EEPROM PENDING (Workstream D)
 
 - Sampling + bookkeeping wired into `balance_app::tick()` (working tree, no commit). 25 new native tests pass.
 - Stall detection wired to HELD with `failure_reason = 7`.
-- Operator command additions (CPR readout, distance, save calibration) PENDING — tracked in [todo.md](todo.md).
+- **PENDING (Workstream D, [findings/architecture_plan_2026-05-20.md](findings/architecture_plan_2026-05-20.md) §2):** Operator `e` command (CPR readout, distance, save calibration) and the EEPROM CPM/radius persistence path. Still tracked in [todo.md](todo.md).
 
-### 4M.12 — PWM auto-discovery — CODE LANDED 2026-05-19 PM
+### 4M.12 — PWM auto-discovery — LANDED 2026-05-19 PM (VERIFIED 2026-05-20)
 
 - 49 `PWM_DISC*` references in `balance_app.{h,cpp}`; new `CHAR_PWM_RANGE`-style sweep state.
 - Mega flash 14.1 % → 14.7 % (+0.6 % for this feature). Plenty of room.
-- Native test file PENDING — sibling verification agent is writing it; next session should confirm.
 - Output feeds `L298NMotorDriver::stiction_min_pwm` and the Python brute-force tuner's PWM bounds.
+- **2026-05-20 verification:** `PWM_DISCOVERY = 8` enum value present (`balance_app.h:84`); all 7 PWM_DISC_* constants match design — see [findings/state_reconciliation_2026-05-20.md](findings/state_reconciliation_2026-05-20.md) §2.
+- **2026-05-20:** pre-existing `-Wswitch` warning on the `PWM_DISCOVERY` case **FIXED** — see [archive/session_records/2026-05-20_multi_agent_sync_audits_and_fixes.md](archive/session_records/2026-05-20_multi_agent_sync_audits_and_fixes.md).
 
-### 4M.13 / 4.11a — Position containment (was Phase 4.11) — DESIGN LANDED 2026-05-19 PM
+### 4M.13 / 4.11a — Position containment (was Phase 4.11) — DESIGN LANDED 2026-05-19 PM, implementation PENDING (Workstream F)
 
 The Phase 4.11 position-containment work that was queued for Uno via pitch double-integration now becomes a Mega job with **wheel-encoder odometry preferred** over IMU-only pitch double-integration.
 
@@ -192,7 +213,7 @@ The Phase 4.11 position-containment work that was queued for Uno via pitch doubl
 - New module (queued): `src/control/position_loop.{h,cpp}` — cascade outer loop: position error (encoder ticks) → pitch setpoint command → inner balance loop.
 - Slow restoring action (~0.5 Hz bandwidth) so the bot drifts back toward the start position without fighting the balance loop.
 - Runtime `USE_IMU_ONLY_OUTER_LOOP` gate selects encoder-primary vs pitch-double-integration fallback.
-- Implementation deferred to next session — would have collided with the Phase 4M.12 agent in `balance_app.cpp`.
+- Implementation deferred to next session — would have collided with the Phase 4M.12 agent in `balance_app.cpp`. **Re-confirmed PENDING 2026-05-20** as Workstream F per [findings/architecture_plan_2026-05-20.md](findings/architecture_plan_2026-05-20.md) §2.
 - Reference: 2026-05-19 operator observation that the bot wanders during testing and collides with stuff — encoder odometry is the robust fix.
 
 ### 4M.k — K-quality + audit-fix follow-through
@@ -214,6 +235,8 @@ The P0/P1 audit fixes landed in this session (gyro torn-read atomicity, `plant_i
 **Goal**: A small, single-purpose Uno program that does one thing — balance — using hardcoded PID + PWM constants generated by an offline Python tuner. **No on-MCU learning. No auto-tune. No BOOTSTRAP.** The reference target is `archive/balancing_robot_reference/SelfBallancingRobot3.ino`. When the operator wants to re-tune (new battery, new wheels, new surface), they run the Python tool offline and reflash.
 
 **Status**: opened 2026-05-19 by the platform-bifurcation pivot. Source scaffold landed in [`src/applications/balancing_robot_uno/`](../src/applications/balancing_robot_uno) (4 files, commit c3c0c6b) and Python tooling in [`tools/sim/`](../tools/sim) (`brute_tune.py` + `balance_constants_template.h.in`, same commit). See [verification_2026-05-19.md](findings/verification_2026-05-19.md) for the post-landing build/test matrix.
+
+**2026-05-20 status:** Scaffolding **DONE** — Uno-minimal app exists, `brute_tune.py` exists, README workflow doc landed today. Tuner ↔ Uno consumer format alignment confirmed clean (`pio run -e uno_balance` succeeds — the prior "format mismatch" warning in the state reconciler was stale; see [findings/tuner_format_alignment_2026-05-20.md](findings/tuner_format_alignment_2026-05-20.md)). First tuner run is **YELLOW**: 8 s balanced in sim vs 30 s target. Next-session task: **bench-validate** the tuner output on hardware and iterate the plant model where the sim under-predicts performance.
 
 ### 4U.1 — Source scaffold
 
@@ -445,4 +468,4 @@ These show up in agent findings but are not yet on a phase plan. Promoted to a p
 
 ---
 
-*Last updated: 2026-05-19 PM (multi-agent landing wave — Phase 4M.0/4M.1/4M.11/4M.12 LANDED; 4M.13/4.11a DESIGN ready for next-session implementation). When a phase enters or exits, update both this file and `todo.md`. Per-session work logs go to `docs/archive/session_records/`.*
+*Last updated: 2026-05-20 (end-of-session reconciliation — Phase 4M.0/4M.1/4M.12 VERIFIED LANDED after err0r-device merge ec4ef53; 4M.11 `e` cmd + EEPROM and 4M.2 K cross-check and 4M.13 velocity outer loop explicitly marked PENDING; Phase 4U scaffolding DONE, bench validation next; calibration security fixes + `mega_orientation` RAM fix + architecture plan + 5 audits + state reconciliation landed; Workstream B AUTO_TUNE dead-code deletion COMPLETE + json_formatter 3 P1 bug fixes + new test coverage + build fixes landed; cross-project AO→FC research landed at [/docs/findings/bno_cross_project_2026-05-20.md](../../docs/findings/bno_cross_project_2026-05-20.md). Full session record: [archive/session_records/2026-05-20_multi_agent_sync_audits_and_fixes.md](archive/session_records/2026-05-20_multi_agent_sync_audits_and_fixes.md)). When a phase enters or exits, update both this file and `todo.md`. Per-session work logs go to `docs/archive/session_records/`.*

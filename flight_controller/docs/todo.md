@@ -1,6 +1,6 @@
 # Flight Controller Firmware - Todo
 
-> Last updated: 2026-03-30
+> Last updated: 2026-05-20 (end-of-session reconciliation)
 
 ## In Progress
 
@@ -12,16 +12,33 @@ _Focus: Get everything working on real hardware. Feature development is paused �
 
 _Receiver now connected. No ESCs/motors yet._
 
-## Next Session: Hardware Calibration (Teensy + SBUS)
+## Next Session: Hardware Validation
 
-_Goal: Complete all calibrations possible without ESCs. Get config.h fully populated with real hardware values. Verify live build runs stable (no motors, but PID + telemetry should be sane)._
+_The Session 1 doc deliverables ([findings/future_session_scaffolding_2026-05-20.md](findings/future_session_scaffolding_2026-05-20.md) §4) all landed 2026-05-20 — see "Completed 2026-05-20" below. Remaining no-hardware work moves to Future Sessions Backlog; hardware calibration phases below are the next focus once ESCs/motors return._
 
-### Phase 0: Pre-flight Prep (before plugging in)
+## Future Sessions Backlog
 
-- [ ] Re-enable `USE_SBUS_RECEIVER` in config.h (currently commented out)
-- [ ] Build `teensy40_calibration` — verify compiles with SBUS enabled
-- [ ] Build `teensy40` (live) — should now pass (was failing without receiver)
-- [ ] Verify `build-all` — expect 10/10 with SBUS re-enabled
+_Don't expand inline — see the planning docs._
+
+- **Session 2 (low-risk research, no hardware)** and **Session 3 (bigger integration scaffolds)** items live in [findings/future_session_scaffolding_2026-05-20.md](findings/future_session_scaffolding_2026-05-20.md) §3 + §4. Highlights: motor/ESC test framework spec, swarm-API contract spec, WiFi failover trace, voltage-monitoring spec, barometer integration spec, GPS passthrough spec.
+- **BNO055/BNO085 + calibration HAL port phases for FC v2** — see [/home/devel/floppi/docs/findings/bno_cross_project_2026-05-20.md](/home/devel/floppi/docs/findings/bno_cross_project_2026-05-20.md). Highest-ROI cheap win identified there: `calibration_storage` HAL port.
+- **Modular test runner top-level dispatcher + remaining suite stubs** (`test_imu.sh`, `test_radio.sh`, `test_motors.sh`) — harness already exists; see [findings/test_infrastructure_v2_2026-05-20.md](findings/test_infrastructure_v2_2026-05-20.md).
+- **ESP32 reset path in test harness** — stubbed today, needs hardware to validate. See §2 #10 in scaffolding doc.
+- **3 ESP32 GPIO-conflict `[VERIFY]` flags** — raised by the 2026-05-20 wiring-guide audit; resolve against `pin_definitions_esp32.h` (and on hardware where needed). See [archive/session_records/2026-05-20_recon_builds_and_scaffolding.md](archive/session_records/2026-05-20_recon_builds_and_scaffolding.md).
+
+## Awaiting Operator Input
+
+_5 open questions from [findings/future_session_scaffolding_2026-05-20.md](findings/future_session_scaffolding_2026-05-20.md) §7._
+
+- [ ] **Default IMU for FC v2** — Stay on MPU6050/9250, or transition to BNO055/BNO085 once bno-cross-project research lands? Affects magnetometer roadmap (§3.3) and IMU calibration story.
+- [ ] **GPS scope clarification** — scope.md says GPS is flight-computer territory; auto_orientation has `GPS_QUICK_START.md`. Is the intent that FC is a passthrough for GPS data (Core 1 → API relay), or fully out? Affects §3.4.
+- [ ] **Hardware availability through Q2 2026** — When will ESCs/motors be on the bench? Gates ESP32 smoke test, motor-test framework execution, and Phase 1-7 hardware calibration below.
+- [ ] **swarm_api integration appetite** — Is `swarm_api` going to be actively used this quarter, or is FC's WiFi API mostly dormant? Affects priority of §3.5 contract spec.
+- [ ] **ResearchHub readiness** — Is RAG pipeline ready to ingest the 14 findings docs? If not, what's the current blocker?
+
+## When Hardware Returns: Calibration Phases (Teensy + SBUS)
+
+_Goal: Complete all calibrations possible without ESCs. Get config.h fully populated with real hardware values. Verify live build runs stable (no motors, but PID + telemetry should be sane). Phase 0 is already done by 2026-05-20 work — SBUS re-enabled and all 10 envs compile per [findings/project_recon_2026-05-20.md](findings/project_recon_2026-05-20.md)._
 
 ### Phase 1: Connect & Smoke Test
 
@@ -127,6 +144,22 @@ _Tasks waiting on something (include reason)_
 
 _For context; clear periodically_
 
+### Completed 2026-05-20
+
+_Full session record: [archive/session_records/2026-05-20_recon_builds_and_scaffolding.md](archive/session_records/2026-05-20_recon_builds_and_scaffolding.md)._
+
+- [x] **PID tuning guide** — `docs/pid-tuning-guide.md` created. Documents the calibration-mode `g` workflow, conservative starting values per VTOL type, the "oscillate → reduce 20%" loop, and re-tune triggers.
+- [x] **Wiring-guide fidelity audit (Teensy + ESP32)** — complete; 2 fixes applied + 3 ESP32 GPIO-conflict `[VERIFY]` flags raised against `pin_definitions*.h`. See session record.
+- [x] **WiFi onboarding + diagnose decision tree** — `docs/esp32_wifi_onboarding.md` (first-time ESP32 WiFi setup) and `docs/diagnose_decision_tree.md` (symptom → `dev.sh diagnose` → fix) created.
+- [x] **BNO055/BNO085 Phase A scaffolding** — `USE_BNO055` / `USE_BNO085` flags + I2C-detect stubs landed (flags OFF by default). See session record.
+- [x] **SBUS re-enabled** in `include/config.h:93` (was commented out for bench testing). Restores 10/10 env compile. See [findings/project_recon_2026-05-20.md](findings/project_recon_2026-05-20.md).
+- [x] **Test harness modularization** — `tests/test_calibration.sh` (480 lines) split into `tests/lib/harness.sh` (246 lines, shared functions) + `tests/suites/test_calibration.sh` (304 lines, all 18 tests / 42 assertions preserved verbatim). Original entry point preserved as a 21-line `exec` wrapper. ESP32 reset path stubbed in harness (documented, not yet functional). See [findings/test_infrastructure_v2_2026-05-20.md](findings/test_infrastructure_v2_2026-05-20.md).
+- [x] **Project recon delivered** — 779-line comprehensive recon at [findings/project_recon_2026-05-20.md](findings/project_recon_2026-05-20.md) — used to plan today's work.
+- [x] **Cross-project IMU research** — phased plan for porting auto_orientation's BNO055/BNO085 drivers and `calibration_storage` HAL into flight_controller. Identifies the calibration HAL port as highest-ROI cheap win. See [/home/devel/floppi/docs/findings/bno_cross_project_2026-05-20.md](/home/devel/floppi/docs/findings/bno_cross_project_2026-05-20.md).
+- [x] **Future-session scaffolding plan** — 3-session agenda + 5 operator open questions at [findings/future_session_scaffolding_2026-05-20.md](findings/future_session_scaffolding_2026-05-20.md).
+
+### Pre-2026-05-20
+
 - [x] Acro support firmware improvements — 2026-02-20
   - **BUG FIX**: MPU6050 gyro/accel range init — `initialize()` hardcodes 250 DPS/2G, now explicitly set from config.h
   - MAX_RATE defaults increased: roll/pitch 200→500, yaw 160→400 deg/s
@@ -145,7 +178,7 @@ _For context; clear periodically_
 - **Serial tools**: `tools/calibrate.sh` (menu-driven calibration), `tools/serial_monitor.py` (backend/scripting), `pio device monitor` (fallback). No fc_tool dependency.
 - **Teensy quirks**: Stop ModemManager (`sudo systemctl stop ModemManager`). Use `teensy_reboot` for board reset (DTR toggle doesn't reboot Teensy 4.0). USB CDC degrades after ~15 rapid open/close cycles — only `teensy_reboot` or physical unplug recovers.
 - **MPU6050 mounting**: AccX≈1.02g, AccY≈0.05g, AccZ≈-0.10g → X-axis points down. Roll≈130° (drifting due to uncalibrated gyro). Needs orientation detection (`o` command) to fix.
-- **SBUS receiver**: Now connected. Was commented out in config.h for bench testing without receiver. Re-enable before next session.
+- **SBUS receiver**: Now connected. Was commented out in config.h for bench testing without receiver; **re-enabled 2026-05-20** in `include/config.h:93`. All 10 build envs now compile.
 - **Gyro bias**: Uncalibrated biases: GX≈-4°/s, GY≈-11°/s, GZ≈-2°/s. Causes attitude drift. Will be zeroed by IMU calibration (`i` command).
 - **Motor outputs**: PID outputs pegged at extremes (1000/2000) due to perceived 130° roll. Will normalize after orientation + IMU calibration.
 - **Gyro range fix**: MPU6050 init bug fixed 2026-02-20. Gyro and accel now set to config.h values (GYRO_1000DPS, ACCEL_8G) after library init.

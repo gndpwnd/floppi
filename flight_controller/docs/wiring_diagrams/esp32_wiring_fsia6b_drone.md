@@ -326,3 +326,6 @@ GPIO 34, 35, 36 (VP), 39 (VN) — cannot output. Good for PPM/PWM receiver input
 ```
 
 **Supported OLED displays:** DSD TECH 0.91" (SSD1306 128x32), Generic 0.96" (SSD1306 128x64), HiLetGo 1.3" (SH1106 128x64). Select in config.h.
+
+---
+*Verified against include/pin_definitions_esp32.h on 2026-05-20 by fc-wiring-guide-auditor@flight_controller:1. Pin assignments match HEAD; any [VERIFY] flags inline indicate open questions for hardware-side confirmation.*

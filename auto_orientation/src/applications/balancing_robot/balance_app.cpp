@@ -23,7 +23,7 @@
  *
  *   3. Watchdog. step_run_() feeds it. FALLEN also feeds it (we want the
  *      loop alive so we can detect recovery). IDLE and CAPTURE feed it too;
- *      AUTO_TUNE feeds it. The watchdog only catches a stuck step() call by
+ *      BOOTSTRAP feeds it. The watchdog only catches a stuck step() call by
  *      the host, not anything internal to step().
  *
  *   4. Adaptive offset. RUN updates online_est_ with the current PID
@@ -158,6 +158,8 @@ BalanceApp::BalanceApp(OrientationSensor& imu,
       hold_enter_count_(0),
       hold_exit_count_(0),
       hold_fall_count_(0),
+      held_entry_reason_(0),
+
       cap_sample_count_(0),
       cap_pitch_mean_(0.0f),
       cap_pitch_m2_(0.0f),
@@ -228,14 +230,8 @@ BalanceApp::BalanceApp(OrientationSensor& imu,
     mount_status_.adaptation_frozen  = false;
     mount_status_.freeze_reason      = 0;
 
-    tune_result_.kp                        = 0.0f;
-    tune_result_.ki                        = 0.0f;
-    tune_result_.kd                        = 0.0f;
-    tune_result_.ultimate_gain             = 0.0f;
-    tune_result_.ultimate_period_sec       = 0.0f;
-    tune_result_.phase_margin_estimate_deg = 0.0f;
-    tune_result_.converged                 = false;
-    tune_result_.failure_reason            = "not_started";
+    // tune_result_ member removed (audit P2-SM-1) — AUTO_TUNE dead, ~28 B RAM
+    // saved per audit_code_quality_balance_stack_2026-05-19.md §6.
 
 #ifdef USE_WHEEL_ENCODERS
     pwm_discovery_result_.discovered_min_pwm = 0;
@@ -319,7 +315,10 @@ void BalanceApp::tick(uint32_t now_ms) {
     switch (state_) {
         case BalanceAppState::IDLE:             step_idle_(now_ms);      break;
         case BalanceAppState::CAPTURE_MOUNTING: step_capture_(now_ms);   break;
-        case BalanceAppState::AUTO_TUNE:        step_tune_(now_ms);      break;
+        // AUTO_TUNE is dead since Phase 4.10c — enum value retained for ABI.
+        // No handler exists; if state_ ever becomes AUTO_TUNE (it cannot via
+        // the public API) we no-op rather than crash.
+        case BalanceAppState::AUTO_TUNE:                                 break;
         case BalanceAppState::RUN:              step_run_(now_ms);       break;
         case BalanceAppState::HELD:             step_held_(now_ms);      break;
         case BalanceAppState::FALLEN:           step_fallen_(now_ms);    break;
@@ -327,11 +326,14 @@ void BalanceApp::tick(uint32_t now_ms) {
         case BalanceAppState::BOOTSTRAP:        step_bootstrap_(now_ms); break;
 #ifdef USE_WHEEL_ENCODERS
         case BalanceAppState::PWM_DISCOVERY:    step_pwm_discovery_(now_ms); break;
+#else
+        // PWM_DISCOVERY is enum-defined unconditionally but only reachable
+        // when USE_WHEEL_ENCODERS is set (enter_pwm_discovery() isn't
+        // compiled on Uno / native_test). Explicit no-op case is required to
+        // satisfy -Wswitch without a default: clause (which would silence
+        // future missing-case signal).
+        case BalanceAppState::PWM_DISCOVERY:    break;
 #endif
-        // PWM_DISCOVERY is enum-defined unconditionally but only reachable when
-        // USE_WHEEL_ENCODERS is set; on Uno the enter_pwm_discovery() entry
-        // point isn't compiled, so the switch fallthrough (no default needed
-        // — -Wswitch is off in this TU's build flags) is safe.
     }
 }
 
@@ -408,45 +410,10 @@ void BalanceApp::step_capture_(uint32_t now_ms) {
     }
 }
 
-void BalanceApp::step_tune_(uint32_t now_ms) {
-    // The tuner controls the plant during AUTO_TUNE. We forward the corrected
-    // pitch as the measurement and apply the tuner's output to the motors.
-    const float meas = corrected_pitch_();
-    const float out  = tuner_.step(meas, now_ms);
-    const int16_t pwm = (int16_t)out;
-    motors_.set_speed(pwm);
-    last_output_ = pwm;
-
-    // Hard-stop on tipover during tune (the tuner has its own max_angle
-    // tripwire via SafetyLimits, but defense in depth here too).
-    if (safety_.is_tipover(pitch_deg_)) {
-        tuner_.request_abort();
-        // Force a step through the abort path so the tuner finalizes a
-        // failure result on the next iteration; for this tick, disarm.
-        motors_.stop();
-        last_output_ = 0;
-    }
-
-    if (safety_.abort_requested()) {
-        tuner_.request_abort();
-        safety_.clear_abort();
-    }
-
-    if (tuner_.is_done()) {
-        tune_result_ = tuner_.result();
-        motors_.stop();
-        last_output_ = 0;
-
-        if (tuner_.succeeded()) {
-            tuner_.apply_to(pid_);
-            pid_.reset();
-            enter_state_(BalanceAppState::RUN, now_ms);
-        } else {
-            tuner_.restore_original(pid_);
-            enter_state_(BalanceAppState::IDLE, now_ms);
-        }
-    }
-}
+// step_tune_ removed (Phase 4.10c / audit P2-SM-1). AUTO_TUNE was the legacy
+// relay-feedback tuning state. BOOTSTRAP + RLS plant-ID + RUN-time adaptation
+// replaces it; no code path enters AUTO_TUNE any more. ~500 B flash savings
+// per audit_code_quality_balance_stack_2026-05-19.md §6.
 
 void BalanceApp::step_run_(uint32_t now_ms) {
     // "Minimize accelerations" philosophy (user-driven, 2026-05-12):
@@ -486,6 +453,10 @@ void BalanceApp::step_run_(uint32_t now_ms) {
     // same class of event as a pickup. HELD will auto-resume once motion
     // is quiet + level, so the bot recovers without operator intervention.
     if (collision_latched_) {
+        // Stamp the diagnostic reason BEFORE enter_state_ — the latch
+        // is cleared in the side-effect block (line ~830) so this is the
+        // only chance to record why we got here. Audit P1-SM-3.
+        held_entry_reason_ = HELD_REASON_COLLISION;
         enter_state_(BalanceAppState::HELD, now_ms);
         return;
     }
@@ -529,6 +500,10 @@ void BalanceApp::step_run_(uint32_t now_ms) {
         if (hold_enter_count_ < 65535) hold_enter_count_ += 1;
         const uint16_t dwell = ext_motion ? 20 : 60;
         if (hold_enter_count_ >= dwell) {
+            // Audit P1-SM-3: stamp diagnostic reason BEFORE enter_state_.
+            // Both ext_motion (cmd quiet + pitch gyro fast) and lift_detected
+            // (|a|−g > 6 m/s²) indicate operator manipulation of the bot.
+            held_entry_reason_ = HELD_REASON_OPERATOR_HANDLING;
             enter_state_(BalanceAppState::HELD, now_ms);
             return;
         }
@@ -624,6 +599,11 @@ void BalanceApp::step_run_(uint32_t now_ms) {
         // FALLEN. A stalled wheel is most often the operator restraining the
         // bot or a temporary obstruction; HELD's quiescence-and-level gate
         // resumes balance once the obstruction clears.
+        // Audit P1-SM-3: stamp diagnostic reason BEFORE enter_state_. The
+        // encoder-reports-zero-velocity-but-pwm-was-applied condition is the
+        // closest fit to "anomalous motor/sensor reading" in the small reason
+        // enum — distinct from the IMU-driven OPERATOR_HANDLING path.
+        held_entry_reason_ = HELD_REASON_GYRO_ANOMALY;
         enter_state_(BalanceAppState::HELD, now_ms);
         return;
     }
@@ -946,25 +926,21 @@ void BalanceApp::enter_state_(BalanceAppState s, uint32_t now_ms) {
             // top of file. Future Phase 4.6.5 will call mounting_.start_capture()
             // here once raw accel/gyro are exposed on the sensor base.
             break;
-        case BalanceAppState::AUTO_TUNE: {
-            motors_.stop();
-            last_output_ = 0;
-            SafetyLimits limits;
-            safety_.populate_tuner_safety(limits);
-            limits.max_duration_sec = cfg_.tune_max_duration_sec;
-            tuner_.set_safety_limits(limits);
-            tuner_.begin(pid_,
-                         /*setpoint=*/0.0f,
-                         cfg_.output_min,
-                         cfg_.output_max,
-                         now_ms);
+        // AUTO_TUNE side-effect block removed (Phase 4.10c / audit P2-SM-1):
+        // the state is unreachable but the enum value is retained for ABI.
+        // No transition leads here so we never have to set it up. If a future
+        // change re-introduces an AUTO_TUNE transition this case must be
+        // restored alongside the step_tune_ handler.
+        case BalanceAppState::AUTO_TUNE:
             break;
-        }
         case BalanceAppState::RUN: {
             pid_.reset();
             sat_run_start_ms_       = 0;   // fresh saturation-timeout window
             sat_consecutive_ticks_  = 0;   // Item 2 windup-active hold counter
             hold_enter_count_       = 0;
+            // Audit P1-SM-3: clear HELD-entry diagnostic on RUN entry so a
+            // successful auto-resume (or operator force-resume) starts clean.
+            held_entry_reason_      = HELD_REASON_NONE;
 
             // Phase 4.10 — seed PlantIdentifier prior from current PID gains
             // so its first target is consistent with the seed. The
@@ -1036,6 +1012,13 @@ void BalanceApp::enter_state_(BalanceAppState s, uint32_t now_ms) {
             pwm_discovery_result_.steps_attempted    = 0;
             pwm_discovery_result_.failure_reason     = 0;
             pwm_discovery_result_.discovered         = false;
+            break;
+#else
+        // Without USE_WHEEL_ENCODERS the state is unreachable (no entry
+        // point compiled), but the enum value still exists so we must
+        // handle it explicitly to keep -Wswitch happy without resorting
+        // to a default: clause that would mask genuinely-missing cases.
+        case BalanceAppState::PWM_DISCOVERY:
             break;
 #endif
         case BalanceAppState::BOOTSTRAP:

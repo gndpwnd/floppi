@@ -197,3 +197,6 @@ LiPo Battery (3S or 4S)
 ```
 
 > WiFi API command routing through RadioComm is **fully implemented** (2026-02-10). POST `/api/commands` and WebSocket `/ws` both feed into RadioComm via spinlock-protected cross-core buffer. This configuration works as the sole command source — no RC receiver needed. See `swarm_api/` for the ground station that sends commands.
+
+---
+*Verified against include/pin_definitions_esp32.h on 2026-05-20 by fc-wiring-guide-auditor@flight_controller:1. Pin assignments match HEAD; any [VERIFY] flags inline indicate open questions for hardware-side confirmation.*

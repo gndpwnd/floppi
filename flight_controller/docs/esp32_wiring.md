@@ -109,15 +109,15 @@ flowchart LR
 
 ### Servos
 
-| Servo | ESP32 GPIO |
-|-------|------------|
-| Servo 1 | 32 |
-| Servo 2 | 33 |
-| Servo 3 | 4 |
-| Servo 4 | 16 |
-| Servo 5 | 17 |
-| Servo 6 | 5 |
-| Servo 7 | 18 |
+| Servo | ESP32 GPIO | Notes |
+|-------|------------|-------|
+| Servo 1 | 32 | |
+| Servo 2 | 33 | |
+| Servo 3 | 4 | **[VERIFY]** overlaps with iBUS/DSM/Serial-cmd RX (GPIO 4). Override SERVO_PIN_3 if using one of those receivers. |
+| Servo 4 | 16 | **[VERIFY]** overlaps with SBUS_RX (GPIO 16). Override SERVO_PIN_4 if using SBUS receiver. |
+| Servo 5 | 17 | **[VERIFY]** overlaps with SBUS_TX (GPIO 17). Override SERVO_PIN_5 if using SBUS receiver. |
+| Servo 6 | 5 | |
+| Servo 7 | 18 | |
 
 ### Alternative Receiver Protocols
 
@@ -258,3 +258,6 @@ No external inverter circuit needed (unlike some other MCUs).
 - [ ] All ESC grounds → GND
 
 **Supported OLED displays:** DSD TECH 0.91" (SSD1306 128x32), Generic 0.96" (SSD1306 128x64), HiLetGo 1.3" (SH1106 128x64). Select in config.h.
+
+---
+*Verified against include/pin_definitions_esp32.h on 2026-05-20 by fc-wiring-guide-auditor@flight_controller:1. Pin assignments match HEAD; any [VERIFY] flags inline indicate open questions for hardware-side confirmation.*

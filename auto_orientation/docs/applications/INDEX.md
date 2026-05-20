@@ -13,6 +13,8 @@ Applications are compile-time gated through flags in [`src/config/mode.h`](../..
 | [Self-balancing robot (Mega universal)](balancing_robot/INDEX.md) | `USE_BALANCING_ROBOT` | `arduino_mega_balancing` | Phase 4 reference — universal/adaptive stack (BOOTSTRAP, RLS, mounting estimator, collision detector, planned encoders + position containment) |
 | [Self-balancing robot (Uno minimal)](balancing_robot_uno/INDEX.md) | `USE_BALANCING_ROBOT_UNO` | `arduino_uno_minimal` (planned) | **2026-05-19 pivot — stub** — small hardcoded PID balancer; gains generated offline via `tools/sim/brute_tune.py` |
 
+**Platform bifurcation (2026-05-19)**: The universal/adaptive vision now targets Mega-class hardware only. The Uno gets a smaller, single-purpose program. See [../scope.md §Platform bifurcation](../scope.md) and [../roadmap.md §Phase 4U](../roadmap.md) for the pivot framing.
+
 Future applications planned in [findings/application_catalog.md](../findings/application_catalog.md): multirotor bridge, camera mount / gimbal, photogrammetry rig, educational kit, robot-arm pose feedback.
 
 The Mega and Uno balancers are sibling applications that target different ends of the cost / capability spectrum. See [`../MEGA_UNIVERSAL_PLAN.md`](../MEGA_UNIVERSAL_PLAN.md) for the Mega path and [`balancing_robot_uno/README.md`](balancing_robot_uno/README.md) for the Uno path.
@@ -38,4 +40,4 @@ Design rationale, algorithm choices, and cross-cutting research stay in [finding
 
 ---
 
-*Last updated: 2026-05-12.*
+*Last updated: 2026-05-19 (platform-bifurcation pivot — added balancing_robot_uno).*

@@ -1,9 +1,59 @@
 # Todo: Auto Orientation Framework
 
 **Current phase**: Phase 4 — bifurcated 2026-05-19 into Phase 4M (Mega-universal) and Phase 4U (Uno-minimal)
-**Last updated**: 2026-05-19 PM (multi-agent landing wave — collision detection re-landed, wheel encoder driver + integration landed, Phase 4M.12 PWM auto-discovery code landed, Uno minimal P0+P1 batches landed, tuner contract fixed, Phase 4.11a design complete)
+**Last updated**: 2026-05-20 (reconciliation pass after sync ec4ef53 — Phase 4M.0/4M.1/4M.12 VERIFIED LANDED; calibration security fixes + `mega_orientation` RAM fix landed; architecture plan + 5 audits + state reconciliation delivered; tuner workflow GREEN; tuner first run YELLOW (8 s sim))
+
+### Next session — focus
+
+Phase 4M.0/4M.1/4M.12 are done. Workstream B (AUTO_TUNE dead-code removal) and json_formatter/test-coverage work also landed today. Next-session work centers on:
+
+1. **Phase 4M.11 `e` command + EEPROM CPM/radius** (Workstream D in [findings/architecture_plan_2026-05-20.md](findings/architecture_plan_2026-05-20.md) §2)
+2. **Tuner bench validation** (8 s sim → 30 s real-bot)
+3. **Phase 4M.2 (K cross-check) + Phase 4M.13 (velocity outer loop)** — Workstream F
+
+See "Pending — 2026-05-20" section below for full list.
 
 For phase-level context see [roadmap.md](roadmap.md). For framework bounds see [scope.md](scope.md). For the pivot rationale see operator memory `project_strategic_pivot_2026-05-19.md` and [scope.md §Platform bifurcation](scope.md#platform-bifurcation-2026-05-19--mega-universal-vs-uno-minimal).
+
+---
+
+## Completed 2026-05-20
+
+Today's reconciliation / fix / audit wave landed against the err0r-device merge (commit ec4ef53). Items moved here from the active backlog; preserved in document (not deleted). Full session record: [archive/session_records/2026-05-20_multi_agent_sync_audits_and_fixes.md](archive/session_records/2026-05-20_multi_agent_sync_audits_and_fixes.md).
+
+- [x] **Repo sync ec4ef53** — err0r device's uncommitted + untracked Phase 4M.0/4M.1/4M.12 work merged into origin/main.
+- [x] **Phase 4M.0 collision detection — VERIFIED RESTORED.** 27/27 native tests pass; API surface and 3-gate constants confirmed at `balance_app.h:178-182,549,753`, `balance_app.cpp:906,1645-1648`. See [findings/state_reconciliation_2026-05-20.md](findings/state_reconciliation_2026-05-20.md) §1.
+- [x] **Phase 4M.1 wheel encoder driver — VERIFIED DONE.** Header + impl + tests landed post-merge. See [findings/state_reconciliation_2026-05-20.md](findings/state_reconciliation_2026-05-20.md) §3.
+- [x] **Phase 4M.12 PWM range auto-discovery — VERIFIED DONE.** `PWM_DISCOVERY = 8` enum value present at `balance_app.h:84`; all 7 PWM_DISC_* constants match design. See [findings/state_reconciliation_2026-05-20.md](findings/state_reconciliation_2026-05-20.md) §2.
+- [x] **Architecture plan landed** — joint scaffolding doc for the in-flight Workstreams (A–F + UNO-A..C + INFRA-A..B + DOC-A). See [findings/architecture_plan_2026-05-20.md](findings/architecture_plan_2026-05-20.md).
+- [x] **5 audits + state reconciliation** — 148 findings across doc, code, test, security, build audits, plus a post-sync reconciliation. Files: [findings/audit_documentation_2026-05-20.md](findings/audit_documentation_2026-05-20.md), [findings/audit_code_quality_2026-05-20.md](findings/audit_code_quality_2026-05-20.md), [findings/audit_test_coverage_2026-05-20.md](findings/audit_test_coverage_2026-05-20.md), [findings/audit_security_2026-05-20.md](findings/audit_security_2026-05-20.md), [findings/audit_build_system_2026-05-20.md](findings/audit_build_system_2026-05-20.md), [findings/state_reconciliation_2026-05-20.md](findings/state_reconciliation_2026-05-20.md).
+- [x] **Calibration security fixes (4 P1)** — CRC8 → CRC-8-CCITT, int-overflow fix in BNO085 word→byte conversion, length field `uint8_t` → `uint16_t`, version mismatch now refused. `CAL_FORMAT_VERSION` bumped 0x01 → 0x02; old EEPROM blobs are rejected and require re-cal. See [findings/security_fix_calibration_2026-05-20.md](findings/security_fix_calibration_2026-05-20.md).
+- [x] **`mega_orientation` RAM fix (F2)** — `F_` Jacobian member dropped from `ExtendedKalmanFilter`; ~1024 B reclaim where EKF instantiated. `mega_orientation` builds at **74.5 % RAM** (6101/8192). See [findings/mega_ram_fix_2026-05-20.md](findings/mega_ram_fix_2026-05-20.md).
+- [x] **Documentation hygiene pass** — INDEX.md files updated to include orphaned findings.
+- [x] **Tuner workflow verification** — `pio run -e uno_balance` succeeds. The "format mismatch" warning in the state reconciler was **stale**; tuner template / generated header / consumer are all in agreement. See [findings/tuner_format_alignment_2026-05-20.md](findings/tuner_format_alignment_2026-05-20.md).
+- [x] **First tuner run (Uno path)** — **YELLOW** result; 8 s balanced in sim vs 30 s target. Future-session work needed (bench validate; iterate plant model where sim under-predicts). (Verify finding file at `findings/tuner_run_result_2026-05-20.md` — may not exist at the time this section was written; check next session.)
+- [x] **Cross-project research (AO ↔ flight_controller)** — landed at [/docs/findings/bno_cross_project_2026-05-20.md](../../docs/findings/bno_cross_project_2026-05-20.md). Identifies AO learnings that could transfer to flight_controller and which to defer. See "AO → FC integration" subsection below.
+- [x] **Workstream B COMPLETE — AUTO_TUNE dead-code deletion.** `AUTO_TUNE_*` dead code removed from `balance_app.{h,cpp}`; `held_entry_reason_` telemetry added; `test_balance_app.cpp` extended with a STUCK test; new `test_bootstrap_k_preservation.cpp`. Builds verified: `uno_balance` + `mega_balance` SUCCESS. See session record.
+- [x] **`json_formatter` 3 P1 bugs FIXED** — NaN/Inf now emit `null`; timestamp `%d` → `%u` — in `json_formatter.cpp`. See [findings/audit_test_coverage_2026-05-20.md](findings/audit_test_coverage_2026-05-20.md).
+- [x] **Test coverage landed** — `test_json_formatter.cpp` (22 tests), `test_calibration_storage.cpp` (14 tests), `test_bootstrap_k_preservation.cpp`. See session record.
+- [x] **Build fixes landed** — `PWM_DISCOVERY` `-Wswitch` fix, `F()` macro shim in `balance_app.h`, `native_test` `src_filter` exclusions (`gps.cpp` + Arduino-only files now host-compatible/excluded); `gps.cpp` made host-build compatible. See session record.
+
+---
+
+## Pending — 2026-05-20
+
+Surfaced by today's audits, state reconciliation, and architecture plan. Listed here for next-session pickup.
+
+- [ ] **Tuner bench validation** (Phase 4U) — when hardware available; sim currently produces 8 s balanced vs 30 s target. Iterate plant model where sim under-predicts performance, OR confirm the discrepancy is sim-only and 30 s+ is reachable on hardware.
+- [ ] **Phase 4M.11 — `e` cmd + EEPROM CPM/radius** (Workstream D in [findings/architecture_plan_2026-05-20.md](findings/architecture_plan_2026-05-20.md) §2). Operator command for CPR readout / distance / save calibration plus the EEPROM persistence path. Highest-impact remaining 4M item.
+- [ ] **Phase 4M.2 — K cross-check** (Workstream F) — IMU vs encoder K_motor reconciliation before BOOTSTRAP exits to RUN.
+- [ ] **Phase 4M.13 — velocity / position outer loop** (Workstream F) — design ready in [findings/phase_4_11a_design_2026-05-19.md](findings/phase_4_11a_design_2026-05-19.md); implementation now Workstream F per [findings/architecture_plan_2026-05-20.md](findings/architecture_plan_2026-05-20.md) §2.
+
+### AO → FC integration (cross-project bridge, deferred)
+
+Cross-project research landed at [/docs/findings/bno_cross_project_2026-05-20.md](../../docs/findings/bno_cross_project_2026-05-20.md). The doc identifies AO patterns that could transfer to flight_controller (notably `calibration_storage` HAL and the abstract `OrientationSensor` driver pattern) and the items that should remain in AO. **All flagged here as DEFERRED** — link the research doc rather than re-list specifics, so future sessions decide ordering against flight_controller's own roadmap.
+
+- [ ] **AO → FC integration candidates** — review [/docs/findings/bno_cross_project_2026-05-20.md](../../docs/findings/bno_cross_project_2026-05-20.md) when a flight_controller pass is scheduled. Candidates include the `calibration_storage` HAL port and a BNO055/BNO085 driver port; the doc enumerates the trade-offs and a "would over-complicate FC?" filter. Do not pursue until FC roadmap explicitly calls for it.
 
 ---
 
@@ -134,8 +184,7 @@ The P0/P1 fixes landed this session (gyro atomicity, `plant_id_.reset()` no-over
 - [x] **Mega ISR backend using external-interrupt pins (18/19, 2/3)** — DONE 2026-05-19 PM
 - [x] **Per-wheel position, velocity, direction** — DONE 2026-05-19 PM
 - [x] **Encoder integration into `balance_app`** — DONE 2026-05-19 PM, 25 new tests pass, stall→HELD with `failure_reason=7`
-- [x] **Phase 4M.12 PWM auto-discovery code** — DONE 2026-05-19 PM (test file pending)
-- [ ] **Phase 4M.12 PWM auto-discovery native test** — sibling verification agent writing now; double-check on next session start
+- [x] **Phase 4M.12 PWM auto-discovery code** — DONE 2026-05-19 PM; `-Wswitch` warning fixed 2026-05-20
 - [ ] **Phase 4.11a position containment implementation** — design complete in [findings/phase_4_11a_design_2026-05-19.md](findings/phase_4_11a_design_2026-05-19.md); cascade outer loop with encoder-primary + IMU-only fallback (`USE_IMU_ONLY_OUTER_LOOP` runtime gate). Highest-impact remaining item on the Mega path.
 - [ ] **mega_orientation EKF guard + RAM Phase A fixes** — diagnosis in [findings/mega_orientation_ram_overflow_diagnosis_2026-05-19.md](findings/mega_orientation_ram_overflow_diagnosis_2026-05-19.md); ~2257 B reclaimable
 - [ ] **Operator encoder commands** — CPR readout, distance, save calibration. Needs serial parser additions in `balance_app.cpp`. Operator-workflow polish; needed before brute-tune-with-bench-PWM workflow can converge.
@@ -457,4 +506,4 @@ See [roadmap.md#phase-7](roadmap.md#phase-7--application-catalog-expansion). Top
 
 ---
 
-*Last updated: 2026-05-19 PM (multi-agent landing wave — collision detection re-landed, wheel encoder driver + integration LANDED, Phase 4M.12 PWM auto-discovery code LANDED, Uno minimal P0+P1 batches LANDED, tuner contract fixed, Phase 4.11a design complete). When you finish an item, move it to "Recently completed" with date. When you start a new item, mark it in-progress in `TodoWrite`.*
+*Last updated: 2026-05-20 (end-of-session reconciliation — Phase 4M.0/4M.1/4M.12 VERIFIED LANDED; calibration security fixes + `mega_orientation` RAM fix + architecture plan + 5 audits + state reconciliation landed; Workstream B AUTO_TUNE dead-code deletion COMPLETE + json_formatter 3 P1 bugs fixed + test coverage (json_formatter / calibration_storage / bootstrap_k_preservation) + build fixes landed; tuner workflow GREEN with first run YELLOW at 8 s sim. Session record: [archive/session_records/2026-05-20_multi_agent_sync_audits_and_fixes.md](archive/session_records/2026-05-20_multi_agent_sync_audits_and_fixes.md). Next-session focus: Phase 4M.11 `e` cmd + EEPROM, bench-validate tuner output, Phase 4M.2/4M.13 Workstream F). When you finish an item, move it to "Recently completed" with date. When you start a new item, mark it in-progress in `TodoWrite`.*

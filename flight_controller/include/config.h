@@ -84,13 +84,25 @@
 #define USE_MPU6050       // MPU6050 via I2C (Default - most common)
 //#define USE_MPU9250     // MPU9250 via SPI (has magnetometer)
 
+// ---- BNO055 / BNO085 scaffolding (Phase A — 2026-05-20) ----
+//
+// These flags add I2C-detection scaffolding for the BNO055 and BNO085 sensors,
+// but do NOT activate any of their code paths. See
+// /home/devel/floppi/docs/findings/bno_cross_project_2026-05-20.md §5 for the
+// phased integration plan. Phase B/B.5/C are deferred to future sessions.
+//
+// Leave OFF by default. Enable to see "BNOxxx detected on I2C" boot messages.
+//
+//#define USE_BNO055                // BNO055 9DOF (chip-fused, 100 Hz)
+//#define USE_BNO085                // BNO085 9DOF (SH-2 protocol, hardware-fused)
+
 //=============================================================================
 // RECEIVER / COMMAND SOURCE SELECTION
 //=============================================================================
 // Uncomment ONE RC receiver protocol for manual flying:
 //#define USE_PWM_RECEIVER       // Individual PWM channels
 //#define USE_PPM_RECEIVER       // PPM (single wire, 8 channels)
-//#define USE_SBUS_RECEIVER      // SBUS (Futaba/FrSky standard) — commented for bench testing without receiver
+#define USE_SBUS_RECEIVER      // SBUS (Futaba/FrSky standard) — SBUS re-enabled 2026-05-20 per fc-recon@flight_controller:1
 //#define USE_IBUS_RECEIVER      // iBUS (FlySky standard, 115200 baud)
 //#define USE_DSM_RECEIVER       // DSM/DSM2/DSMX (Spektrum)
 //

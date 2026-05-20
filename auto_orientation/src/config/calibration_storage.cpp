@@ -21,30 +21,40 @@
 
 uint8_t calculateCRC8(const uint8_t* data, uint16_t length) {
   /*
-   * Simple XOR-based CRC for light error detection.
-   * Not cryptographically secure, but catches single-bit flips.
+   * CRC-8-CCITT polynomial CRC. Parameters:
+   *   polynomial  = 0x07 (x^8 + x^2 + x + 1)
+   *   init        = 0x00
+   *   reflect_in  = false
+   *   reflect_out = false
+   *   xor_out     = 0x00
    *
-   * Algorithm:
-   * 1. Start with CRC = 0
-   * 2. For each byte in data:
-   *    - XOR the byte into the CRC
-   * 3. Return final CRC
+   * Algorithm: standard bitwise polynomial-division CRC. Each input byte is
+   * XOR-ed into the CRC register, then the register is shifted left 8 times,
+   * XOR-ing the polynomial whenever the high bit was set before the shift.
    *
-   * Properties:
-   * - Detects single-bit errors: yes
-   * - Detects byte swaps: yes (when byte values differ)
-   * - Detects multi-bit corruption: probabilistic
-   * - Speed: O(n), very fast
+   * Replaces the prior single-byte XOR sum (per audit P1-015 in
+   * docs/findings/audit_security_2026-05-20.md), which silently missed any
+   * even-count bitflip in a single column. CRC-8-CCITT detects all single-
+   * and two-bit errors within an 8-byte window and most burst errors.
    *
-   * Real CRC algorithms use polynomial division, but this simple XOR
-   * is sufficient for our use case and saves code space.
+   * Implementation is bitwise (no 256-byte table) to keep flash use low on
+   * AVR builds — ~120 bytes of code vs. 256 bytes of .rodata. The hot path
+   * runs once per EEPROM save/restore, so the per-byte 8-shift cost is
+   * irrelevant.
    */
 
   if (!data || length == 0) return 0;
 
-  uint8_t crc = 0;
+  uint8_t crc = 0x00;
   for (uint16_t i = 0; i < length; i++) {
     crc ^= data[i];
+    for (uint8_t bit = 0; bit < 8; bit++) {
+      if (crc & 0x80) {
+        crc = (uint8_t)((crc << 1) ^ 0x07);
+      } else {
+        crc = (uint8_t)(crc << 1);
+      }
+    }
   }
   return crc;
 }
@@ -74,22 +84,25 @@ bool saveToEEPROM(const uint8_t* cal_data, uint16_t length) {
     return false;
   }
 
-  // Validate length fits in our storage
+  // Validate length fits in our storage. CAL_DATA_MAX_SIZE caps the payload;
+  // no truncation possible since both this guard and the on-disk length field
+  // (uint16_t in v2) are wider than the maximum.
   if (length > CAL_DATA_MAX_SIZE) {
     return false;
   }
 
-  // Calculate CRC8 of calibration data
+  // Calculate CRC-8-CCITT of calibration data
   uint8_t crc = calculateCRC8(cal_data, length);
 
-  // Build the 4-byte header in a small local buffer so we can issue a single
-  // ps::write() call instead of four. This is friendlier to NVS back-ends
-  // that batch internally and keeps the dirty-tracking path tight.
-  uint8_t header[4];
-  header[CAL_EEPROM_MARKER_OFFSET]  = CAL_MARKER_VALID;
-  header[CAL_EEPROM_LENGTH_OFFSET]  = (uint8_t)length;
-  header[CAL_EEPROM_VERSION_OFFSET] = CAL_FORMAT_VERSION;
-  header[CAL_EEPROM_CRC_OFFSET]     = crc;
+  // Build the 6-byte v2 header in a small local buffer so we can issue a
+  // single ps::write() call. Layout matches the macros in the header file.
+  uint8_t header[CAL_HEADER_SIZE];
+  header[CAL_EEPROM_MARKER_OFFSET]    = CAL_MARKER_VALID;
+  header[CAL_EEPROM_VERSION_OFFSET]   = CAL_FORMAT_VERSION;
+  header[CAL_EEPROM_LENGTH_LO_OFFSET] = (uint8_t)(length & 0xFF);
+  header[CAL_EEPROM_LENGTH_HI_OFFSET] = (uint8_t)((length >> 8) & 0xFF);
+  header[CAL_EEPROM_CRC_OFFSET]       = crc;
+  header[CAL_EEPROM_RESERVED_OFFSET]  = 0x00;
 
   if (!ps::write(CAL_EEPROM_BASE, header, sizeof(header))) {
     return false;
@@ -129,30 +142,36 @@ bool restoreFromEEPROM(uint8_t* cal_data, uint16_t* length) {
     return false;
   }
 
-  // Read 4-byte header.
-  uint8_t header[4];
+  // Read 6-byte v2 header.
+  uint8_t header[CAL_HEADER_SIZE];
   if (!ps::read(CAL_EEPROM_BASE, header, sizeof(header))) {
     return false;
   }
 
-  uint8_t marker        = header[CAL_EEPROM_MARKER_OFFSET];
-  uint8_t stored_length = header[CAL_EEPROM_LENGTH_OFFSET];
-  uint8_t version       = header[CAL_EEPROM_VERSION_OFFSET];
-  uint8_t stored_crc    = header[CAL_EEPROM_CRC_OFFSET];
+  uint8_t marker     = header[CAL_EEPROM_MARKER_OFFSET];
+  uint8_t version    = header[CAL_EEPROM_VERSION_OFFSET];
+  uint8_t len_lo     = header[CAL_EEPROM_LENGTH_LO_OFFSET];
+  uint8_t len_hi     = header[CAL_EEPROM_LENGTH_HI_OFFSET];
+  uint8_t stored_crc = header[CAL_EEPROM_CRC_OFFSET];
 
   if (marker != CAL_MARKER_VALID) {
-    // No valid calibration stored
+    // No valid calibration stored.
     return false;
   }
 
-  if (stored_length == 0 || stored_length > CAL_DATA_MAX_SIZE) {
-    // Invalid length
-    return false;
-  }
-
+  // Per audit P2-016: reject mismatched versions outright rather than silently
+  // restoring potentially-incompatible bytes into the sensor's NVM. A v1 blob
+  // (still on already-deployed devices) hits this path and the operator is
+  // prompted to re-calibrate — that's the intentional backward-compat policy
+  // for this security pass; see docs/findings/security_fix_calibration_2026-05-20.md.
   if (version != CAL_FORMAT_VERSION) {
-    // Format mismatch - could be from older firmware
-    // For now, accept it (future: could handle multiple versions)
+    return false;
+  }
+
+  // Length is now a full uint16_t — no more silent high-byte truncation.
+  uint16_t stored_length = (uint16_t)len_lo | ((uint16_t)len_hi << 8);
+  if (stored_length == 0 || stored_length > CAL_DATA_MAX_SIZE) {
+    return false;
   }
 
   // Read calibration payload in one batch.
@@ -161,14 +180,14 @@ bool restoreFromEEPROM(uint8_t* cal_data, uint16_t* length) {
     return false;
   }
 
-  // Verify CRC8
+  // Verify CRC-8-CCITT.
   uint8_t calculated_crc = calculateCRC8(cal_data, stored_length);
   if (stored_crc != calculated_crc) {
-    // CRC mismatch - data corrupted
+    // CRC mismatch - data corrupted.
     return false;
   }
 
-  // Success - return length
+  // Success - return length.
   *length = stored_length;
   return true;
 }

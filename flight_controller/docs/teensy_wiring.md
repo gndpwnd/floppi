@@ -124,7 +124,7 @@ flowchart LR
 |----------|--------|--------|-------------|-------|
 | SBUS | 21 | 20 | Serial5 | Inverted signal, 100kbaud |
 | iBUS | 15 | 14 | Serial3 | 115200 baud |
-| DSM/Spektrum | 15 | 14 | Serial3 | 115000 baud |
+| DSM/Spektrum | 15 | 14 | Serial3 | 115200 baud |
 | PPM | 23 | - | - | Single wire, all channels |
 
 ### PWM Receiver (Individual Channels)
@@ -201,3 +201,6 @@ flowchart LR
 **Supported OLED displays:** DSD TECH 0.91" (SSD1306 128x32), Generic 0.96" (SSD1306 128x64), HiLetGo 1.3" (SH1106 128x64). Select in config.h.
 
 **Note:** OLED pins 16/17 overlap with PWM receiver CH5/CH6. If using PWM receiver, choose different OLED pins in pin_definitions.h.
+
+---
+*Verified against include/pin_definitions.h on 2026-05-20 by fc-wiring-guide-auditor@flight_controller:1. Pin assignments match HEAD; any [VERIFY] flags inline indicate open questions for hardware-side confirmation.*

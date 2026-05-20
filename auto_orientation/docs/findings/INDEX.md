@@ -104,27 +104,56 @@ Three parallel agents triggered by the user's question "how does the flight_cont
 
 ---
 
-## Backlog & cross-reference
+## Platform-bifurcation pivot (2026-05-19) — Mega-universal vs Uno-minimal
 
-- [operator_ideas_backlog.md](operator_ideas_backlog.md) — Durable index of every operator-suggested feature or design principle, with date, source link, status, and one-line technical translation. The source-of-truth for which ideas are deferred, in-progress, or done. Snapshot tables in session records are point-in-time copies of this index.
+Research and investigation outputs that landed alongside the 2026-05-19 pivot. These inform the Mega-universal feature set (collision detection, wheel encoders, IMU-only position containment) and the diagnosis of why the previous universal stack was not converging.
+
+### Investigations
+
+- [investigation_held_state_machine_failure_2026-05-19.md](investigation_held_state_machine_failure_2026-05-19.md) — Root-cause analysis of the HELD state-machine failing to trigger / triggering spuriously during the 2026-05-18 PM-late bench session. Informs the state-machine cleanup work and the collision-detection design.
+
+### Mega-universal research
+
+- [research_collision_signature_bno055.md](research_collision_signature_bno055.md) — Collision-signature detection using BNO055 linear-acceleration / gyro spikes. Referenced from roadmap.md Phase 4M.0 as the implementation basis for the collision-detection module.
+- [research_wheel_encoders_mega_2026-05-19.md](research_wheel_encoders_mega_2026-05-19.md) — Wheel-encoder integration strategy on Arduino Mega (interrupt pin budget, encoder type tradeoffs, position-loop design). Referenced from roadmap.md Phase 4M.1.
+- [research_imu_only_position_containment.md](research_imu_only_position_containment.md) — IMU-only position-containment strategy for the Mega target before wheel encoders are added: integrating linear-acceleration estimates with drift management.
 
 ---
 
-## 2026-05-19 session — audits + cross-project research (platform-bifurcation pivot)
+## Audits & quality reviews
 
-Six new docs landed during the 2026-05-19 strategic-pivot session (commit `c3c0c6b`). Three audits diagnose the existing balance stack; three research notes scope new capabilities for the Mega-universal path. The three research docs are interlinked: encoders give true position feedback, IMU-only containment is the no-encoder fallback, and collision-signature detection is the safety net that runs alongside either.
+Cross-cutting audits of the documentation tree and the code/control stack. Each audit produces a dated report with prioritized findings; sibling agents own the follow-up fixes.
 
-### Audits (stack diagnosis)
+### 2026-05-19 audit batch
 
-- [audit_code_quality_balance_stack_2026-05-19.md](audit_code_quality_balance_stack_2026-05-19.md) — Read-only audit of `applications/balancing_robot/`, `control/plant_identifier`, `navigation/online_mounting_estimator`, `sensors/bno055`, `actuators/l298n_motor_driver`, `main.cpp`. 4 P0 + 14 P1 + 15 P2 findings across ISR atomicity, state machine, numerics, flash/RAM, test coverage, doc-in-code drift. Read before touching any of those modules.
-- [audit_documentation_2026-05-19.md](audit_documentation_2026-05-19.md) — Read-only audit of `auto_orientation/docs/`. 180 markdowns scanned, 91 broken `.md` links found (87 fixed in-place), 4 INDEX gaps fixed, 9 stale "next-session" pointers traced, 8 phase/date drift edits, 4 cross-doc contradictions surfaced. The before-state baseline for any future doc-cleanup pass.
-- [investigation_held_state_machine_failure_2026-05-19.md](investigation_held_state_machine_failure_2026-05-19.md) — Diagnoses a `test_held_state_machine` 3-fail/3-pass observed by a sibling agent. Root cause: stale binary compiled without `-DUSE_BALANCE_HELD_DETECTION`. HELD source + tests are correct; the bug is a build-process / shell-environment issue. Read before re-investigating any "HELD is broken" report.
+- [audit_documentation_2026-05-19.md](audit_documentation_2026-05-19.md) — Documentation-tree audit landed alongside the platform-bifurcation pivot. Identifies stale INDEXes, orphaned findings files, broken cross-references.
+- [audit_code_quality_balance_stack_2026-05-19.md](audit_code_quality_balance_stack_2026-05-19.md) — Code-quality audit of the balance-stack source (controllers, estimators, state machine, motor driver). Reviewed for theoretical soundness, defensive checks, and scope-violation accounting.
 
-### Research (Mega-universal feature scoping)
+### 2026-05-20 audit batch (post-merge)
 
-- [research_collision_signature_bno055.md](research_collision_signature_bno055.md) — Derives the collision detector threshold + debounce window for `VECTOR_LINEARACCEL`. Validates the existing "15 m/s² sustained 2 ticks" default against datasheet noise floor + register-tear glitch + literature signatures. Sibling of [research_imu_only_position_containment.md](research_imu_only_position_containment.md) (containment prevents collisions; this detector catches the ones that happen anyway) and [research_motor_null_space_handling_detection.md](research_motor_null_space_handling_detection.md) (HELD is low-mag sustained idle; collision is high-mag transient any-state — complementary detectors on the same sensor).
-- [research_imu_only_position_containment.md](research_imu_only_position_containment.md) — Compares 5 algorithms (raw LINEARACCEL double-integration, pitch double-integration, ZUPT-augmented, complementary washout, 3-state EKF) for an IMU-only position outer loop. Recommends pitch-double-integration (option B) for the Uno-class flash budget; EKF (option E) for Teensy/ESP32. The no-encoder fallback paired with [research_wheel_encoders_mega_2026-05-19.md](research_wheel_encoders_mega_2026-05-19.md) — read both to choose between them.
-- [research_wheel_encoders_mega_2026-05-19.md](research_wheel_encoders_mega_2026-05-19.md) — Wheel-encoder hardware + library + driver + Mega-pin + integration architecture. Recommends hall-effect motor-integrated quadrature (likely already on the bench bot's TT/N20 motors), 2-ISR-per-channel hand-decoded, pins 18/19 + 2/3 (NOT the I²C 20/21 pair). Unlocks PWM-range auto-discovery, stiction characterisation, true position outer loop, and independent K_motor verification — the IMU-only path ([research_imu_only_position_containment.md](research_imu_only_position_containment.md)) cannot do these robustly. Read together for the encoder-vs-no-encoder Mega trade-off.
+- [audit_documentation_2026-05-20.md](audit_documentation_2026-05-20.md) — Post-merge documentation audit. 41 findings (P0: 8 broken links, P1: 13 orphaned/missing, P2: 12 inconsistencies, P3: 8 gaps). Drives this index update.
+- [audit_code_quality_2026-05-20.md](audit_code_quality_2026-05-20.md) — Post-merge code-quality audit of the auto_orientation source tree. 19 findings (1 P0 — collision regression, found already-fixed by err0r `f2e9732`).
+- [audit_test_coverage_2026-05-20.md](audit_test_coverage_2026-05-20.md) — Post-merge test-coverage audit. 26 findings; 4 critical untested modules identified.
+- [audit_security_2026-05-20.md](audit_security_2026-05-20.md) — Post-merge security audit. 32 findings, 0 P0; drove the 4 P1 calibration-storage hardening fixes.
+- [audit_build_system_2026-05-20.md](audit_build_system_2026-05-20.md) — Post-merge build-system audit. 30 findings, 4 P0 (most found already-fixed by err0r `f2e9732`).
+
+---
+
+## 2026-05-20 sync session — architecture, reconciliation, fixes
+
+Multi-agent sync day after the err0r two-clone divergence merge (`ec4ef53`). Session record: [`../archive/session_records/2026-05-20_multi_agent_sync_audits_and_fixes.md`](../archive/session_records/2026-05-20_multi_agent_sync_audits_and_fixes.md).
+
+- [architecture_plan_2026-05-20.md](architecture_plan_2026-05-20.md) — Joint scaffolding plan partitioning remaining work into workstreams A–F plus INFRA and DOC tracks; the partition mapped onto the parallel-agent dispatch boundaries.
+- [state_reconciliation_2026-05-20.md](state_reconciliation_2026-05-20.md) — Source-vs-doc truth check. Confirmed Phases 4M.0 / 4M.1 / 4M.12 all already landed via err0r `f2e9732`; caught the recurring stale-audit pattern (audits trusted doc claims over source).
+- [mega_ram_fix_2026-05-20.md](mega_ram_fix_2026-05-20.md) — F2 EKF state-size reclaim (~1024 B); `mega_orientation` builds at 74.5% RAM.
+- [security_fix_calibration_2026-05-20.md](security_fix_calibration_2026-05-20.md) — 4 P1 calibration-storage fixes (CRC-8-CCITT, integer overflow guard, uint16 length field, version reject) + `CAL_FORMAT_VERSION` bump 0x01→0x02 (old EEPROM blobs now rejected — operator must re-calibrate).
+- [tuner_format_alignment_2026-05-20.md](tuner_format_alignment_2026-05-20.md) — Verification that the tuner output format is already aligned with the firmware consumer (no-op).
+
+---
+
+## Backlog & cross-reference
+
+- [operator_ideas_backlog.md](operator_ideas_backlog.md) — Durable index of every operator-suggested feature or design principle, with date, source link, status, and one-line technical translation. The source-of-truth for which ideas are deferred, in-progress, or done. Snapshot tables in session records are point-in-time copies of this index.
 
 ---
 
@@ -136,8 +165,10 @@ Multi-agent landing wave that followed the 2026-05-19 AM bifurcation pivot. Coll
 - [tuner_kd_accuracy_2026-05-19.md](tuner_kd_accuracy_2026-05-19.md) — Diagnoses the random-search tuner's chronic Kd underestimate (was ~16 vs reference 38). After fix, Kd lands ~62 — overshoots reference but stable region widened. Stress-plant preset still under-tunes; mechanical-damping-model TODO captured in [todo.md](../todo.md).
 - [mega_orientation_ram_overflow_diagnosis_2026-05-19.md](mega_orientation_ram_overflow_diagnosis_2026-05-19.md) — Root-causes the `mega_orientation` build's RAM overflow to the EKF stub. Identifies ~2257 B reclaimable across three Phase A fixes. Not yet executed; queued in [todo.md](../todo.md) and [MEGA_UNIVERSAL_PLAN.md §9](../MEGA_UNIVERSAL_PLAN.md) item 3.
 - [audit_uno_minimal_2026-05-19.md](audit_uno_minimal_2026-05-19.md) — Audit of the Uno-minimal application scaffold. P0 fixes (startup delay, `ATOMIC_BLOCK`, `<stdint.h>`) and P1 top-5 (incl. new operator commands `g`/`p`) landed; P1 #6-15 + P2 12 findings queued.
-- [phase_4m12_landed_2026-05-19.md](phase_4m12_landed_2026-05-19.md) — (Sibling verification agent writing; link will resolve.) Verification record for the Phase 4M.12 PWM auto-discovery code landing in `balance_app.{h,cpp}`.
+- [phase_4m12_landed_2026-05-19.md](phase_4m12_landed_2026-05-19.md) — Verification record for the Phase 4M.12 PWM auto-discovery code landing in `balance_app.{h,cpp}`.
+- [verification_2026-05-19.md](verification_2026-05-19.md) — Cross-cutting 2026-05-19 multi-agent landing-wave verification report.
+- [brute_tune_simplification_design_2026-05-19.md](brute_tune_simplification_design_2026-05-19.md) — Design for simplifying the `tools/sim/brute_tune.py` search/scoring pipeline.
 
 ---
 
-*Last updated: 2026-05-19 PM (added the PM-session landings + design + diagnoses docs). Add new findings as you discover them.*
+*Last updated: 2026-05-20 (post-sync hygiene pass — doc-fixer compact entries integrated above + err0r 2026-05-19 PM session additions kept; the 2026-05-19 AM-session detail block was de-duplicated into the compact entries in "Platform-bifurcation pivot" + "Audits & quality reviews" sections above; 2026-05-20 sync-session findings — architecture_plan, state_reconciliation, mega_ram_fix, security_fix_calibration, tuner_format_alignment — added and the four "in progress" audit placeholders resolved).*

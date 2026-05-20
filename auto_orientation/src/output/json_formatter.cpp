@@ -3,6 +3,7 @@
  */
 
 #include "json_formatter.h"
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -12,6 +13,16 @@ JSONFormatter::JSONFormatter(uint8_t decimal_places)
 uint16_t JSONFormatter::writeFloat(char* buffer, uint16_t remaining,
                                    float value) {
   if (remaining < 2) return 0;
+
+  // NaN / Inf are not valid JSON tokens; emit "null" instead so downstream
+  // consumers (jq, JSON.parse, etc.) don't choke on "nan" / "inf" literals.
+  if (isnan(value) || isinf(value)) {
+    int written = snprintf(buffer, remaining, "null");
+    if (written < 0 || written >= (int)remaining) {
+      return 0;
+    }
+    return written;
+  }
 
   // Create format string dynamically based on decimal_places
   char fmt[8];
@@ -27,6 +38,15 @@ uint16_t JSONFormatter::writeFloat(char* buffer, uint16_t remaining,
 uint16_t JSONFormatter::writeDouble(char* buffer, uint16_t remaining,
                                     double value) {
   if (remaining < 2) return 0;
+
+  // NaN / Inf are not valid JSON tokens; emit "null" instead.
+  if (isnan(value) || isinf(value)) {
+    int written = snprintf(buffer, remaining, "null");
+    if (written < 0 || written >= (int)remaining) {
+      return 0;
+    }
+    return written;
+  }
 
   // Create format string dynamically based on decimal_places
   char fmt[8];
@@ -68,6 +88,17 @@ uint16_t JSONFormatter::format(const OrientationData& orientation,
     remaining -= written;                             \
   } while (0)
 
+#define WRITE_UINT32(val)                                          \
+  do {                                                             \
+    int written = snprintf(ptr, remaining, "%lu",                  \
+                           (unsigned long)(val));                  \
+    if (written < 0 || written >= (int)remaining) {                \
+      return 0;                                                    \
+    }                                                              \
+    ptr += written;                                                \
+    remaining -= written;                                          \
+  } while (0)
+
 #define WRITE_FLOAT(val)                           \
   do {                                            \
     uint16_t written = writeFloat(ptr, remaining, val); \
@@ -86,7 +117,9 @@ uint16_t JSONFormatter::format(const OrientationData& orientation,
 
   // Start JSON object
   WRITE_STR("{\"timestamp_ms\":");
-  WRITE_INT(orientation.timestamp_ms);
+  // timestamp_ms is uint32_t (millis() output); use %lu to avoid signed wrap
+  // past INT32_MAX (~24.8 days of uptime).
+  WRITE_UINT32(orientation.timestamp_ms);
 
   // Orientation section
   WRITE_STR(",\"orientation\":{\"valid\":");
@@ -160,6 +193,7 @@ uint16_t JSONFormatter::format(const OrientationData& orientation,
 
 #undef WRITE_STR
 #undef WRITE_INT
+#undef WRITE_UINT32
 #undef WRITE_FLOAT
 #undef WRITE_DOUBLE
 }

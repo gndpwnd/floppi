@@ -48,9 +48,11 @@ bool readCalibrationProfile(uint8_t* buffer, uint16_t* length) {
     return false;
   }
 
-  // Allocate temporary buffer for FRS words (max 64 words = 256 bytes)
-  uint32_t words_buffer[64];
-  uint16_t num_words = 64;
+  // Allocate temporary buffer for FRS words (max 64 words = 256 bytes).
+  // Compile-time sanity: the local buffer must fit inside BNO085_MAX_CAL_DATA.
+  static const uint16_t WORDS_BUFFER_CAPACITY = 64;
+  uint32_t words_buffer[WORDS_BUFFER_CAPACITY];
+  uint16_t num_words = WORDS_BUFFER_CAPACITY;
 
   // Request the DYNAMIC_CALIBRATION record from FRS
   int result = sh2_getFrs(DYNAMIC_CALIBRATION, words_buffer, &num_words);
@@ -62,16 +64,33 @@ bool readCalibrationProfile(uint8_t* buffer, uint16_t* length) {
     return false;
   }
 
-  // Convert 32-bit words to 8-bit bytes
-  // Each word is stored little-endian: byte0, byte1, byte2, byte3
-  uint16_t byte_count = num_words * 4;
-
-  if (byte_count > BNO085_MAX_CAL_DATA) {
+  // Sensor must report a count that fits in our stack buffer. sh2_getFrs is
+  // supposed to clamp to the in/out value we passed, but a buggy firmware
+  // could over-report; without this check, the byte_count multiplication and
+  // the pack loop below would both run off the end (audit P1-018).
+  if (num_words > WORDS_BUFFER_CAPACITY) {
     snprintf(error_buffer_, sizeof(error_buffer_),
-             "Calibration data too large: %u bytes (max %u)",
-             byte_count, BNO085_MAX_CAL_DATA);
+             "FRS returned %u words, exceeds buffer (%u)",
+             num_words, (unsigned)WORDS_BUFFER_CAPACITY);
     return false;
   }
+
+  // Convert 32-bit words to 8-bit bytes. Each word is stored little-endian.
+  // Per audit P1-007 (bno085_calibration.cpp:67): the previous expression
+  //   uint16_t byte_count = num_words * 4;
+  // performs the multiplication in uint16_t/int promotion and wraps mod
+  // 2^16 for num_words >= 16384. Use a wider intermediate type so the
+  // BNO085_MAX_CAL_DATA range check below cannot be bypassed by overflow.
+  uint32_t byte_count_wide = (uint32_t)num_words * 4u;
+
+  if (byte_count_wide > BNO085_MAX_CAL_DATA) {
+    snprintf(error_buffer_, sizeof(error_buffer_),
+             "Calibration data too large: %lu bytes (max %u)",
+             (unsigned long)byte_count_wide, BNO085_MAX_CAL_DATA);
+    return false;
+  }
+
+  uint16_t byte_count = (uint16_t)byte_count_wide;
 
   // Pack 32-bit words into byte buffer (little-endian)
   for (uint16_t i = 0; i < num_words; i++) {

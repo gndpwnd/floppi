@@ -161,8 +161,8 @@ ExtendedKalmanFilter::ExtendedKalmanFilter()
       last_innovation_magnitude_(0.0f) {
   memset(state_, 0, sizeof(state_));
   memset(P_, 0, sizeof(Matrix16x16));
-  memset(F_, 0, sizeof(Matrix16x16));
   memset(Q_, 0, sizeof(Matrix16x16));
+  // F_ removed (2026-05-20, F2): now a stack local in predict().
 
   // Initialize state: identity quaternion
   state_[0] = 1.0f;  // w = 1
@@ -351,15 +351,17 @@ bool ExtendedKalmanFilter::predict(const float gyro_rad_s[3], const float accel_
   // Update Covariance: P = F * P * F^T + Q
   // ========================================================================
 
-  compute_f_jacobian_(gyro_rad_s, accel_m_s2, dt_sec);
+  // F is now a stack local (replaces former F_ member, F2 reclaim 2026-05-20).
+  Matrix16x16 F;
+  compute_f_jacobian_(gyro_rad_s, accel_m_s2, dt_sec, F);
 
   // FP = F * P (stack local replaces former P_temp_ member; ~1 KB stack peak)
   Matrix16x16 FP;
-  matrix_mult_16x16(F_, P_, FP);
+  matrix_mult_16x16(F, P_, FP);
 
   // F_T = F^T
   Matrix16x16 F_T;
-  matrix_transpose_16x16(F_, F_T);
+  matrix_transpose_16x16(F, F_T);
 
   // P = FP * F_T + Q
   Matrix16x16 FPF_T;
@@ -661,11 +663,13 @@ void ExtendedKalmanFilter::normalize_quaternion_() {
 
 void ExtendedKalmanFilter::compute_f_jacobian_(const float gyro_rad_s[3],
                                                 const float accel_m_s2[3],
-                                                float dt_sec) {
-  // Initialize F to identity
+                                                float dt_sec,
+                                                Matrix16x16& F) {
+  // Initialize F to identity (F is a caller-provided stack matrix after the
+  // F2 reclaim removed the F_ member, 2026-05-20).
   for (int i = 0; i < 16; i++) {
     for (int j = 0; j < 16; j++) {
-      F_[i][j] = (i == j) ? 1.0f : 0.0f;
+      F[i][j] = (i == j) ? 1.0f : 0.0f;
     }
   }
 
@@ -678,7 +682,7 @@ void ExtendedKalmanFilter::compute_f_jacobian_(const float gyro_rad_s[3],
   if (w > 1e-6f) {
     // Scale quaternion update sensitivity
     float scale = 0.5f * dt_sec;
-    F_[0][0] -= scale * scale;
+    F[0][0] -= scale * scale;
   }
 
   // Velocity partial derivatives: v_new = v + a*dt
@@ -689,16 +693,16 @@ void ExtendedKalmanFilter::compute_f_jacobian_(const float gyro_rad_s[3],
                                accel_m_s2[2]*accel_m_s2[2]);
   if (accel_mag > 0.01f) {
     // Simplified: velocity uncertainty grows with acceleration
-    F_[4][4] = 1.0f + 0.1f * dt_sec * accel_mag;
-    F_[5][5] = F_[4][4];
-    F_[6][6] = F_[4][4];
+    F[4][4] = 1.0f + 0.1f * dt_sec * accel_mag;
+    F[5][5] = F[4][4];
+    F[6][6] = F[4][4];
   }
 
   // Position partial derivatives: p_new = p + v*dt
   // dp/dv = dt (velocity affects position)
-  F_[7][4] = dt_sec;
-  F_[8][5] = dt_sec;
-  F_[9][6] = dt_sec;
+  F[7][4] = dt_sec;
+  F[8][5] = dt_sec;
+  F[9][6] = dt_sec;
 
   // Bias derivatives: bias_new = bias (constant model)
   // F[10-15][10-15] = 1 (already set above)

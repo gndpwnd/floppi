@@ -8,17 +8,26 @@
  * EEPROM Layout (Arduino Mega - 4096 bytes total)
  * ============================================================================
  *
- * This implementation reserves the first 256 bytes of EEPROM for calibration:
+ * This implementation reserves the first 512 bytes of EEPROM for calibration.
+ *
+ * V2 layout (current — CAL_FORMAT_VERSION = 0x02):
  *
  * Offset  | Size   | Content
  * --------|--------|---------------------------------------------
  * 0x00    | 1 byte | Calibration validity marker (0xCA for valid, 0xFF for empty)
- * 0x01    | 1 byte | Data length (1-255 bytes of actual calibration data)
- * 0x02    | 1 byte | Version/format byte (firmware compat, currently 0x01)
- * 0x03    | 1 byte | CRC8 of the full profile (simple XOR sum)
- * 0x04    | 252    | Calibration data payload (max 252 bytes)
+ * 0x01    | 1 byte | Version/format byte (currently 0x02)
+ * 0x02    | 2 byte | Data length (uint16_t, little-endian; up to CAL_DATA_MAX_SIZE)
+ * 0x04    | 1 byte | CRC8 of the calibration data (CRC-8-CCITT, poly 0x07, init 0x00)
+ * 0x05    | 1 byte | Reserved (zero)
+ * 0x06    | 506    | Calibration data payload (max CAL_DATA_MAX_SIZE bytes)
  * --------|--------|---------------------------------------------
- * Total   | 256    | (Leaves room for future expansion)
+ * Total   | 512    |
+ *
+ * V1 layout (legacy — rejected by restoreFromEEPROM): single-byte length at
+ * offset 0x01, version at 0x02, XOR-checksum at 0x03. Devices with a v1 blob
+ * will be reported as "no calibration"; the operator must re-calibrate. This
+ * was a deliberate backward-incompatible bump to ship two integrity fixes at
+ * once (CRC algorithm + uint16_t length field).
  *
  * Additional storage blocks (for future use):
  * 0x100   | 256    | Backup/secondary calibration profile (v1.1+)
@@ -64,12 +73,17 @@
  *
  * Each saved profile includes:
  * - Validity marker: Detect if EEPROM slot is in use
- * - Length field: Know how many bytes to restore
- * - Format version: Handle future firmware upgrades
- * - Simple CRC8: Detect single-bit errors (XOR of all data bytes)
+ * - Length field (uint16_t): Know how many bytes to restore; supports payloads
+ *   up to CAL_DATA_MAX_SIZE bytes without truncation
+ * - Format version: Handle future firmware upgrades; mismatched versions are
+ *   rejected outright (no silent garbage-data restore)
+ * - CRC8-CCITT (polynomial 0x07, init 0x00): proper polynomial CRC; detects
+ *   all single-bit errors, two-bit errors within any 8-byte window, and most
+ *   burst errors — strictly stronger than the legacy XOR-sum used in v1
  *
  * On restore, we:
  * - Check validity marker
+ * - Reject if version != CAL_FORMAT_VERSION (closes silent-version-mismatch hole)
  * - Verify CRC8
  * - Validate with validateCalibrationData() before writing to sensor
  *
@@ -99,21 +113,28 @@
 // EEPROM storage configuration
 #define CAL_EEPROM_BASE 0x00         // Start address in EEPROM
 #define CAL_EEPROM_SIZE 512          // Reserved size for calibration (includes header)
-#define CAL_DATA_MAX_SIZE 508        // Maximum payload (512 - 4 byte header)
+#define CAL_HEADER_SIZE 6            // V2 header is 6 bytes (see layout above)
+#define CAL_DATA_MAX_SIZE 506        // Maximum payload (512 - 6 byte header)
 
-// EEPROM header byte offsets
-#define CAL_EEPROM_MARKER_OFFSET 0   // Validity marker byte
-#define CAL_EEPROM_LENGTH_OFFSET 1   // Length of calibration data
-#define CAL_EEPROM_VERSION_OFFSET 2  // Format/version byte
-#define CAL_EEPROM_CRC_OFFSET 3      // CRC8 checksum
-#define CAL_EEPROM_PAYLOAD_OFFSET 4  // Start of actual calibration data
+// EEPROM header byte offsets (V2)
+#define CAL_EEPROM_MARKER_OFFSET 0      // Validity marker byte
+#define CAL_EEPROM_VERSION_OFFSET 1     // Format/version byte
+#define CAL_EEPROM_LENGTH_LO_OFFSET 2   // Length low byte (uint16_t LE)
+#define CAL_EEPROM_LENGTH_HI_OFFSET 3   // Length high byte (uint16_t LE)
+#define CAL_EEPROM_CRC_OFFSET 4         // CRC8-CCITT checksum
+#define CAL_EEPROM_RESERVED_OFFSET 5    // Reserved (zero)
+#define CAL_EEPROM_PAYLOAD_OFFSET 6     // Start of actual calibration data
 
 // Validity markers
 #define CAL_MARKER_VALID 0xCA        // Marker when data is valid
 #define CAL_MARKER_EMPTY 0xFF        // Marker when EEPROM is empty
 
-// Format version
-#define CAL_FORMAT_VERSION 0x01      // Current format version
+// Format version. Bumped from 0x01 to 0x02 in 2026-05-20 security-fix pass:
+// this is a deliberately backward-incompatible bump that simultaneously
+// (a) widens the length field to uint16_t and (b) switches from a plain XOR
+// "CRC" to a real CRC-8-CCITT polynomial. Devices with a v1 blob in EEPROM
+// will be reported as having no calibration and must be re-calibrated.
+#define CAL_FORMAT_VERSION 0x02      // Current format version
 
 /**
  * @brief Save calibration profile to Arduino EEPROM
@@ -122,7 +143,7 @@
  * Overwrites any previously stored calibration at the same location.
  *
  * @param[in] cal_data    Pointer to calibration data from BNO085
- * @param[in] length      Number of bytes to save (max 252)
+ * @param[in] length      Number of bytes to save (max CAL_DATA_MAX_SIZE)
  * @return true if save succeeded, false if data too large or write error
  *
  * @note EEPROM writes are slow (~3.3ms per byte on AVR)
@@ -130,9 +151,9 @@
  * @note Do not power cycle during save!
  *
  * Process:
- * 1. Validate length <= 252
- * 2. Calculate CRC8 of calibration data
- * 3. Write header (marker, length, version, CRC)
+ * 1. Validate length <= CAL_DATA_MAX_SIZE
+ * 2. Calculate CRC-8-CCITT of calibration data
+ * 3. Write header (marker, version, length lo/hi, CRC, reserved)
  * 4. Write calibration data bytes
  */
 bool saveToEEPROM(const uint8_t* cal_data, uint16_t length);
@@ -150,8 +171,8 @@ bool saveToEEPROM(const uint8_t* cal_data, uint16_t length);
  * Failure cases:
  * - EEPROM is empty (marker != 0xCA)
  * - CRC8 check fails (data corruption detected)
- * - Format version mismatch
- * - Stored length is 0 or > 252
+ * - Format version mismatch (rejected outright; caller must re-calibrate)
+ * - Stored length is 0 or > CAL_DATA_MAX_SIZE
  *
  * @note If this returns false, caller should skip restoration and proceed
  *       with normal sensor initialization.
@@ -189,17 +210,20 @@ bool hasCalibrationInEEPROM(void);
 bool clearCalibrationFromEEPROM(void);
 
 /**
- * @brief Calculate CRC8 checksum of calibration data
+ * @brief Calculate CRC-8-CCITT checksum of calibration data
  *
- * Simple XOR-based CRC for detection of data corruption.
- * Not cryptographically secure, but sufficient for accidental bit flips.
+ * Polynomial CRC8 (CRC-8-CCITT, polynomial 0x07, init 0x00, no reflection,
+ * no final XOR) for robust detection of data corruption. Catches all
+ * single-bit errors, all two-bit errors within an 8-byte window, and the
+ * vast majority of burst errors — strictly stronger than the previous XOR
+ * sum, which silently missed any even-count bitflip in the same column.
  *
  * @param[in] data        Pointer to data to checksum
  * @param[in] length      Number of bytes
  * @return CRC8 value (0x00 - 0xFF)
  *
- * @note This is a simple XOR sum, not a true CRC polynomial.
- *       Used mainly to catch obvious corruption, not malicious tampering.
+ * @note Not cryptographically secure; intended for accidental corruption,
+ *       not adversarial tampering.
  */
 uint8_t calculateCRC8(const uint8_t* data, uint16_t length);
 

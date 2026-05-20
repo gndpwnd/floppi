@@ -8,6 +8,7 @@
 #include "gps.h"
 #include <string.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <math.h>
 
 #ifdef ARDUINO
@@ -24,6 +25,20 @@
     return (uint32_t)(duration.count() - test_millis_base);
   }
   #define MILLIS() millis()
+
+  // Host-side stub for Arduino's HardwareSerial. gps.h forward-declares this
+  // class so the production driver can hold a HardwareSerial* without
+  // including <Arduino.h> from the header. On native builds we never wire up
+  // a real serial port (serial_ stays nullptr and GPS::read() short-circuits),
+  // but the class must be a complete type for the compiler to emit method
+  // calls in this TU. Methods are unreachable on NATIVE_TEST.
+  class HardwareSerial {
+   public:
+    void begin(unsigned long) {}
+    void end() {}
+    int available() { return 0; }
+    int read() { return -1; }
+  };
 #endif
 
 // ============================================================================

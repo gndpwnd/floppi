@@ -4,7 +4,7 @@
  *
  * Orchestrates four phases of operation:
  *
- *     IDLE -> CAPTURE_MOUNTING -> AUTO_TUNE -> RUN <----+
+ *     IDLE -> CAPTURE_MOUNTING -> BOOTSTRAP -> RUN <----+
  *                                              ^  |    |
  *                                              |  v    |
  *                                              HELD ---+
@@ -12,9 +12,14 @@
  *                                              v
  *                                            FALLEN (sticky)
  *
- * with edges back to IDLE on user abort, capture failure, tune failure,
+ * with edges back to IDLE on user abort, capture failure, bootstrap failure,
  * watchdog stall, or explicit long-press. FALLEN is sticky — only an
  * operator-initiated command (short-press / `c` / `R`) restarts.
+ *
+ * AUTO_TUNE was the legacy Phase 4.7a tuning path (relay-feedback). Phase
+ * 4.10c retired it: BOOTSTRAP's ±PWM pulse identification + RLS plant-ID +
+ * RUN-time adaptation replaces it. The enum value is kept for telemetry/ABI
+ * compatibility but no code path reaches it.
  *
  * Composition (constructor-injected — the app owns *behaviour*, not the
  * hardware):
@@ -58,6 +63,13 @@
 #define BALANCE_APP_H
 
 #include <stdint.h>
+
+#if !defined(F) && !defined(ARDUINO)
+// Native test build: Arduino's F() macro from WString.h isn't available.
+// In Arduino, F("literal") wraps the literal in a PROGMEM-aware container.
+// On the host, plain string-literal passthrough is correct (PROGMEM is a no-op).
+#define F(string_literal) (string_literal)
+#endif
 
 #include "../../sensors/sensor_base.h"
 #include "../../control/pid_controller.h"
@@ -334,8 +346,13 @@ public:
                BalanceSafety& safety,
                PlantIdentifier& plant_id);
 
-    // Convenience: built-in defaults matching the legacy .ino (Kp=65 Ki=12
-    // Kd=38, ±255 PWM, 5 ms sample, 35° tipover / 15° recovery).
+    // Convenience: built-in defaults for the balancing-robot reference build.
+    // Post-BOOTSTRAP these initial PID gains are overwritten by the measured
+    // K_motor result, so they only matter as a fallback if BOOTSTRAP never ran
+    // (manual enter_run_with_current_gains path). Current values (see
+    // balance_app.cpp): Kp=50 / Ki=2 / Kd=20, ±255 PWM, 5 ms sample,
+    // 10° tilt limit / 4° recovery. Legacy 65/12/38 / 35°/15° values are
+    // historical (legacy .ino) and no longer apply.
     static BalanceAppConfig default_config();
 
     /**
@@ -529,9 +546,24 @@ public:
     BalanceAppState get_state() const { return state_; }
     float           get_pitch_deg() const { return pitch_deg_; }
     float           get_mount_offset_deg() const;
+
+    // HELD-entry reason codes (audit P1-SM-3). Diagnostic byte stamped by each
+    // RUN→HELD path so the `s` status drain can tell operators WHY HELD fired
+    // (collision impact vs. operator handling vs. encoder/gyro anomaly). The
+    // value is cleared on RUN entry so a successful auto-resume starts a clean
+    // slate; HELD entry itself does not clear it (we want to see the most
+    // recent reason).
+    enum HeldEntryReason : uint8_t {
+        HELD_REASON_NONE              = 0,
+        HELD_REASON_COLLISION         = 1,  // three-gate LIA detector latched
+        HELD_REASON_GYRO_ANOMALY      = 2,  // encoder stall (motor pwm vs. velocity mismatch)
+        HELD_REASON_OPERATOR_HANDLING = 3,  // lift / external-motion detector
+    };
+    uint8_t         get_held_entry_reason() const { return held_entry_reason_; }
     int16_t         get_last_output() const { return last_output_; }
     const MountingCalibrationStatus& get_mount_status() const { return mount_status_; }
-    const TuningResult& get_tune_result() const { return tune_result_; }
+    // get_tune_result() removed (audit P2-SM-1) — AUTO_TUNE state unreachable
+    // and the tune_result_ member retired (~28 B RAM savings).
     const PlantIdentifierStatus& get_plant_status() const { return plant_id_.get_status(); }
     bool            is_adaptive_active() const { return adaptive_active_; }
     const char*     state_name() const;
@@ -651,9 +683,11 @@ private:
     uint16_t hold_enter_count_;    // RUN→HELD dwell counter (samples)
     uint16_t hold_exit_count_;     // HELD→RUN dwell counter (samples)
     uint16_t hold_fall_count_;     // HELD→FALLEN dwell counter (samples)
+    uint8_t  held_entry_reason_;   // diagnostic — see HeldEntryReason above
 
     MountingCalibrationStatus mount_status_;
-    TuningResult              tune_result_;
+    // tune_result_ member removed (audit P2-SM-1) — AUTO_TUNE retired. ~28 B
+    // RAM saved on Uno.
 
     // CAPTURE_MOUNTING uses a running mean/variance of pitch_deg (Welford)
     // to gate "stillness". See header notes — this is a temporary stand-in
@@ -700,10 +734,10 @@ private:
     // Internal state transitions
     void enter_state_(BalanceAppState s, uint32_t now_ms);
 
-    // Per-state handlers
+    // Per-state handlers. step_tune_ removed — AUTO_TUNE state retired
+    // (audit P2-SM-1); enum value retained for ABI but is unreachable.
     void step_idle_(uint32_t now_ms);
     void step_capture_(uint32_t now_ms);
-    void step_tune_(uint32_t now_ms);
     void step_run_(uint32_t now_ms);
     void step_held_(uint32_t now_ms);
     void step_fallen_(uint32_t now_ms);

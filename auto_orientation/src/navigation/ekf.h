@@ -221,14 +221,16 @@ class ExtendedKalmanFilter {
 
   float state_[16];         ///< 16-element state vector
   Matrix16x16 P_;           ///< 16x16 covariance matrix
-  Matrix16x16 F_;           ///< State transition Jacobian (computed in predict)
   Matrix16x16 Q_;           ///< Process noise covariance
-  // P_temp_ removed (2026-05-19): was a 1 KB scratch buffer used as a
+  // F_ removed (2026-05-20, F2): the 1 KB state-transition Jacobian was only
+  // live for the duration of one predict() call. It's now a stack local inside
+  // predict()/update_covariance_predict_() and is passed to compute_f_jacobian_
+  // by reference. ~1 KB SRAM reclaimed per EKF instance; stack peak rises by
+  // ~1 KB during predict() only (well under Mega 2.5 KB stack budget).
+  // P_temp_ removed (2026-05-19, F1): was a 1 KB scratch buffer used as a
   // ping-pong matrix during predict() and update() covariance arithmetic.
-  // Every call site can use a function-scope local instead — same algorithm,
-  // ~1 KB SRAM reclaimed per EKF instance. Stack peak rises by ~1 KB during
-  // predict()/update() only.
-  // See docs/findings/mega_orientation_ram_overflow_diagnosis_2026-05-19.md (F1).
+  // Every call site uses a function-scope local instead.
+  // See docs/findings/mega_orientation_ram_overflow_diagnosis_2026-05-19.md.
 
   // ========================================================================
   // GPS Dropout Tracking
@@ -258,13 +260,16 @@ class ExtendedKalmanFilter {
    * Compute state transition Jacobian F for prediction step.
    *
    * F is the Jacobian of the state transition function with respect to state.
-   * Depends on gyro, accel, and current quaternion.
+   * Depends on gyro, accel, and current quaternion. Writes into the caller's
+   * stack-local F (was an EKF member F_ before F2 reclaim, 2026-05-20).
    *
    * @param gyro_rad_s Gyroscope measurement [wx, wy, wz]
    * @param accel_m_s2 Accelerometer measurement [ax, ay, az]
    * @param dt_sec Time step
+   * @param F Output: state transition Jacobian (caller-allocated 16x16)
    */
-  void compute_f_jacobian_(const float gyro_rad_s[3], const float accel_m_s2[3], float dt_sec);
+  void compute_f_jacobian_(const float gyro_rad_s[3], const float accel_m_s2[3],
+                           float dt_sec, Matrix16x16& F);
 
   /**
    * Compute measurement Jacobian H (3x16 for position measurement).

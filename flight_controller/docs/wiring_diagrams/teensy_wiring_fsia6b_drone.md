@@ -252,7 +252,7 @@ The FS-iA6B supports IBus, PPM, and individual PWM. Change the protocol in confi
 | **iBUS** | `USE_IBUS_RECEIVER` | Pin 15 (RX3) | 1 + power | **Recommended.** Voltage divider needed. |
 | SBUS | `USE_SBUS_RECEIVER` | Pin 21 (RX5) | 1 + power | Not native on FS-iA6B (use with FrSky receivers) |
 | PPM | `USE_PPM_RECEIVER` | Pin 23 | 1 + power | Set transmitter to PPM output. Lower update rate. |
-| PWM | `USE_PWM_RECEIVER` | Pins 23-16 | 6 + power | One wire per channel. Uses many pins. |
+| PWM | `USE_PWM_RECEIVER` | Pins 23, 22, 21, 20, 17, 16 (CH1-CH6) | 6 + power | One wire per channel. Uses many pins. |
 
 ---
 
@@ -290,3 +290,6 @@ The FS-iA6B supports IBus, PPM, and individual PWM. Change the protocol in confi
 - **OLED SDA/SCL pin swap**: Pin 16 is SDA, Pin 17 is SCL. Many OLED breakout boards print these labels in the opposite order from what you'd expect. If the display powers on but shows nothing, swap the two data lines first — this is the most common cause.
 - **Voltage divider omitted on iBUS**: The FS-iA6B outputs 5V logic. Without the 1k/2k divider, Serial3 RX on the Teensy may read garbage or damage the pin.
 - **Multiple ESC BEC VCC wires connected**: Only one ESC's red (5V) wire should reach Teensy VIN. Cut or disconnect the red wire on all other ESCs to avoid regulator conflicts.
+
+---
+*Verified against include/pin_definitions.h on 2026-05-20 by fc-wiring-guide-auditor@flight_controller:1. Pin assignments match HEAD; any [VERIFY] flags inline indicate open questions for hardware-side confirmation.*

@@ -77,6 +77,36 @@ void setupIMU() {
         mpu9250.setDlpfBandwidth(MPU9250::DLPF_BANDWIDTH_184HZ);
         mpu9250.setSrd(0);
     #endif
+
+    // ---- BNO055 / BNO085 Phase A scaffolding (2026-05-20) ----
+    // Detect-only stubs: print a boot message if the sensor ACKs on I2C.
+    // No driver activation, no register reads, no behavior change.
+    // See docs/findings/bno_cross_project_2026-05-20.md §5.
+    #ifdef USE_BNO055
+        // BNO055 default I2C addresses: 0x28 (ADR=GND) or 0x29 (ADR=VCC).
+        Wire.beginTransmission(0x28);
+        if (Wire.endTransmission() == 0) {
+            Serial.println(F("BNO055 detected at 0x28 (Phase A — not yet used)"));
+        } else {
+            Wire.beginTransmission(0x29);
+            if (Wire.endTransmission() == 0) {
+                Serial.println(F("BNO055 detected at 0x29 (Phase A — not yet used)"));
+            }
+        }
+    #endif
+
+    #ifdef USE_BNO085
+        // BNO085 default I2C addresses: 0x4A (SA0=GND) or 0x4B (SA0=VCC).
+        Wire.beginTransmission(0x4A);
+        if (Wire.endTransmission() == 0) {
+            Serial.println(F("BNO085 detected at 0x4A (Phase A — not yet used)"));
+        } else {
+            Wire.beginTransmission(0x4B);
+            if (Wire.endTransmission() == 0) {
+                Serial.println(F("BNO085 detected at 0x4B (Phase A — not yet used)"));
+            }
+        }
+    #endif
 }
 
 //========================================================================================================================//

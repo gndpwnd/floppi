@@ -1,6 +1,6 @@
 # Flight Controller Firmware - Roadmap
 
-> Last updated: 2026-03-30
+> Last updated: 2026-05-20 (end-of-session reconciliation)
 
 ## Overview
 
@@ -11,6 +11,21 @@ This roadmap tracks project-level features and milestones for the flight control
 **Current focus**: Feature development is paused (~90% complete). Priority is hardware validation, calibration, PID tuning, and first flight on real hardware. See `todo.md` for immediate tasks.
 
 **Design philosophy**: Bare-bones flight stabilizer, not a full autopilot. Raw performance and simplicity over feature count. The FC does lots of math really fast (read sensors → filter → PID → output motors). Complex logic (missions, mode switching, GPS navigation) belongs on an external flight computer. Not trying to be Betaflight/ArduPilot — a simple, fast, open-source flight controller that people can build in their garage. See [findings/bare-bones-fc-research.md](findings/bare-bones-fc-research.md) for detailed analysis.
+
+---
+
+## 2026-05-20 Status Snapshot
+
+- **Builds**: 10/10 envs compile. `USE_SBUS_RECEIVER` re-enabled in `include/config.h:93` (was commented out for bench testing without receiver). See [findings/project_recon_2026-05-20.md](findings/project_recon_2026-05-20.md) for the 7/10 → 10/10 context.
+- **Test harness**: `tests/test_calibration.sh` (480 lines) modularized into `tests/lib/harness.sh` (246 lines, shared functions, ESP32 reset **stubbed** — not yet functional) + `tests/suites/test_calibration.sh` (304 lines, all 18 tests / 42 assertions preserved verbatim). Original entry point preserved as a thin 21-line `exec` wrapper. See [findings/test_infrastructure_v2_2026-05-20.md](findings/test_infrastructure_v2_2026-05-20.md).
+- **Project recon**: comprehensive 779-line recon at [findings/project_recon_2026-05-20.md](findings/project_recon_2026-05-20.md) — used to plan today's work.
+- **Future-session scaffolding plan**: 3-session agenda + 5 operator open questions at [findings/future_session_scaffolding_2026-05-20.md](findings/future_session_scaffolding_2026-05-20.md).
+- **Cross-project synergy**: IMU/calibration roadmap for FC v2 (BNO055/BNO085 driver port, `calibration_storage` HAL reuse, phased plan from auto_orientation) lives at [/home/devel/floppi/docs/findings/bno_cross_project_2026-05-20.md](/home/devel/floppi/docs/findings/bno_cross_project_2026-05-20.md). Not duplicated here.
+- **Session 1 doc deliverables — DONE**: PID tuning guide ([docs/pid-tuning-guide.md](pid-tuning-guide.md)), WiFi onboarding ([docs/esp32_wifi_onboarding.md](esp32_wifi_onboarding.md)), diagnose decision tree ([docs/diagnose_decision_tree.md](diagnose_decision_tree.md)) all created; wiring-guide audit complete (2 fixes + 3 ESP32 GPIO-conflict `[VERIFY]` flags).
+- **BNO055/BNO085 Phase A scaffolding — LANDED**: `USE_BNO055` / `USE_BNO085` flags + I2C-detect stubs (flags OFF by default).
+- **Session record**: [archive/session_records/2026-05-20_recon_builds_and_scaffolding.md](archive/session_records/2026-05-20_recon_builds_and_scaffolding.md).
+
+**Next-session target**: hardware validation when ESCs/motors return (see `todo.md` Calibration Phases); remaining no-hardware items in [findings/future_session_scaffolding_2026-05-20.md](findings/future_session_scaffolding_2026-05-20.md) §3-4 Sessions 2-3.
 
 ---
 
@@ -201,11 +216,11 @@ This roadmap tracks project-level features and milestones for the flight control
   - Description: Replaced fc_tool headless FIFO interaction in `test_calibration.sh` with `serial_monitor.py` (raw termios). Tests are self-contained within flight_controller/ with no cross-project dependency.
   - Pattern: `python3 tools/serial_monitor.py /dev/ttyACM0 --send h --wait 3 --output results/help.txt`
 
-- [ ] Modular test runner architecture
-  - Priority: High
-  - Description: Refactor test suite into a modular framework. Separate test definitions from harness logic. Support test suites: `imu`, `radio`, `motors`, `telemetry`, `full`. Config-driven board/port/firmware selection.
-  - Pattern: `./test_runner.sh --board teensy40 --suite imu` or `./test_runner.sh --board esp32 --suite full`
-  - Key modules: `tests/lib/harness.sh` (port mgmt, serial_monitor.py interaction, board reset, assertions), `tests/suites/test_imu.sh`, `tests/suites/test_radio.sh`, `tests/suites/test_motors.sh`, etc.
+- [x] Modular test runner architecture (refactor stage)
+  - Completed: 2026-05-20
+  - Description: `tests/test_calibration.sh` (480 lines) split into `tests/lib/harness.sh` (246 lines, shared port mgmt, serial wrapper, assertions, CDC recovery, boot drain) + `tests/suites/test_calibration.sh` (304 lines, all 18 tests / 42 assertions preserved verbatim). Original entry point preserved as a 21-line `exec` wrapper. ESP32 reset path is **stubbed** in harness — documented but not yet functional.
+  - Pattern: `./tests/test_calibration.sh` still works; future suites land in `tests/suites/test_<suite>.sh` and source `tests/lib/harness.sh`.
+  - Notes: See [findings/test_infrastructure_v2_2026-05-20.md](findings/test_infrastructure_v2_2026-05-20.md). Still TODO: a top-level `./test_runner.sh --board <b> --suite <s>` dispatcher and the remaining suite stubs (`test_imu.sh`, `test_radio.sh`, `test_motors.sh`).
 
 - [ ] ESP32 test support
   - Priority: High
@@ -698,6 +713,15 @@ Files: `ota.h`, `ota.cpp`.
 - [x] Gyro saturation warning — one-shot diagnostic on entering quaternion mode, warns if >90% range utilization — 2026-02-20
 - [x] Acrobatic flight quick setup guide in config.h — 6-step comment block — 2026-02-20
 - [x] Build verification: 7/10 envs pass (3 Teensy live builds expected fail — SBUS commented out for bench testing) — 2026-02-20
+- [x] `USE_SBUS_RECEIVER` re-enabled in `include/config.h:93` — restores 10/10 env compile — 2026-05-20 (see [findings/project_recon_2026-05-20.md](findings/project_recon_2026-05-20.md))
+- [x] Test harness modularization — `tests/lib/harness.sh` (246 lines) + `tests/suites/test_calibration.sh` (304 lines, 18 tests / 42 assertions verbatim), original `tests/test_calibration.sh` preserved as 21-line `exec` wrapper, ESP32 reset stubbed — 2026-05-20 (see [findings/test_infrastructure_v2_2026-05-20.md](findings/test_infrastructure_v2_2026-05-20.md))
+- [x] Project recon delivered — 779-line comprehensive recon at [findings/project_recon_2026-05-20.md](findings/project_recon_2026-05-20.md) — 2026-05-20
+- [x] Cross-project IMU research landed — phased plan for porting auto_orientation's BNO055/BNO085 drivers + `calibration_storage` HAL — see [/home/devel/floppi/docs/findings/bno_cross_project_2026-05-20.md](/home/devel/floppi/docs/findings/bno_cross_project_2026-05-20.md) — 2026-05-20
+- [x] Future-session scaffolding plan — 3-session agenda + 5 operator open questions at [findings/future_session_scaffolding_2026-05-20.md](findings/future_session_scaffolding_2026-05-20.md) — 2026-05-20
+- [x] PID tuning guide — [pid-tuning-guide.md](pid-tuning-guide.md), calibration-mode `g` workflow + conservative starting values + "oscillate → reduce 20%" loop — 2026-05-20
+- [x] WiFi onboarding doc + diagnose decision tree — [esp32_wifi_onboarding.md](esp32_wifi_onboarding.md), [diagnose_decision_tree.md](diagnose_decision_tree.md) — 2026-05-20
+- [x] Wiring-guide fidelity audit (Teensy + ESP32) — 2 fixes applied + 3 ESP32 GPIO-conflict `[VERIFY]` flags raised against `pin_definitions*.h` — 2026-05-20
+- [x] BNO055/BNO085 Phase A scaffolding — `USE_BNO055` / `USE_BNO085` flags + I2C-detect stubs (OFF by default) — 2026-05-20 (see [archive/session_records/2026-05-20_recon_builds_and_scaffolding.md](archive/session_records/2026-05-20_recon_builds_and_scaffolding.md))
 
 ---
 
