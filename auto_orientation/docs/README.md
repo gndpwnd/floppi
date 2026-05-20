@@ -5,6 +5,8 @@
 **Status**: Initialization Phase (v1.0 in active development)
 
 > **Design direction**: see [MINIMIZE_ACCELERATIONS_PHILOSOPHY.md](MINIMIZE_ACCELERATIONS_PHILOSOPHY.md) for the project's current design direction (balancing-robot reference application).
+>
+> **2026-05-19 pivot**: balancing-robot reference is now **bifurcated** by MCU class. The universal/adaptive stack (BOOTSTRAP, RLS, mounting estimator, collision detector, planned encoders + position containment) moves to **Mega-class hardware only** — see [`MEGA_UNIVERSAL_PLAN.md`](MEGA_UNIVERSAL_PLAN.md). The Uno gets a **separate small hardcoded balancer** with offline Python brute-force tuning — see [`applications/balancing_robot_uno/README.md`](applications/balancing_robot_uno/README.md). Top-level index in [`INDEX.md`](INDEX.md) §Strategic notes.
 
 ---
 

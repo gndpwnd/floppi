@@ -11,8 +11,10 @@
  *   - L298N motor driver: ENA=5, IN1=6, IN2=7, IN3=9, IN4=8, ENB=10.
  *
  * Serial commands (115200 baud):
- *   'a' — emergency stop (latched; reflash to recover)
- *   's' — print one-line status
+ *   'a' — emergency stop (latched until 'g' or reflash)
+ *   'g' — re-arm after abort (clears the disarm latch and PID integral)
+ *   's' — print one-line status (one-shot)
+ *   'p' — toggle 10 Hz periodic telemetry stream (off at boot)
  *
  * Anything beyond that is deliberately absent. The brute-force tuner workflow
  * does NOT need runtime gain editing — change balance_constants.h, recompile,
@@ -70,8 +72,27 @@ static void pid_isr() {
 }
 
 // ----------------------------------------------------------------------------
-// Serial commands
+// Serial commands & periodic telemetry
 // ----------------------------------------------------------------------------
+
+// Periodic-telemetry toggle. False at boot — operator opts in via 'p'.
+static bool     telem_periodic = false;
+// Last time we emitted a periodic-telemetry line (ms). Reset whenever the
+// stream is toggled on so the first line appears immediately.
+static uint32_t telem_last_ms  = 0;
+// Period between periodic-telemetry lines (~10 Hz).
+static const uint16_t TELEM_PERIOD_MS = 100;
+
+// Emit one status line. Uses int16 decideg (pitch * 10) instead of float to
+// avoid pulling dtostrf into flash — saves ~1.5 KB on AVR vs Serial.print(float).
+static void print_status_line() {
+  Serial.print(F("armed="));   Serial.print(app.is_armed());
+  Serial.print(F(" tipped=")); Serial.print(app.is_tipped());
+  // Pitch printed as decideg (e.g. -86 means -8.6°). Caller divides by 10.
+  Serial.print(F(" pitch_dd=")); Serial.print((int16_t)(app.last_pitch_deg() * 10.0f));
+  Serial.print(F(" pwm="));   Serial.println(app.last_pwm());
+}
+
 static void handle_serial() {
   while (Serial.available() > 0) {
     int c = Serial.read();
@@ -81,12 +102,22 @@ static void handle_serial() {
         app.abort();
         Serial.println(F("ABORT"));
         break;
+      case 'g':
+      case 'G':
+        app.arm();
+        Serial.println(F("ARMED"));
+        break;
       case 's':
       case 'S':
-        Serial.print(F("armed="));   Serial.print(app.is_armed());
-        Serial.print(F(" tipped=")); Serial.print(app.is_tipped());
-        Serial.print(F(" pitch=")); Serial.print(app.last_pitch_deg(), 2);
-        Serial.print(F(" pwm="));   Serial.println(app.last_pwm());
+        print_status_line();
+        break;
+      case 'p':
+      case 'P':
+        telem_periodic = !telem_periodic;
+        // Emit immediately so the operator sees the first sample on toggle.
+        telem_last_ms = millis() - TELEM_PERIOD_MS;
+        Serial.print(F("telem="));
+        Serial.println(telem_periodic ? F("on") : F("off"));
         break;
       default:
         // ignore — minimal program, no other commands
@@ -120,6 +151,22 @@ void setup() {
 
   app.begin();
 
+  // PID_v1 parity: the reference SelfBallancingRobot3.ino used PID_v1, which
+  // computes the derivative on the raw measurement with NO low-pass filter.
+  // Our framework PIDController defaults to a non-zero D-term LPF tau, which
+  // silently attenuates the effective Kd vs. the reference and breaks the
+  // assumption that the brute tuner / reference gains "just work" out of the
+  // box. Set tau = 0 so the derivative is raw, matching PID_v1.
+  balance_pid.set_d_term_lpf_tau_sec(0.0f);
+
+  // BNO055 NDOF fusion convergence — the chip needs ~700 ms after begin() to
+  // produce stable Euler output. 1500 ms gives margin. MUST come BEFORE the
+  // PID ISR is armed, otherwise the ISR consumes pre-fusion garbage pitch and
+  // (with Kp=65) slams the motors to full PWM, tipping the bot on power-up.
+  // Reference SelfBallancingRobot3.ino uses delay(500)+delay(1000) for the
+  // same reason.
+  delay(1500);
+
   // Arm the 5 ms PID tick.
   MsTimer2::set(PID_SAMPLE_MS, pid_isr);
   MsTimer2::start();
@@ -132,8 +179,17 @@ void loop() {
   // ~100 Hz internally, so polling much faster just returns the same sample.
   app.read_imu();
 
-  // Handle 'a' / 's' commands.
+  // Handle 'a' / 'g' / 's' / 'p' commands.
   handle_serial();
+
+  // Periodic telemetry (opt-in via 'p'). Uses millis() rollover-safe diff.
+  if (telem_periodic) {
+    const uint32_t now = millis();
+    if ((uint32_t)(now - telem_last_ms) >= TELEM_PERIOD_MS) {
+      telem_last_ms = now;
+      print_status_line();
+    }
+  }
 
   // Tiny yield — keeps us from hammering I2C harder than the BNO055 updates.
   delay(2);

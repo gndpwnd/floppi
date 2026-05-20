@@ -68,6 +68,10 @@
 #include "../../actuators/motor_driver.h"
 #include "safety.h"
 
+#ifdef USE_WHEEL_ENCODERS
+#include "../../sensors/wheel_encoder.h"
+#endif
+
 enum class BalanceAppState : uint8_t {
     IDLE              = 0,
     CAPTURE_MOUNTING  = 1,
@@ -76,8 +80,32 @@ enum class BalanceAppState : uint8_t {
     HELD              = 4,   // bot picked up — motors off, ready to resume
     FALLEN            = 5,   // sticky tipover — operator must restart
     CHAR_ACT          = 6,   // Phase 2 — PWM sweep, measure stiction floor
-    BOOTSTRAP         = 7    // Phase 4.10c — measure K_motor, derive Kp/Ki/Kd
+    BOOTSTRAP         = 7,   // Phase 4.10c — measure K_motor, derive Kp/Ki/Kd
+    PWM_DISCOVERY     = 8    // Phase 4M.12 — encoder-based PWM_MIN/MAX auto-discovery
+                             // (Mega-only; only reachable when USE_WHEEL_ENCODERS).
+                             // Operator lifts the bot off the ground; firmware
+                             // ramps PWM 0→255 in steps and watches wheel
+                             // encoders. First non-zero velocity = MIN_PWM;
+                             // velocity plateau = MAX_PWM. Result saved to
+                             // EEPROM 0x230 for the Python brute-force tuner.
 };
+
+#ifdef USE_WHEEL_ENCODERS
+// Phase 4M.12 PWM_DISCOVERY result. Populated when PWM_DISCOVERY exits (back
+// to IDLE in both success and failure paths). Zero-valued before the first
+// run.
+//
+// `discovered_min_pwm` / `discovered_max_pwm` are in raw PWM units (0..255).
+// `discovered=true` only when BOTH bounds were measured cleanly within the
+// timeout. `failure_reason` codes: 0=ok, 4=user_abort, 8=pwm_discovery_timeout.
+struct PwmDiscoveryResult {
+    uint16_t discovered_min_pwm;
+    uint16_t discovered_max_pwm;
+    uint16_t steps_attempted;       // number of PWM steps executed
+    uint8_t  failure_reason;
+    bool     discovered;
+};
+#endif  // USE_WHEEL_ENCODERS
 
 // Phase 4.10c BOOTSTRAP result. Populated when BOOTSTRAP exits (either to
 // RUN with measured K_motor, or back to IDLE on failure).
@@ -90,6 +118,7 @@ struct BootstrapResult {
     uint8_t  pulses_total;     // total pulses applied (fixed by algorithm)
     uint8_t  failure_reason;   // 0=ok, 1=pitch_out_of_range, 2=no_response,
                                // 3=k_out_of_bounds, 4=user_abort,
+                               // 5=collision (LIA spike during baseline/pulse),
                                // 6=baseline_noisy (operator handled bot during baseline)
     bool     converged;        // true iff K_motor was pushed to PlantIdentifier
 };
@@ -127,6 +156,136 @@ struct BootstrapResult {
 //   (same physical envelope — both express "bot is sufficiently at rest").
 constexpr float BOOTSTRAP_G0_MAX_DPS          = 5.0f;
 constexpr float BOOTSTRAP_NOISE_FLOOR_MAX_DPS = 5.0f;
+
+// ---------------------------------------------------------------------------
+// Collision detection — three-gate detector
+// (research_collision_signature_bno055.md §3 / §5).
+//
+// Reads BNO055 VECTOR_LINEARACCEL (gravity-removed body accel) each tick, takes
+// magnitude, and latches `collision_detected_` when ANY of the three OR-fire
+// gates trips. NOTE: BNO055 NDOF LIA streams at 100 Hz internally; "ticks"
+// below count BalanceApp::step() invocations (200 Hz default), so a
+// COLLISION_SUSTAIN_TICKS of 3 corresponds to ~15 ms wall-time = roughly 1.5
+// unique LIA samples — enough to confirm a sustained impact tail, short enough
+// to fire before the bot falls.
+//
+//   PEAK    — |a| > COLLISION_PEAK_MPS2 single tick. Sharp impact.
+//   SUSTAIN — |a| > COLLISION_SUSTAIN_MPS2 for >= COLLISION_SUSTAIN_TICKS.
+//             Moderate impact tail.
+//   KICK    — |a| > COLLISION_KICK_MPS2 AND |gyro_pitch| > COLLISION_KICK_GYRO_DPS.
+//             Cross-arm: lower accel coincident with high rotation rate (the
+//             "kick-over" signature where the bot is rotated sharply).
+constexpr float   COLLISION_PEAK_MPS2       = 12.0f;
+constexpr float   COLLISION_SUSTAIN_MPS2    = 8.0f;
+constexpr uint8_t COLLISION_SUSTAIN_TICKS   = 3;
+constexpr float   COLLISION_KICK_MPS2       = 6.0f;
+constexpr float   COLLISION_KICK_GYRO_DPS   = 200.0f;
+
+#ifdef USE_WHEEL_ENCODERS
+// ---------------------------------------------------------------------------
+// Wheel encoder integration (Phase 4M.11 — MEGA_UNIVERSAL_PLAN.md §7).
+//
+// Two quadrature encoders on Mega INT pins. Pin assignments match
+// research_wheel_encoders_mega_2026-05-19.md §3:
+//
+//   Signal   Pin   INT vector   Notes
+//   ------   ---   ----------   -----
+//   L_ENC_A  18    INT5         Mega Serial1 TX — unused in balance build
+//   L_ENC_B  19    INT4         Mega Serial1 RX — unused in balance build
+//   R_ENC_A  2     INT0         general-purpose Mega INT pin
+//   R_ENC_B  3     INT1         general-purpose Mega INT pin
+//
+// Pins 20/21 are reserved for I²C (BNO055); do NOT repurpose for encoders.
+// If GPS is later added on Mega Serial1, the left encoder must move.
+constexpr uint8_t ENC_L_A = 18;
+constexpr uint8_t ENC_L_B = 19;
+constexpr uint8_t ENC_R_A = 2;
+constexpr uint8_t ENC_R_B = 3;
+
+// Stall-detection thresholds passed to WheelEncoder::stalled() each tick.
+//
+// ENCODER_STALL_PWM_THRESHOLD (100):
+//   The encoder only flags a stall when the *commanded* PWM exceeds this
+//   value — small PWM (idle drift, micro-corrections, stiction-floor probes)
+//   isn't expected to produce wheel motion, so it's not interesting for
+//   stall detection. 100 sits comfortably above the observed BNO055
+//   balance-bot stiction floor (~30-80 PWM bench 2026-05-18) and below
+//   typical mid-recovery commands (~150 PWM). At/above this PWM the wheels
+//   *should* be turning if the drivetrain is healthy.
+//
+// ENCODER_STALL_TIME_MS (300):
+//   Sustained period the encoder must measure no motion before declaring
+//   a stall. 300 ms = 60 ticks at 5 ms PID sample. Long enough that single-
+//   pulse motor-driver glitches or one-tick gyro drops don't trip it; short
+//   enough that the bot doesn't waste seconds pinning current into a wheel
+//   that the operator is physically restraining. Replaces the gyro-based
+//   STUCK detector's 1500 ms (which had to be long because the gyro
+//   threshold of 5 dps was ambiguous between "wheel stalled" and "tipping
+//   slowly"). Encoder velocity is unambiguous, so we can react faster.
+constexpr uint16_t ENCODER_STALL_PWM_THRESHOLD = 100;
+constexpr uint16_t ENCODER_STALL_TIME_MS       = 300;
+
+// ---------------------------------------------------------------------------
+// PWM range auto-discovery (Phase 4M.12 — MEGA_UNIVERSAL_PLAN.md §7d).
+//
+// Operator lifts the bot off the ground and triggers PWM_DISCOVERY. The
+// firmware ramps commanded PWM from 0 upward in small steps, watching wheel
+// encoders. First non-zero velocity = MIN_PWM (stiction floor); velocity
+// plateaus = MAX_PWM (electrical/mechanical saturation onset). Both values
+// are saved to EEPROM and consumed by the Python brute-force tuner so it
+// doesn't have to GUESS PWM bounds.
+//
+// All constants are tunings rather than algorithmic parameters — they shape
+// the trade-off between resolution and total wall-clock budget, not the
+// algorithm itself.
+//
+// PWM_DISC_STEP_PWM (5):
+//   Resolution of the discovered MIN/MAX (within ±5 PWM units). At 5 ms PID
+//   sample and 200 ms step-duration, 5 PWM units / step gives 51 steps to
+//   cover 0..255 — fits inside the 8 s timeout with ~2× headroom for a
+//   typical stiction-then-plateau curve. Going smaller (1-2 PWM) would
+//   exceed the timeout for noisy plants where the first non-zero velocity
+//   isn't until ~PWM 80.
+//
+// PWM_DISC_STEP_DURATION_MS (200):
+//   Hold each PWM step long enough for the motor + wheel inertia to reach
+//   steady-state velocity. 200 ms is generous for the typical yellow-TT
+//   motor's ~30 ms electromechanical time constant; the second half of the
+//   window is used for the velocity sample, so the controller measures a
+//   genuinely settled velocity not a transient.
+//
+// PWM_DISC_MIN_VELOCITY_DPS (5):
+//   Threshold above which the wheel is considered "actually moving" rather
+//   than encoder noise / single-tick quantization. Matches
+//   WheelEncoder::kStallVelocityDps (also 5 dps) so the encoder API's
+//   "moving / not moving" line is consistent across stall + discovery.
+//
+// PWM_DISC_PLATEAU_DELTA_DPS (2):
+//   The step-over-step velocity change below which we declare velocity has
+//   plateaued (i.e. PWM is no longer producing more wheel speed → motor or
+//   driver is saturated). 2 dps is well above the per-window quantisation
+//   floor at 100 ms windows (~1 dps) while still catching the small
+//   electrical-saturation plateau on real motors.
+//
+// PWM_DISC_PLATEAU_COUNT (3):
+//   Number of consecutive small-delta steps required to declare a plateau.
+//   3 steps × 200 ms = 600 ms of "stuck velocity" before we lock MAX_PWM
+//   to the FIRST of the plateau steps (the saturation onset). Three is the
+//   minimum that distinguishes a real plateau from one-step encoder noise.
+//
+// PWM_DISC_TIMEOUT_MS (8000):
+//   Total budget for the discovery procedure. (255 / 5) × 200 ms ≈ 10.2 s
+//   if we have to ramp all the way to 255 without finding plateau, but
+//   typical curves saturate near 200-220 PWM so 8 s gives the operator a
+//   prompt failure on truly broken hardware (motor disconnected, encoder
+//   dead) without giving up on slow plants.
+constexpr uint16_t PWM_DISC_STEP_PWM           = 5;
+constexpr uint16_t PWM_DISC_STEP_DURATION_MS   = 200;
+constexpr int16_t  PWM_DISC_MIN_VELOCITY_DPS   = 5;
+constexpr int16_t  PWM_DISC_PLATEAU_DELTA_DPS  = 2;
+constexpr uint8_t  PWM_DISC_PLATEAU_COUNT      = 3;
+constexpr uint16_t PWM_DISC_TIMEOUT_MS         = 8000;
+#endif  // USE_WHEEL_ENCODERS
 
 /**
  * Application-level config. Owned by the caller; passed once into begin().
@@ -259,6 +418,9 @@ public:
             case BalanceAppState::HELD:             out.println(F("HELD")); break;
             case BalanceAppState::FALLEN:           out.println(F("FALLEN")); break;
             case BalanceAppState::BOOTSTRAP:        out.println(F("BOOT")); break;
+#ifdef USE_WHEEL_ENCODERS
+            case BalanceAppState::PWM_DISCOVERY:    out.println(F("PWMD")); break;
+#endif
             default:                                out.println(F("?")); break;
         }
     }
@@ -337,9 +499,25 @@ public:
     void drain_pulse_log(TPrint& out, uint8_t& last_seq) {
         if (pulse_log_.seq == last_seq) return;
         last_seq = pulse_log_.seq;
+        // source: 0 = BOOTSTRAP pulse, 1 = CHARACTERISE pulse,
+        //         2 = PWM_DISCOVERY step (Phase 4M.12, mega_balance only).
+        // The PWM_DISCOVERY branch is gated by USE_WHEEL_ENCODERS so uno_balance
+        // doesn't pay the extra string-literal + branch cost.
+#ifdef USE_WHEEL_ENCODERS
+        if (pulse_log_.source == 0)      out.print(F("bs#"));
+        else if (pulse_log_.source == 1) out.print(F("ch#"));
+        else                             out.print(F("pd#"));
+#else
         out.print(pulse_log_.source == 0 ? F("bs#") : F("ch#"));
+#endif
         out.print(pulse_log_.pulse_idx);
         out.print(F(" pwm=")); out.print(pulse_log_.cmd_pwm);
+        // PWM_DISCOVERY repurposes the gyro_start_x10 slot to hold the LEFT
+        // wheel velocity (x10 dps) and metric_x10 to hold the RIGHT wheel
+        // velocity (x10 dps). thr_x10 carries the plateau-delta threshold so
+        // operators see WHY a step did/didn't lock min/max. `passed` is 1 on
+        // the step that locked MIN_PWM, 2 on the step that locked MAX_PWM,
+        // and 0 otherwise.
         out.print(F(" g0=")); out.print(pulse_log_.gyro_start_x10 / 10.0f, 1);
         out.print(F(" m=")); out.print(pulse_log_.metric_x10 / 10.0f, 1);
         out.print(F(" thr=")); out.print(pulse_log_.thr_x10 / 10.0f, 1);
@@ -357,6 +535,75 @@ public:
     const PlantIdentifierStatus& get_plant_status() const { return plant_id_.get_status(); }
     bool            is_adaptive_active() const { return adaptive_active_; }
     const char*     state_name() const;
+
+    // ----- Collision detection (research_collision_signature_bno055.md) ----
+    // Magnitude of the most recent VECTOR_LINEARACCEL read, in m/s². Updated
+    // each tick by read_imu_(). Zero before the first IMU read or if the
+    // driver does not implement getLinearAccel().
+    float           get_linear_accel_mag() const { return linear_accel_mag_; }
+
+    // True iff the three-gate detector latched a collision since the last
+    // clear_collision() / state transition. Latching is the design — the bot
+    // is small/fast and an impact can be a single 5 ms tick; we want callers
+    // to see it on the next inspection even if the spike already passed.
+    bool            collision_detected() const { return collision_latched_; }
+
+    // Explicit reset. Called automatically on every state transition so the
+    // RUN→HELD branch starts with a clean slate; tests use it to verify the
+    // latch semantics.
+    void            clear_collision();
+
+#ifdef USE_WHEEL_ENCODERS
+    // ----- PWM range auto-discovery (Phase 4M.12) --------------------------
+    // Start PWM_DISCOVERY: operator must have lifted the bot off the ground
+    // before calling. No-op if not currently in IDLE. Ramps commanded PWM
+    // 0 → 255 in PWM_DISC_STEP_PWM increments, holding each for
+    // PWM_DISC_STEP_DURATION_MS, and watches encoders for the first non-zero
+    // velocity (MIN) and the velocity plateau (MAX). Result is exposed via
+    // get_pwm_discovery_result() once state returns to IDLE.
+    //
+    // Mega-only — only compiled when USE_WHEEL_ENCODERS is defined. Host
+    // application is expected to save the discovered values to EEPROM and
+    // optionally seed them back into the L298NMotorDriver / PlantIdentifier
+    // bounds at the next boot.
+    void enter_pwm_discovery(uint32_t now_ms);
+
+    // Last PWM_DISCOVERY outcome. Zeros if PWM_DISCOVERY never ran.
+    const PwmDiscoveryResult& get_pwm_discovery_result() const {
+        return pwm_discovery_result_;
+    }
+
+    // Convenience accessors (zero if discovery never ran / failed).
+    uint16_t get_discovered_min_pwm() const {
+        return pwm_discovery_result_.discovered ? pwm_discovery_result_.discovered_min_pwm
+                                                : 0;
+    }
+    uint16_t get_discovered_max_pwm() const {
+        return pwm_discovery_result_.discovered ? pwm_discovery_result_.discovered_max_pwm
+                                                : 0;
+    }
+
+    // ----- Wheel encoder inspectors (Phase 4M.11) --------------------------
+    // Read-through accessors so loop()/telemetry can see encoder state
+    // without having to hold a reference to the encoders themselves. All
+    // inspectors are safe to call from any context — the underlying
+    // WheelEncoder reads atomically on AVR.
+    int32_t encoder_left_ticks();
+    int32_t encoder_right_ticks();
+
+    // Mean of the two wheels' velocity in deg/s. Useful for the bot-frame
+    // forward velocity (positive = forward). Note: this calls
+    // read_velocity_dps on both encoders which advances their internal
+    // windowed sample; tests should pass the same now_ms as the most recent
+    // step() to keep window semantics intact.
+    int32_t encoder_avg_velocity_dps(uint32_t now_ms);
+
+    // True iff either wheel's stall detector latched on the most recent
+    // step_run_ tick. Use BalanceApp::encoder_stalled_left()/right() if you
+    // need to know which wheel — not exposed in the minimal v1 inspector
+    // set per task spec ("encoder_stalled()" without per-wheel detail).
+    bool encoder_stalled();
+#endif
 
     // Direct accessor used by callers that want to drive an external user
     // interface (LEDs, dashboard).
@@ -462,6 +709,9 @@ private:
     void step_fallen_(uint32_t now_ms);
     void step_char_act_(uint32_t now_ms);
     void step_bootstrap_(uint32_t now_ms);
+#ifdef USE_WHEEL_ENCODERS
+    void step_pwm_discovery_(uint32_t now_ms);
+#endif
 
     // Phase 2 CHAR_ACT state — pulse-sweep accumulator + result.
     // Phase 2.1: response threshold is now MEASURED (baseline noise × 3),
@@ -492,6 +742,49 @@ private:
     // ISR-side step_bootstrap_ / step_char_act_ at pulse-completion boundaries;
     // drained by loop() via drain_pulse_log().
     PulseLog pulse_log_;
+
+    // Collision detector state (research_collision_signature_bno055.md).
+    // Updated by read_imu_() every tick from VECTOR_LINEARACCEL magnitude.
+    // collision_latched_ is sticky — once any gate fires it stays true until
+    // clear_collision() or the next enter_state_() resets it. The SUSTAIN gate
+    // counts consecutive ticks where |a| exceeds COLLISION_SUSTAIN_MPS2; reset
+    // on any tick below floor.
+    float    linear_accel_mag_;
+    uint8_t  collision_sustain_counter_;
+    bool     collision_latched_;
+
+#ifdef USE_WHEEL_ENCODERS
+    // Phase 4M.11 wheel-encoder integration. Two encoders, one per drive
+    // wheel. Constructed with the pin pairs from balance_app.h's
+    // ENC_{L,R}_{A,B} constants; begin() is called from BalanceApp::begin()
+    // after the IMU init so the host application doesn't have to know about
+    // them explicitly. step_run_ calls report_commanded_pwm() each tick and
+    // queries stalled() to route into HELD on a stuck wheel. Construction
+    // order in the .cpp initializer list must match member declaration order
+    // (enc_left_ before enc_right_).
+    WheelEncoder enc_left_;
+    WheelEncoder enc_right_;
+
+    // Phase 4M.12 PWM_DISCOVERY state. Driven by step_pwm_discovery_; reset on
+    // every PWM_DISCOVERY entry via enter_state_'s side-effect block.
+    //
+    //   pwm_disc_step_index_   — count of completed PWM steps (also the
+    //                            attempted-step counter exposed in the result)
+    //   pwm_disc_cur_pwm_      — currently commanded PWM magnitude on both wheels
+    //   pwm_disc_step_end_ms_  — wall-clock at which the current step expires
+    //   pwm_disc_prev_vel_dps_ — last-step's measured |avg velocity|, used for
+    //                            the plateau-delta comparison
+    //   pwm_disc_plateau_run_  — consecutive small-delta count for plateau gate
+    //   pwm_disc_min_locked_   — true once we've recorded the first non-zero
+    //                            velocity step (discovered_min_pwm is final)
+    uint8_t  pwm_disc_step_index_;
+    uint16_t pwm_disc_cur_pwm_;
+    uint32_t pwm_disc_step_end_ms_;
+    int16_t  pwm_disc_prev_vel_dps_;
+    uint8_t  pwm_disc_plateau_run_;
+    bool     pwm_disc_min_locked_;
+    PwmDiscoveryResult pwm_discovery_result_;
+#endif
 
     // Helpers
     void  read_imu_(uint32_t now_ms);

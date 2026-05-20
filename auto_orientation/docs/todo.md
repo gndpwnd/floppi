@@ -1,7 +1,7 @@
 # Todo: Auto Orientation Framework
 
 **Current phase**: Phase 4 — bifurcated 2026-05-19 into Phase 4M (Mega-universal) and Phase 4U (Uno-minimal)
-**Last updated**: 2026-05-19 (platform-bifurcation pivot)
+**Last updated**: 2026-05-19 PM (multi-agent landing wave — collision detection re-landed, wheel encoder driver + integration landed, Phase 4M.12 PWM auto-discovery code landed, Uno minimal P0+P1 batches landed, tuner contract fixed, Phase 4.11a design complete)
 
 For phase-level context see [roadmap.md](roadmap.md). For framework bounds see [scope.md](scope.md). For the pivot rationale see operator memory `project_strategic_pivot_2026-05-19.md` and [scope.md §Platform bifurcation](scope.md#platform-bifurcation-2026-05-19--mega-universal-vs-uno-minimal).
 
@@ -12,38 +12,89 @@ For phase-level context see [roadmap.md](roadmap.md). For framework bounds see [
 The balance-bot reference application splits in two:
 
 - **Mega path** (`src/applications/balancing_robot/`) — home of the universal/adaptive stack (BOOTSTRAP, RLS, collision detection, OnlineMountingEstimator, position containment, wheel encoders). Flash budget is generous; optimize for clarity.
-- **Uno path** (`src/applications/balancing_robot_uno/`, sibling-owned) — minimal single-purpose balancer with hardcoded PID + PWM constants. Constants come from an offline Python brute-force tuner (`tools/sim/`, sibling-owned). No on-MCU learning.
+- **Uno path** ([`src/applications/balancing_robot_uno/`](../src/applications/balancing_robot_uno), scaffold landed 2026-05-19 commit c3c0c6b) — minimal single-purpose balancer with hardcoded PID + PWM constants. Constants come from the offline Python brute-force tuner ([`tools/sim/brute_tune.py`](../tools/sim/brute_tune.py), same commit). No on-MCU learning.
 
 The two paths share `src/sensors/`, `src/actuators/`, and `src/math/` — only the application layer diverges.
 
 ---
 
-## Recently completed (2026-05-19 multi-agent session)
+## 2026-05-19 verification — open issues
 
-This session landed a coordinated set of P0/P1 audit fixes, three audits, two research findings, an operator workflow doc, a test investigation, and the strategic pivot itself. See `project_strategic_pivot_2026-05-19.md` for the canonical pivot record.
+Source: [findings/verification_2026-05-19.md](findings/verification_2026-05-19.md) (post-commit-c3c0c6b verifier read-only sweep). Three blockers were identified; the two P0s are now **DONE** in working tree (no commit yet); the P1 is now also addressed.
 
-**Audit fixes that landed:**
+- [x] **P0 — Tuner ↔ Uno consumer constants name/namespace mismatch** — DONE 2026-05-19 PM. Template now emits file-scope `BALANCE_KP/KI/KD + PWM_MIN/MAX + STICTION_PWM + TIP_CUTOFF_DEG + PITCH_SANITY_DEG` matching the consumer. End-to-end workflow `brute_tune.py --output src/applications/balancing_robot_uno/balance_constants.h && pio run -e arduino_uno_minimal` now compiles.
+- [x] **P0 — `balance_src_filter` (`+<*>`) pulled Uno sub-app `main.cpp` into other envs** — DONE 2026-05-19 PM. All four envs (`uno_balance`, `mega_balance`, `mega_orientation`, `arduino_uno_minimal`) link cleanly. Mega is unblocked.
+- [x] **P1 — Python tuner Kd consistently underestimated ~2.4× vs reference** — DONE 2026-05-19 PM. Random-search Kd now lands at ~62 vs reference 38 (was ~16). Verdict: keep — see [findings/tuner_kd_accuracy_2026-05-19.md](findings/tuner_kd_accuracy_2026-05-19.md). Stress-plant preset still under-tunes Kd — tracked under "Mega path — universal stack" below.
+
+Adjacent pre-existing items the verification surfaced (not new regressions, but worth re-noting):
+
+- `tests/test_held_state_machine` 3/6 fails — investigation file ([findings/investigation_held_state_machine_failure_2026-05-19.md](findings/investigation_held_state_machine_failure_2026-05-19.md)) attributes to stale binary; verifier rebuilt and tests still fail — investigation needs re-examination.
+- `pio test -e native_test` runner errors before running anything because legacy `scenario_test_ekf.cpp`, `integration_test_math_pipeline.cpp`, `benchmark_math.cpp` use renamed `ExtendedKalmanFilter` APIs. Either repair, delete, or carve out of the test_filter.
+
+---
+
+## Recently completed (2026-05-19 PM multi-agent landing wave)
+
+All landings are in working tree (no new commits this session — cite working-tree state).
+
+**Mega path — universal stack:**
+
+- [x] **Collision detection re-landed** in `balance_app.{h,cpp}` — 27/27 native tests pass. 3-gate detector: PEAK 12 m/s² single-tick / SUSTAIN 8 m/s² for 3 ticks / KICK 6 m/s² with |gyro| > 200 dps. Constants at `balance_app.h:178-182`, detector loop at `balance_app.cpp:1639-1648`. Matches [findings/research_collision_signature_bno055.md](findings/research_collision_signature_bno055.md) §6 row-for-row.
+- [x] **Wheel encoder driver** `src/sensors/wheel_encoder.{h,cpp}` — 17/17 native tests pass. PJRC Encoder library added to `mega_balance` env.
+- [x] **Encoder integration into balance_app** — 25 new native tests pass. Pin map in `src/config/pins.h`: `L_ENC_A=18`, `L_ENC_B=19`, `R_ENC_A=2`, `R_ENC_B=3`. Stall detection wired to HELD with `failure_reason=7`.
+- [x] **Phase 4M.12 PWM auto-discovery — code** — 49 `PWM_DISC*` references in `balance_app.{h,cpp}`; Mega flash 14.1 % → 14.7 % (+0.6 %). **Native test file PENDING** — sibling verification agent is writing it.
+- [x] **`src_filter` duplicate-symbol fix** — all four envs (`uno_balance`, `mega_balance`, `mega_orientation`, `arduino_uno_minimal`) link cleanly. Was P0 in [verification_2026-05-19.md §9](findings/verification_2026-05-19.md).
+- [x] **Phase 4.11a position containment — DESIGN** — [findings/phase_4_11a_design_2026-05-19.md](findings/phase_4_11a_design_2026-05-19.md). Encoder-primary outer loop + IMU-only fallback; implementation queued.
+- [x] **Mega encoder bench bring-up guide** — [guides/encoder_bench_bringup.md](guides/encoder_bench_bringup.md) (~450 lines) — operator-facing wiring + verification recipe.
+- [x] **`mega_orientation` RAM-overflow diagnosis** — [findings/mega_orientation_ram_overflow_diagnosis_2026-05-19.md](findings/mega_orientation_ram_overflow_diagnosis_2026-05-19.md). Root cause: EKF stub; ~2257 B reclaimable across three Phase A fixes.
+
+**Uno path — minimal balancer:**
+
+- [x] **Uno minimal P0 fixes** — startup delay + `ATOMIC_BLOCK` + `<stdint.h>` include. 17/17 native tests still pass.
+- [x] **Uno minimal P1 top-5 fixes** — 33/33 native tests pass. New operator commands `g` (arm-after-abort) and `p` (periodic telemetry on/off).
+
+**Tooling — Python brute-force tuner:**
+
+- [x] **Constants P0 contract fix** — template emits Uno-consumer-compatible file-scope header. End-to-end workflow builds.
+- [x] **Tuner Kd accuracy fix** — random-search Kd now lands ~62 vs reference 38 (was ~16). See [findings/tuner_kd_accuracy_2026-05-19.md](findings/tuner_kd_accuracy_2026-05-19.md). Stress-plant preset still under-tunes — tracked under "Mega path" backlog.
+
+---
+
+## Recently completed (2026-05-19 AM multi-agent session)
+
+This session (commit c3c0c6b "save progress") landed the strategic pivot itself plus the Phase 4M/4U scaffolding, a Python brute-force tuner, three audits, three research docs, one verification doc, an operator workflow guide, and a P0/P1 audit-fix sweep on BOOTSTRAP. See `project_strategic_pivot_2026-05-19.md` for the canonical pivot record.
+
+**Strategic pivot + planning:**
+- Platform bifurcation (Mega-universal vs Uno-minimal) decided and propagated across scope.md / roadmap.md / todo.md / INDEX.md / UNIVERSAL_BALANCE_BOT_VISION.md.
+- Phase 4M plan landed in [MEGA_UNIVERSAL_PLAN.md](MEGA_UNIVERSAL_PLAN.md) (~340 lines).
+
+**Source landings:**
+- Uno minimal scaffold: [`src/applications/balancing_robot_uno/`](../src/applications/balancing_robot_uno) — `uno_balance_app.{h,cpp}`, `main.cpp`, `balance_constants.h`. New `arduino_uno_minimal` env builds at 49.7 % flash / 34.7 % RAM. `test_uno_balance_app.cpp` (17 asserts) passes.
+- Python brute-force PID/PWM tuner: [`tools/sim/brute_tune.py`](../tools/sim/brute_tune.py) + `balance_constants_template.h.in` — grid + random + evolutionary modes; reproducible same-seed runs; reaches Kp ≈ reference value on random mode (see verification §6).
+
+**P0/P1 audit fixes landed on the universal BOOTSTRAP stack:**
 - Gyro torn-read atomicity fix in BOOTSTRAP (P0)
 - `plant_id_.reset()` no-overwrite on successful BOOTSTRAP K seed (P0)
 - K-quality gate — refuse to push gains when per-pulse K spread is unreasonable (P1)
 - Baseline-window operator-motion cap (P1)
 - Per-pulse Serial telemetry expanded for bench post-mortem visibility
 
-**Audits delivered:**
-- P0/P1 BOOTSTRAP audit (drove the 5 fixes above)
-- 2026-05-19 multi-orientation audit
+**Audits delivered (all in `docs/findings/`):**
+- [audit_code_quality_balance_stack_2026-05-19.md](findings/audit_code_quality_balance_stack_2026-05-19.md) — drove the 5 BOOTSTRAP fixes above
+- [audit_documentation_2026-05-19.md](findings/audit_documentation_2026-05-19.md) — documentation completeness sweep
 - Scope-violation re-audit (annotated with platform-bifurcation tags — see scope.md)
 
-**Research findings written:**
-- Collision-signature characterization for BNO055 linear accel (3-gate detector spec: 12 g / 8+3-tick / 6+200 dps)
-- Wheel-encoder feasibility for Mega (sibling agent owns the doc)
+**Research findings written (all in `docs/findings/`):**
+- [research_collision_signature_bno055.md](findings/research_collision_signature_bno055.md) — 3-gate detector spec (12 g / 8+3-tick / 6+200 dps)
+- [research_wheel_encoders_mega_2026-05-19.md](findings/research_wheel_encoders_mega_2026-05-19.md) — Mega quadrature encoder feasibility, pin choices, ISR strategy
+- [research_imu_only_position_containment.md](findings/research_imu_only_position_containment.md) — pitch double-integration position estimate as IMU-only fallback
 
-**Other deliverables:**
-- Safe-test-area operator workflow doc
-- Test-suite investigation (root-caused why `tests/test_balance_app_collision.cpp` was untracked)
-- Strategic pivot decision and propagation (this doc set)
+**Verification + investigation + operator guide:**
+- [verification_2026-05-19.md](findings/verification_2026-05-19.md) — post-c3c0c6b read-only build / test / tuner verification (1 PASS env, 3 FAIL envs, 175/178 native tests, 2 P0 + 1 P1 open issues)
+- [investigation_held_state_machine_failure_2026-05-19.md](findings/investigation_held_state_machine_failure_2026-05-19.md) — root-causing 3/6 failures in `test_held_state_machine` (now contested — see open issues)
+- [guides/safe_bench_test_workflow.md](guides/safe_bench_test_workflow.md) — operator workflow for safe bench testing
 
-**Session regression to redo on Mega path:** the collision-detection code in `balance_app.{h,cpp}` was inadvertently reverted by an audit-fix agent late in the session. Scaffolding survives (`bno055::getLinearAccel`, `OrientationSensor::getLinearAccel` virtual, untracked test file) — see Phase 4M.0 below.
+**Session regression to redo on Mega path:** the collision-detection code in `balance_app.{h,cpp}` was inadvertently reverted by an audit-fix agent late in the session. Scaffolding survives (`bno055::getLinearAccel`, `OrientationSensor::getLinearAccel` virtual, untracked test file) — see Phase 4M.0 below. NOTE: [verification_2026-05-19.md §2](findings/verification_2026-05-19.md) reports the collision API is **present in source** and the 27 collision tests pass — the regression status needs re-confirming after the in-flight wave settles.
 
 ## Recently completed (2026-05-18 PM)
 
@@ -63,22 +114,9 @@ See [PHASE2_FLASH_TRIMS_AND_HEURISTICS.md](archive/session_records/2026-05-18_PH
 
 The universal/adaptive code lives here from 2026-05-19 onward. Flash budget is generous on Mega 2560 (~88 % free); optimize for clarity, not for size. See [roadmap.md §Phase 4M](roadmap.md#phase-4m--mega-only-universal-stack-cleanup) for the phase plan.
 
-### TOP PRIORITY — Restore collision detection (Phase 4M.0)
+### Collision detection (Phase 4M.0) — DONE 2026-05-19 PM
 
-Reverted late in the 2026-05-19 session by an audit-fix agent. Sensor scaffolding survives:
-
-- `bno055::getLinearAccel` (concrete) ✅
-- `OrientationSensor::getLinearAccel` virtual in `sensor_base.h` ✅
-- `tests/test_balance_app_collision.cpp` (still untracked) ✅
-- Three-gate detector + state-handler integration in `balance_app.{h,cpp}` ❌ — re-implement
-
-Re-implementation reference: [findings/research_collision_signature_bno055.md](findings/research_collision_signature_bno055.md) — 3-gate thresholds (12 g instant / 8+3-tick sustained / 6+200 dps rotational).
-
-Apply to:
-1. BOOTSTRAP — spike during any pulse or baseline → abandon sequence, exit to IDLE with `failure_reason=5 (collision)`.
-2. CHARACTERISE — same abandonment policy.
-3. RUN — spike → enter HELD (motors off, wait for quiet + level to resume).
-4. Optional `USE_BALANCE_AUTO_BOOTSTRAP` build flag to gate boot-time auto-fire (operator may want to position the bot before motors engage).
+Re-implemented in the 2026-05-19 PM wave. See "Recently completed (2026-05-19 PM ...)" above. Three-gate detector live in `balance_app.{h,cpp}`; 27/27 native tests pass.
 
 ### K-quality follow-on (Phase 4M.k)
 
@@ -90,13 +128,18 @@ The P0/P1 fixes landed this session (gyro atomicity, `plant_id_.reset()` no-over
 - [ ] Periodic RUN telemetry (pitch / output / mount-offset / K_motor every 100 ms) so the bench can see what the balance loop is doing
 - [ ] Reduce ω_n target from 8 → 5 rad/s in PlantIdentifier if bench still twitches (BNO055 NDOF group delay eats phase margin)
 
-### Wheel encoders + position containment (Phase 4M.1, 4M.11)
+### Wheel encoders + position containment (Phase 4M.1, 4M.11, 4M.12, 4.11a)
 
-- [ ] Source new `src/sensors/wheel_encoder.{h,cpp}` (sibling-research-driven; see [findings/research_wheel_encoders_mega_2026-05-19.md](findings/research_wheel_encoders_mega_2026-05-19.md))
-- [ ] Mega ISR backend using external-interrupt pins (INT0/INT1/INT4/INT5)
-- [ ] Per-wheel position (ticks), velocity (ticks/s), direction
-- [ ] Cascade outer loop: position error → pitch setpoint command → inner balance loop (Phase 4M.11)
-- [ ] Replace IMU-only pitch double-integration position estimate with encoder odometry
+- [x] **`src/sensors/wheel_encoder.{h,cpp}` driver** — DONE 2026-05-19 PM, 17/17 native tests pass
+- [x] **Mega ISR backend using external-interrupt pins (18/19, 2/3)** — DONE 2026-05-19 PM
+- [x] **Per-wheel position, velocity, direction** — DONE 2026-05-19 PM
+- [x] **Encoder integration into `balance_app`** — DONE 2026-05-19 PM, 25 new tests pass, stall→HELD with `failure_reason=7`
+- [x] **Phase 4M.12 PWM auto-discovery code** — DONE 2026-05-19 PM (test file pending)
+- [ ] **Phase 4M.12 PWM auto-discovery native test** — sibling verification agent writing now; double-check on next session start
+- [ ] **Phase 4.11a position containment implementation** — design complete in [findings/phase_4_11a_design_2026-05-19.md](findings/phase_4_11a_design_2026-05-19.md); cascade outer loop with encoder-primary + IMU-only fallback (`USE_IMU_ONLY_OUTER_LOOP` runtime gate). Highest-impact remaining item on the Mega path.
+- [ ] **mega_orientation EKF guard + RAM Phase A fixes** — diagnosis in [findings/mega_orientation_ram_overflow_diagnosis_2026-05-19.md](findings/mega_orientation_ram_overflow_diagnosis_2026-05-19.md); ~2257 B reclaimable
+- [ ] **Operator encoder commands** — CPR readout, distance, save calibration. Needs serial parser additions in `balance_app.cpp`. Operator-workflow polish; needed before brute-tune-with-bench-PWM workflow can converge.
+- [ ] **Update Python tuner Kd in `stress` plant preset** — still under-tunes per [findings/tuner_kd_accuracy_2026-05-19.md](findings/tuner_kd_accuracy_2026-05-19.md) caveat
 
 ### Remaining scope-violation rows on Mega
 
@@ -112,31 +155,47 @@ All 14 open rows in [scope.md §Current scope violations — audit](scope.md#cur
 
 Single-purpose hardcoded balancer. **No** auto-tune, **no** RLS, **no** BOOTSTRAP, **no** OnlineMountingEstimator. PID + PWM constants come from offline Python brute-force tuning. Reference target: `archive/balancing_robot_reference/SelfBallancingRobot3.ino`. See [roadmap.md §Phase 4U](roadmap.md#phase-4u--uno-minimal-hardcoded-balancer--python-brute-force-tuner).
 
-- [ ] **Scaffold `src/applications/balancing_robot_uno/`** (sibling agent owns this — link will resolve)
-  - `balance_uno_app.{h,cpp}` — read pitch, run PID, drive motors (~150 LOC ceiling)
-  - Consume generated header `balance_constants_uno.h`
-  - Reuse existing `src/sensors/bno055.cpp`, `src/actuators/l298n_motor_driver.cpp`
+- [x] **Scaffold [`src/applications/balancing_robot_uno/`](../src/applications/balancing_robot_uno)** — landed 2026-05-19 commit c3c0c6b
+  - `uno_balance_app.{h,cpp}` — read pitch, run PID, drive motors (~150 LOC, MsTimer2-driven 200 Hz ISR)
+  - Consume generated header `balance_constants.h` (file-scope `BALANCE_KP/KI/KD` + `PWM_MIN/MAX` + `TIP_CUTOFF_DEG` + `PITCH_SANITY_DEG`)
+  - Reuses existing `src/sensors/bno055.cpp`, `src/actuators/l298n_motor_driver.cpp`
   - Compile gate `USE_BALANCING_ROBOT_UNO` (mutually exclusive with `USE_BALANCING_ROBOT`)
-- [ ] **New build env `arduino_uno_minimal`** (or repurpose the existing `uno_balance`)
-- [ ] **Python brute-force tuner in `tools/sim/`** (sibling agent owns) — wraps `balance_bot_sim.py`, grid/evolutionary search over PID + PWM scaling, fitness = time-balanced under disturbance injection
-- [ ] **Header generator + Uno-side consumer** — tuner emits `balance_constants_uno.h`; build script copies into `src/applications/balancing_robot_uno/generated/`
-- [ ] **First brute-force run + bench validation** — pass criterion: balance ≥ 30 s on flat indoor surface
+- [x] **New build env `arduino_uno_minimal`** — landed 2026-05-19, 49.7 % flash / 34.7 % RAM (under 60 % target)
+- [x] **Python brute-force tuner in [`tools/sim/brute_tune.py`](../tools/sim/brute_tune.py)** — landed 2026-05-19; wraps `balance_bot_sim.py`; grid + random + evolutionary modes; fitness = time-balanced under disturbance injection
+- [x] **Header generator + Uno-side consumer contract** — DONE 2026-05-19 PM (was P0). Template emits the consumer-compatible file-scope shape.
+- [x] **Uno P0 fixes** — DONE 2026-05-19 PM. Startup delay + `ATOMIC_BLOCK` + `<stdint.h>` include. 17/17 native tests pass.
+- [x] **Uno P1 top-5 fixes** — DONE 2026-05-19 PM. 33/33 native tests pass. New operator commands `g` (arm-after-abort) and `p` (periodic telemetry).
+- [ ] **Uno P1 #6-15** — remaining items from [findings/audit_uno_minimal_2026-05-19.md](findings/audit_uno_minimal_2026-05-19.md)
+- [ ] **Uno P2 12 findings** — code-quality cleanup; defer until P1 #6-15 done
+- [ ] **Bench validation with new gains** — flash, prop upright, release. Pass criterion: balance ≥ 30 s on flat indoor surface.
+- [ ] **First brute-force tune run → bench** — full workflow: run `brute_tune.py`, emit header, flash, validate at bench.
 
 Constraint: **resist the urge to add adaptive code on the Uno path.** Hardcoded constants are the design. If a behaviour cannot be reproduced with constants alone, it does not belong in the Uno program.
 
 ---
 
+## Documentation follow-ups (2026-05-19 PM)
+
+- [ ] **Update wiring diagrams** in `docs/hardware/` or `docs/build/` with the encoder pin map (`L_ENC_A=18`, `L_ENC_B=19`, `R_ENC_A=2`, `R_ENC_B=3`) — sourced from [guides/encoder_bench_bringup.md](guides/encoder_bench_bringup.md)
+- [ ] **Operator usage guide for `g` and `p` commands** (Uno-minimal) — `g` arms after abort, `p` toggles periodic telemetry; landed 2026-05-19 PM as part of Uno P1 batch
+
+---
+
 ## Tooling
 
-### Python brute-force PID/PWM tuner (new, sibling-owned)
+### Python brute-force PID/PWM tuner
 
-- [ ] Source under `auto_orientation/tools/sim/` — wraps existing `balance_bot_sim.py` plant model
-- [ ] Search strategy: grid-search → evolutionary (CMA-ES or similar) once grid converges
-- [ ] Search space: Kp / Ki / Kd / stiction_min_pwm / saturation_pwm
-- [ ] Fitness: time balanced before tip-over under randomized disturbance injection
-- [ ] Output: `balance_constants_uno.h` with `constexpr` declarations
-- [ ] CLI flags for plant-parameter overrides (mass, wheel radius, motor K — defaults to simulated nominal bot)
-- [ ] Docs in `docs/applications/balancing_robot_uno/README.md` once the tool stabilises
+Landed 2026-05-19 in [`tools/sim/brute_tune.py`](../tools/sim/brute_tune.py); see [`tools/sim/README.md`](../tools/sim/README.md). Status of original sub-items:
+
+- [x] Source under `auto_orientation/tools/sim/` — wraps existing `balance_bot_sim.py` plant model
+- [x] Search strategy: grid + random + evolutionary; CLI `--mode {grid,random,evolutionary}`
+- [x] Search space: Kp / Ki / Kd / pitch-offset / PWM_MAX
+- [x] Fitness: time balanced before tip-over under randomized disturbance injection
+- [x] Output: header with `constexpr` declarations (template at `tools/sim/balance_constants_template.h.in`)
+- [x] CLI flags for plant presets (`--plant {reference,stress,uno_small}`)
+- [x] **Tuner Kd off 2.4× from reference** (P1) — DONE 2026-05-19 PM. Kd now ~62 vs reference 38 (was ~16). See [findings/tuner_kd_accuracy_2026-05-19.md](findings/tuner_kd_accuracy_2026-05-19.md).
+- [x] **Constants name/namespace contract aligned with Uno consumer** (P0) — DONE 2026-05-19 PM.
+- [ ] **Tuner Kd in `stress` plant preset** — still under-tunes per Kd doc caveat; tune the preset's mechanical damping model.
 
 ### Other tooling (cross-cutting, no specific phase)
 
@@ -224,7 +283,7 @@ Phase 4 implementation + universal auto-tune research and coding session. See [d
 
 ### 4.4 — Online adaptive mounting-offset tracking (new — from 2026-05-12 user insight)
 
-- [ ] Read `findings/online_adaptive_balance_tracking.md` (forthcoming)
+- [ ] Read [findings/online_adaptive_balance_tracking.md](findings/online_adaptive_balance_tracking.md) (landed 2026-05-12)
 - [ ] Implement chosen algorithm (likely sliding-window mean of pitch-when-stable for Mega; 3-state Kalman extension for Teensy/ESP32)
 - [ ] Drift confidence field in `OrientationData` or new `MountingCalibrationStatus` struct
 - [ ] Safety: lock adaptation during tip-over / windup; refuse beyond ±5° from one-shot reference
@@ -294,7 +353,7 @@ Phase 4 implementation + universal auto-tune research and coding session. See [d
 
 ### 4.8 — Tetherless workflow for balancing robot
 
-- [ ] Read `findings/tetherless_operation_strategy.md` (forthcoming)
+- [ ] Read [findings/tetherless_operation_strategy.md](findings/tetherless_operation_strategy.md) (landed 2026-05-12)
 - [ ] Wire up `src/sensors/button_input.cpp` as the capture trigger
 - [ ] Add LED feedback codes (state machine indicator)
 - [ ] Optional: piezo buzzer driver for audible state feedback
@@ -398,4 +457,4 @@ See [roadmap.md#phase-7](roadmap.md#phase-7--application-catalog-expansion). Top
 
 ---
 
-*Last updated: 2026-05-19 (platform-bifurcation pivot — Mega-universal vs Uno-minimal). When you finish an item, move it to "Recently completed" with date. When you start a new item, mark it in-progress in `TodoWrite`.*
+*Last updated: 2026-05-19 PM (multi-agent landing wave — collision detection re-landed, wheel encoder driver + integration LANDED, Phase 4M.12 PWM auto-discovery code LANDED, Uno minimal P0+P1 batches LANDED, tuner contract fixed, Phase 4.11a design complete). When you finish an item, move it to "Recently completed" with date. When you start a new item, mark it in-progress in `TodoWrite`.*

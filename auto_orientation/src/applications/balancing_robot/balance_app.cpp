@@ -180,7 +180,26 @@ BalanceApp::BalanceApp(OrientationSensor& imu,
       bs_pulse_start_gyro_(0.0f),
       bs_noise_alpha_max_(0.0f),
       bs_prev_gyro_(0.0f),
-      bs_k_sum_(0.0f) {
+      bs_k_sum_(0.0f),
+      linear_accel_mag_(0.0f),
+      collision_sustain_counter_(0),
+      collision_latched_(false)
+#ifdef USE_WHEEL_ENCODERS
+      ,
+      // Phase 4M.11 — pin pairs from balance_app.h (constexpr ENC_*_*). Order
+      // matches member declaration (enc_left_ first). The WheelEncoder ctor
+      // is cheap — just stashes the pin numbers; the heavy work (attaching
+      // ISR vectors via PJRC Encoder) happens in begin().
+      enc_left_(ENC_L_A, ENC_L_B),
+      enc_right_(ENC_R_A, ENC_R_B),
+      pwm_disc_step_index_(0),
+      pwm_disc_cur_pwm_(0),
+      pwm_disc_step_end_ms_(0),
+      pwm_disc_prev_vel_dps_(0),
+      pwm_disc_plateau_run_(0),
+      pwm_disc_min_locked_(false)
+#endif
+{
     pulse_log_.seq            = 0;
     pulse_log_.source         = 0;
     pulse_log_.pulse_idx      = 0;
@@ -217,6 +236,14 @@ BalanceApp::BalanceApp(OrientationSensor& imu,
     tune_result_.phase_margin_estimate_deg = 0.0f;
     tune_result_.converged                 = false;
     tune_result_.failure_reason            = "not_started";
+
+#ifdef USE_WHEEL_ENCODERS
+    pwm_discovery_result_.discovered_min_pwm = 0;
+    pwm_discovery_result_.discovered_max_pwm = 0;
+    pwm_discovery_result_.steps_attempted    = 0;
+    pwm_discovery_result_.failure_reason     = 0;
+    pwm_discovery_result_.discovered         = false;
+#endif
 }
 
 // ---------------------------------------------------------------------------
@@ -249,6 +276,15 @@ void BalanceApp::begin(const BalanceAppConfig& cfg, uint32_t now_ms) {
     // Motors stopped
     motors_.stop();
     last_output_ = 0;
+
+#ifdef USE_WHEEL_ENCODERS
+    // Phase 4M.11 — attach encoder ISRs. begin() is idempotent so re-calling
+    // BalanceApp::begin() (e.g. after a config reload) doesn't double-attach.
+    // Failure to allocate is non-fatal: read_ticks() / stalled() will both
+    // return 0/false, degrading to "no encoder data" without crashing.
+    enc_left_.begin();
+    enc_right_.begin();
+#endif
 
     // Enter IDLE
     enter_state_(BalanceAppState::IDLE, now_ms);
@@ -289,6 +325,13 @@ void BalanceApp::tick(uint32_t now_ms) {
         case BalanceAppState::FALLEN:           step_fallen_(now_ms);    break;
         case BalanceAppState::CHAR_ACT:         step_char_act_(now_ms);  break;
         case BalanceAppState::BOOTSTRAP:        step_bootstrap_(now_ms); break;
+#ifdef USE_WHEEL_ENCODERS
+        case BalanceAppState::PWM_DISCOVERY:    step_pwm_discovery_(now_ms); break;
+#endif
+        // PWM_DISCOVERY is enum-defined unconditionally but only reachable when
+        // USE_WHEEL_ENCODERS is set; on Uno the enter_pwm_discovery() entry
+        // point isn't compiled, so the switch fallthrough (no default needed
+        // — -Wswitch is off in this TU's build flags) is safe.
     }
 }
 
@@ -438,6 +481,15 @@ void BalanceApp::step_run_(uint32_t now_ms) {
         return;
     }
 
+    // Collision detected during RUN — drop to HELD (lenient, not sticky
+    // FALLEN). Operator preference 2026-05-18: an external impact is the
+    // same class of event as a pickup. HELD will auto-resume once motion
+    // is quiet + level, so the bot recovers without operator intervention.
+    if (collision_latched_) {
+        enter_state_(BalanceAppState::HELD, now_ms);
+        return;
+    }
+
     // RUN → HELD entry. Lateral-axis gyro (sqrt(gx²+gz²)) OR accel-magnitude
     // deviation from gravity, sustained 150 ms (30 ticks @ 5 ms). Lateral
     // gyro avoids false trigger on pitch-axis recoveries; accel deviation
@@ -541,6 +593,41 @@ void BalanceApp::step_run_(uint32_t now_ms) {
         motors_.set_speed(pwm);
         last_output_ = pwm;
     }
+
+#ifdef USE_WHEEL_ENCODERS
+    // Phase 4M.11 — encoder stall detection.
+    //
+    // Report the applied PWM magnitude to BOTH encoders so each can timestamp
+    // when its commanded effort crossed ENCODER_STALL_PWM_THRESHOLD. Both
+    // wheels currently receive the same command (motors_.set_speed(pwm)
+    // mirrors L = R), so |last_output_| is the right magnitude for both.
+    // Also poll read_velocity_dps so each encoder's internal velocity window
+    // advances — stalled() reads that cached velocity rather than re-deriving.
+    //
+    // failure reason 7 (motor_stall) is the new BootstrapResult.failure_reason
+    // sentinel for encoder-detected wheel stall during RUN. Defined here as
+    // documentation; RUN doesn't write BootstrapResult, but transitioning to
+    // HELD via the same reason code keeps the operator-visible failure surface
+    // unified across BOOTSTRAP and RUN telemetry.
+    const uint16_t cmd_mag = (last_output_ < 0) ? (uint16_t)(-last_output_)
+                                                : (uint16_t) last_output_;
+    enc_left_.report_commanded_pwm(cmd_mag, now_ms);
+    enc_right_.report_commanded_pwm(cmd_mag, now_ms);
+    (void)enc_left_.read_velocity_dps(now_ms);
+    (void)enc_right_.read_velocity_dps(now_ms);
+
+    if (enc_left_.stalled(ENCODER_STALL_PWM_THRESHOLD,
+                          ENCODER_STALL_TIME_MS) ||
+        enc_right_.stalled(ENCODER_STALL_PWM_THRESHOLD,
+                           ENCODER_STALL_TIME_MS)) {
+        // Same lenient outcome as collision detection: drop to HELD, not
+        // FALLEN. A stalled wheel is most often the operator restraining the
+        // bot or a temporary obstruction; HELD's quiescence-and-level gate
+        // resumes balance once the obstruction clears.
+        enter_state_(BalanceAppState::HELD, now_ms);
+        return;
+    }
+#endif
 
     // STUCK detector (2026-05-18 operator-proposed): PID saturated AND no
     // angular motion = something restraining the wheels (operator holding,
@@ -789,6 +876,9 @@ const char* BalanceApp::state_name() const {
         case BalanceAppState::HELD:             return "HELD";
         case BalanceAppState::FALLEN:           return "FAL";
         case BalanceAppState::BOOTSTRAP:        return "BOOT";
+#ifdef USE_WHEEL_ENCODERS
+        case BalanceAppState::PWM_DISCOVERY:    return "PWMD";
+#endif
         default:                                return "?";   // CHAR_ACT, etc
     }
 }
@@ -813,11 +903,26 @@ void BalanceApp::enter_run_with_current_gains(uint32_t now_ms) {
     enter_state_(BalanceAppState::RUN, now_ms);
 }
 
+void BalanceApp::clear_collision() {
+    ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
+        collision_latched_         = false;
+        collision_sustain_counter_ = 0;
+    }
+}
+
 void BalanceApp::enter_state_(BalanceAppState s, uint32_t now_ms) {
     state_ = s;
     state_entered_ms_ = now_ms;
     recovery_count_ = 0;
     reset_capture_accumulators_();
+
+    // Every state transition clears the collision latch + sustain counter.
+    // Rationale: BOOTSTRAP / CHAR_ACT abort to IDLE on collision; RUN drops
+    // to HELD; entering RUN from HELD should start with a clean detector.
+    // If the next state is still in collision territory, the next read_imu_
+    // tick will re-latch immediately.
+    collision_latched_         = false;
+    collision_sustain_counter_ = 0;
 
     // Item 3 — deferred state-transition log. enter_state_() may run from
     // either loop() (tests, IDLE→CAPTURE on short-press) or ISR (RUN→HELD,
@@ -909,6 +1014,30 @@ void BalanceApp::enter_state_(BalanceAppState s, uint32_t now_ms) {
             ch_response_thr_ = 0;      // computed in baseline phase
             ch_stiction_pwm_ = 0;
             break;
+#ifdef USE_WHEEL_ENCODERS
+        case BalanceAppState::PWM_DISCOVERY:
+            // Phase 4M.12 — reset all sweep accumulators so a re-entry starts
+            // clean. Motors held stopped on entry; the first step_pwm_discovery_
+            // tick increments to PWM_DISC_STEP_PWM and starts the ramp. Encoders
+            // are zeroed so the first velocity sample windows from a known
+            // origin (no carry-over from prior IDLE / RUN motion).
+            motors_.stop();
+            last_output_ = 0;
+            pwm_disc_step_index_   = 0;
+            pwm_disc_cur_pwm_      = 0;
+            pwm_disc_step_end_ms_  = now_ms + PWM_DISC_STEP_DURATION_MS;
+            pwm_disc_prev_vel_dps_ = 0;
+            pwm_disc_plateau_run_  = 0;
+            pwm_disc_min_locked_   = false;
+            enc_left_.reset_ticks();
+            enc_right_.reset_ticks();
+            pwm_discovery_result_.discovered_min_pwm = 0;
+            pwm_discovery_result_.discovered_max_pwm = 0;
+            pwm_discovery_result_.steps_attempted    = 0;
+            pwm_discovery_result_.failure_reason     = 0;
+            pwm_discovery_result_.discovered         = false;
+            break;
+#endif
         case BalanceAppState::BOOTSTRAP:
             motors_.stop();
             last_output_ = 0;
@@ -1024,6 +1153,28 @@ void BalanceApp::step_bootstrap_(uint32_t now_ms) {
         last_output_ = 0;
         bootstrap_result_.failure_reason = 4;
         bootstrap_result_.converged      = false;
+        enter_state_(BalanceAppState::IDLE, now_ms);
+        return;
+    }
+
+    // Collision detected during BOOTSTRAP — abort to IDLE with reason=5.
+    // Stamps a diagnostic PulseLog entry (pulse_idx=0xFE sentinel = collision)
+    // so loop() can surface the LIA magnitude that triggered the bail. Any
+    // K_motor estimate from a pulse contaminated by an external impact would
+    // be garbage — better to fail explicitly and let the operator retry.
+    if (collision_latched_) {
+        motors_.stop();
+        last_output_ = 0;
+        bootstrap_result_.failure_reason = 5;
+        bootstrap_result_.converged      = false;
+        pulse_log_.source         = 0;
+        pulse_log_.pulse_idx      = 0xFE;   // sentinel: collision abort
+        pulse_log_.cmd_pwm        = 0;
+        pulse_log_.gyro_start_x10 = 0;
+        pulse_log_.metric_x10     = (int16_t)(linear_accel_mag_ * 10.0f);
+        pulse_log_.thr_x10        = (int16_t)(COLLISION_PEAK_MPS2 * 10.0f);
+        pulse_log_.passed         = 0;
+        pulse_log_.seq++;
         enter_state_(BalanceAppState::IDLE, now_ms);
         return;
     }
@@ -1265,6 +1416,16 @@ void BalanceApp::step_bootstrap_(uint32_t now_ms) {
 }
 
 void BalanceApp::step_char_act_(uint32_t now_ms) {
+    // Collision detected during CHARACTERISE — abort to IDLE. Same rationale
+    // as BOOTSTRAP: a stiction-sweep contaminated by an external impact would
+    // report the wrong floor (the impact's |gyro| swamps the pulse signal).
+    if (collision_latched_) {
+        motors_.stop();
+        last_output_ = 0;
+        enter_state_(BalanceAppState::IDLE, now_ms);
+        return;
+    }
+
     // Phase 2.1 layout:
     //   [0..200 ms]      BASELINE — motors off, measure |gyro_pitch| noise floor
     //   [200..1400 ms]   SWEEP    — 6 pulses x 200 ms, alternating direction
@@ -1447,6 +1608,51 @@ void BalanceApp::read_imu_(uint32_t /*now_ms*/) {
     // motion filters at last known good. The HELD entry gate degrades to
     // pitch-only, which is acceptable — no false negatives, just no false-
     // positive suppression.
+
+    // ------------------------------------------------------------------
+    // Collision detection — three-gate detector
+    // (research_collision_signature_bno055.md §3 / §5).
+    //
+    // VECTOR_LINEARACCEL is gravity-removed body accel from the BNO055 NDOF
+    // fusion. At rest / balancing the magnitude is well under 1 m/s²; an
+    // impact spikes far above. Drivers that don't implement getLinearAccel()
+    // return false and leave the buffer untouched — we treat that as "0 m/s²"
+    // (no spike) so the detector is a benign no-op on those platforms.
+    //
+    // Gates are OR-combined: any one trip latches collision_detected_.
+    // collision_latched_ stays true until clear_collision() or a state
+    // transition resets it (see enter_state_()).
+    float la[3] = {0.0f, 0.0f, 0.0f};
+    const bool have_la = imu_.getLinearAccel(la);
+    float la_mag_new = 0.0f;
+    if (have_la) {
+        la_mag_new = sqrtf(la[0]*la[0] + la[1]*la[1] + la[2]*la[2]);
+    }
+    // gyro_y for the KICK gate. Pull from the freshly-published raw_gyro_dps_
+    // (same axis convention used by the PID D-term and bootstrap pulses).
+    const float gyro_y_for_kick = have_g ? g[1] : 0.0f;
+    const float abs_gyro_y      = gyro_y_for_kick < 0.0f ? -gyro_y_for_kick : gyro_y_for_kick;
+
+    // SUSTAIN counter — runs whether or not the latch is already set so the
+    // post-latch state is well-defined for any subsequent inspection. Counter
+    // resets on any tick below the SUSTAIN floor.
+    if (la_mag_new > COLLISION_SUSTAIN_MPS2) {
+        if (collision_sustain_counter_ < 255) collision_sustain_counter_++;
+    } else {
+        collision_sustain_counter_ = 0;
+    }
+
+    const bool peak_fires    = (la_mag_new > COLLISION_PEAK_MPS2);
+    const bool sustain_fires = (collision_sustain_counter_ >= COLLISION_SUSTAIN_TICKS);
+    const bool kick_fires    = (la_mag_new > COLLISION_KICK_MPS2) &&
+                               (abs_gyro_y > COLLISION_KICK_GYRO_DPS);
+
+    ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
+        linear_accel_mag_ = la_mag_new;
+        if (peak_fires || sustain_fires || kick_fires) {
+            collision_latched_ = true;
+        }
+    }
 }
 
 float BalanceApp::corrected_pitch_() const {
@@ -1472,3 +1678,179 @@ void BalanceApp::reset_capture_accumulators_() {
     cap_pitch_m2_     = 0.0f;
     cap_pitch_first_  = 0.0f;
 }
+
+#ifdef USE_WHEEL_ENCODERS
+// ---------------------------------------------------------------------------
+// Phase 4M.11 — wheel encoder inspectors. Thin pass-throughs to the
+// underlying WheelEncoder; declared in balance_app.h.
+// ---------------------------------------------------------------------------
+int32_t BalanceApp::encoder_left_ticks() {
+    return enc_left_.read_ticks();
+}
+
+int32_t BalanceApp::encoder_right_ticks() {
+    return enc_right_.read_ticks();
+}
+
+int32_t BalanceApp::encoder_avg_velocity_dps(uint32_t now_ms) {
+    const int32_t vl = enc_left_.read_velocity_dps(now_ms);
+    const int32_t vr = enc_right_.read_velocity_dps(now_ms);
+    return (vl + vr) / 2;
+}
+
+bool BalanceApp::encoder_stalled() {
+    return enc_left_.stalled(ENCODER_STALL_PWM_THRESHOLD,
+                             ENCODER_STALL_TIME_MS) ||
+           enc_right_.stalled(ENCODER_STALL_PWM_THRESHOLD,
+                              ENCODER_STALL_TIME_MS);
+}
+
+// ---------------------------------------------------------------------------
+// Phase 4M.12 — PWM range auto-discovery (MEGA_UNIVERSAL_PLAN.md §7d).
+//
+// Operator lifts the bot off the ground (wheels must spin freely), then issues
+// the `p` command. We ramp commanded PWM 0 → 255 in PWM_DISC_STEP_PWM-sized
+// steps every PWM_DISC_STEP_DURATION_MS:
+//   - First step where both wheels show |velocity| > PWM_DISC_MIN_VELOCITY_DPS
+//     locks discovered_min_pwm_ (stiction floor).
+//   - After MIN is locked, PWM_DISC_PLATEAU_COUNT consecutive steps with
+//     |Δvelocity| < PWM_DISC_PLATEAU_DELTA_DPS lock discovered_max_pwm_ as
+//     the FIRST step in the plateau (saturation onset).
+//   - If both bounds are locked, exit to IDLE with success.
+//   - If we exceed PWM_DISC_TIMEOUT_MS, exit to IDLE with failure_reason=8.
+//
+// Per-step Serial telemetry is published via the existing PulseLog deferred-
+// publish path (source=2 = PWM_DISCOVERY). Encoders are reset on entry so the
+// velocity windows have a clean origin.
+//
+// Why this is safe to run from the ISR-side tick():
+//   - motors_.set_speeds() = analogWrite + digitalWrite (AVR atomic)
+//   - enc_*.read_velocity_dps() is a windowed forward-difference (no I²C, no
+//     Serial). The PJRC Encoder library protects its int32_t accessor with
+//     noInterrupts()/interrupts(); reads from a higher-prio ISR are safe.
+//   - All telemetry goes through the deferred PulseLog (loop drains it).
+// ---------------------------------------------------------------------------
+void BalanceApp::enter_pwm_discovery(uint32_t now_ms) {
+    if (state_ != BalanceAppState::IDLE) {
+        return;
+    }
+    enter_state_(BalanceAppState::PWM_DISCOVERY, now_ms);
+}
+
+void BalanceApp::step_pwm_discovery_(uint32_t now_ms) {
+    // Single-exit pattern: gather a uint8_t "finish_reason" code and let the
+    // tail emit telemetry + transition once. 0 = keep ramping; 1 = success
+    // (MAX locked); 4 = user_abort; 8 = timeout. Keeps the function small
+    // (one motors_.stop + one enter_state_).
+    uint8_t finish_reason = 0;
+
+    if (safety_.abort_requested()) {
+        safety_.clear_abort();
+        finish_reason = 4;
+    } else if ((uint32_t)(now_ms - state_entered_ms_) > PWM_DISC_TIMEOUT_MS) {
+        finish_reason = 8;   // pwm_discovery_timeout
+    } else {
+        // Drive both wheels at the current step PWM. Direction stays positive
+        // for the entire sweep — operator has lifted the bot, so the encoder-
+        // forward convention is what matters (not chassis pose).
+        motors_.set_speeds((int16_t)pwm_disc_cur_pwm_, (int16_t)pwm_disc_cur_pwm_);
+        last_output_ = (int16_t)pwm_disc_cur_pwm_;
+        // Advance the encoder velocity-window so the cache stays fresh during
+        // the hold period.
+        (void)enc_left_.read_velocity_dps(now_ms);
+        (void)enc_right_.read_velocity_dps(now_ms);
+        // Step boundary not yet reached — keep running.
+        if ((int32_t)(now_ms - pwm_disc_step_end_ms_) < 0) return;
+    }
+
+    // -----------------------------------------------------------------------
+    // STEP-END or FINISH: read final velocity sample, classify, then either
+    // emit telemetry + advance the ramp, OR commit the result and exit.
+    // -----------------------------------------------------------------------
+    const int32_t v_l = enc_left_.read_velocity_dps(now_ms);
+    const int32_t v_r = enc_right_.read_velocity_dps(now_ms);
+    const int32_t v_l_abs = v_l < 0 ? -v_l : v_l;
+    const int32_t v_r_abs = v_r < 0 ? -v_r : v_r;
+    // Mean of the two wheel magnitudes — more robust to one-wheel encoder
+    // noise than min/max, and matches the brute-force tuner's expectation of
+    // a per-bot scalar bound.
+    const int32_t v_mean_abs = (v_l_abs + v_r_abs) / 2;
+
+    uint8_t passed_flag = 0;
+    if (finish_reason == 0) {
+        pwm_disc_step_index_++;
+        // ---- MIN_PWM lock: first step where BOTH wheels clear threshold.
+        // Both-wheels is stricter than mean — a one-wheel-stuck bot would
+        // otherwise declare MIN at half the true stiction value.
+        if (!pwm_disc_min_locked_ &&
+            v_l_abs > PWM_DISC_MIN_VELOCITY_DPS &&
+            v_r_abs > PWM_DISC_MIN_VELOCITY_DPS) {
+            pwm_discovery_result_.discovered_min_pwm = pwm_disc_cur_pwm_;
+            pwm_disc_min_locked_ = true;
+            passed_flag = 1;
+            pwm_disc_prev_vel_dps_ = (int16_t)v_mean_abs;
+            pwm_disc_plateau_run_  = 0;
+        } else if (pwm_disc_min_locked_) {
+            // ---- MAX_PWM lock: PWM_DISC_PLATEAU_COUNT consecutive small-
+            // delta steps. MAX is the FIRST step of the plateau (the
+            // saturation onset, not the end).
+            const int32_t dv = (int32_t)v_mean_abs - (int32_t)pwm_disc_prev_vel_dps_;
+            const int32_t dv_abs = dv < 0 ? -dv : dv;
+            if (dv_abs < PWM_DISC_PLATEAU_DELTA_DPS) {
+                if (pwm_disc_plateau_run_ == 0) {
+                    // Lock to the prior PWM (the last that actually grew
+                    // velocity). pwm_disc_cur_pwm_ is the first that didn't.
+                    pwm_discovery_result_.discovered_max_pwm =
+                        pwm_disc_cur_pwm_ >= PWM_DISC_STEP_PWM
+                        ? (uint16_t)(pwm_disc_cur_pwm_ - PWM_DISC_STEP_PWM)
+                        : pwm_disc_cur_pwm_;
+                }
+                if (pwm_disc_plateau_run_ < 255) pwm_disc_plateau_run_++;
+                if (pwm_disc_plateau_run_ >= PWM_DISC_PLATEAU_COUNT) {
+                    passed_flag   = 2;
+                    finish_reason = 1;   // success — fall through to finalize
+                }
+            } else {
+                // Velocity still climbing — reset plateau accounting.
+                pwm_disc_plateau_run_ = 0;
+                pwm_discovery_result_.discovered_max_pwm = 0;
+            }
+            pwm_disc_prev_vel_dps_ = (int16_t)v_mean_abs;
+        }
+    }
+
+    // Always emit telemetry for this step.
+    pulse_log_.source         = 2;
+    pulse_log_.pulse_idx      = pwm_disc_step_index_;
+    pulse_log_.cmd_pwm        = (int16_t)pwm_disc_cur_pwm_;
+    pulse_log_.gyro_start_x10 = (int16_t)(v_l * 10);
+    pulse_log_.metric_x10     = (int16_t)(v_r * 10);
+    pulse_log_.thr_x10        = (int16_t)(PWM_DISC_PLATEAU_DELTA_DPS * 10);
+    pulse_log_.passed         = passed_flag;
+    pulse_log_.seq++;
+
+    if (finish_reason == 0) {
+        // Continue ramping. Off-the-top => treat as timeout failure.
+        if (pwm_disc_cur_pwm_ + PWM_DISC_STEP_PWM > 255) {
+            finish_reason = 8;
+        } else {
+            pwm_disc_cur_pwm_     += PWM_DISC_STEP_PWM;
+            pwm_disc_step_end_ms_  = now_ms + PWM_DISC_STEP_DURATION_MS;
+            return;
+        }
+    }
+
+    // Single-exit finalize.
+    motors_.stop();
+    last_output_ = 0;
+    pwm_discovery_result_.steps_attempted = pwm_disc_step_index_;
+    if (finish_reason == 1) {
+        pwm_discovery_result_.failure_reason = 0;
+        pwm_discovery_result_.discovered     = true;
+    } else {
+        pwm_discovery_result_.failure_reason = finish_reason;   // 4 or 8
+        pwm_discovery_result_.discovered     = false;
+    }
+    enter_state_(BalanceAppState::IDLE, now_ms);
+}
+#endif  // USE_WHEEL_ENCODERS

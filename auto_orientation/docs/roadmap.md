@@ -1,7 +1,7 @@
 # Roadmap: Auto Orientation Framework
 
 **Current phase**: Phase 4 — Auto-orientation framework + balancing-robot reference application (now bifurcated into 4M Mega-universal and 4U Uno-minimal — see below)
-**Last updated**: 2026-05-19 (platform-bifurcation pivot — Mega-only universal stack + Uno-minimal hardcoded program with offline Python brute-force tuner)
+**Last updated**: 2026-05-19 PM (multi-agent landing wave — collision detection re-landed, wheel encoder driver + integration LANDED, Phase 4M.12 PWM auto-discovery code LANDED, Uno minimal P0+P1 batches LANDED, tuner contract fixed, Phase 4.11a design complete)
 
 This roadmap describes the framework's evolution from the just-completed BNO085 + GPS + EKF stack (Phase 3) toward a multi-MCU, multi-IMU, optionally-WiFi-connected platform with a catalog of reference applications.
 
@@ -144,20 +144,21 @@ See: [findings/bno055_driver_and_multi_imu_strategy.md](findings/bno055_driver_a
 
 **Goal**: Finish the universal/adaptive balance-bot vision on Mega-class hardware, free from the Uno flash ceiling that derailed the 2026-05-18 bench session. This is the home of BOOTSTRAP, RLS, OnlineMountingEstimator, collision detection, position containment, wheel-encoder odometry, and every future "the bot learns its own dynamics" feature.
 
-**Status**: opened 2026-05-19 by the platform-bifurcation pivot. See `project_strategic_pivot_2026-05-19.md`. The sibling agent's `docs/MEGA_UNIVERSAL_PLAN.md` (forthcoming) holds the detailed plan; this section is the roadmap anchor.
+**Status**: opened 2026-05-19 by the platform-bifurcation pivot. See `project_strategic_pivot_2026-05-19.md`. The detailed plan lives in [MEGA_UNIVERSAL_PLAN.md](MEGA_UNIVERSAL_PLAN.md) (landed 2026-05-19, ~340 lines); this section is the roadmap anchor.
 
 **Working assumption**: Mega's flash budget is generous (~88 % free even with current universal stack). Optimize new code for **clarity**, not size. Don't repeat the Uno-driven micro-optimization patterns that produced unreadable `snprintf`-replacement chains.
 
-### 4M.0 — Restore reverted collision detection
+### 4M.0 — Restore reverted collision detection — LANDED 2026-05-19 PM
 
-Late in the 2026-05-19 session, a P0/P1 audit-fix agent inadvertently reverted the just-landed collision-detection code in `balance_app.{h,cpp}`. The supporting scaffolding survives — `bno055::getLinearAccel`, the `OrientationSensor::getLinearAccel` virtual in `sensor_base.h`, and the untracked `tests/test_balance_app_collision.cpp`. Re-implement the three-gate detector + state-handler integration cleanly using [findings/research_collision_signature_bno055.md](findings/research_collision_signature_bno055.md) (12 g / 8+3-tick / 6+200 dps thresholds). Apply to BOOTSTRAP, CHARACTERISE, and RUN entry/exit paths.
+Late in the 2026-05-19 morning, a P0/P1 audit-fix agent inadvertently reverted the just-landed collision-detection code in `balance_app.{h,cpp}`. **Re-implemented during the 2026-05-19 PM multi-agent wave.** Three-gate detector live with constants in `balance_app.h:178-182`: PEAK 12 m/s² single-tick / SUSTAIN 8 m/s² for 3 ticks / KICK 6 m/s² with |gyro| > 200 dps. 27/27 native tests in `tests/test_balance_app_collision.cpp` pass. Detector loop at `balance_app.cpp:1639-1648` matches [findings/research_collision_signature_bno055.md](findings/research_collision_signature_bno055.md) §6 row-for-row.
 
-### 4M.1 — Wheel-encoder hardware abstraction
+### 4M.1 — Wheel-encoder hardware abstraction — LANDED 2026-05-19 PM
 
-- New module: `src/sensors/wheel_encoder.{h,cpp}` (or `quadrature_encoder.{h,cpp}`) — generic A/B-phase quadrature interface with platform-specific ISR backends.
-- Mega backend uses external-interrupt pins (INT0/INT1/INT4/INT5) for both wheels — Uno cannot host this because it only has two external-interrupt pins, and one is needed for the BNO055 INT line.
+- New module: `src/sensors/wheel_encoder.{h,cpp}` (PJRC Encoder lib added to `mega_balance` env). 17/17 native tests pass.
+- Mega backend uses external-interrupt pins. Pin map fixed in `src/config/pins.h`: `L_ENC_A=18`, `L_ENC_B=19`, `R_ENC_A=2`, `R_ENC_B=3` — Uno cannot host this because it only has two external-interrupt pins, and one is needed for the BNO055 INT line.
 - Per-wheel position (ticks), velocity (ticks/s), and direction.
-- See [findings/research_wheel_encoders_mega_2026-05-19.md](findings/research_wheel_encoders_mega_2026-05-19.md) (forthcoming, sibling-owned) for hardware recommendations and pin choices.
+- Reference: [findings/research_wheel_encoders_mega_2026-05-19.md](findings/research_wheel_encoders_mega_2026-05-19.md) (landed 2026-05-19 AM) for hardware recommendations and pin choices.
+- Operator bring-up: [guides/encoder_bench_bringup.md](guides/encoder_bench_bringup.md) (landed 2026-05-19 PM, ~450 lines).
 
 ### 4M.2 — Encoder-driven K_motor verification
 
@@ -170,13 +171,28 @@ Late in the 2026-05-19 session, a P0/P1 audit-fix agent inadvertently reverted t
 - Phase 2 CHARACTERISE upgrade: pulse each wheel independently with ramping PWM; first PWM that produces a non-zero encoder tick = stiction floor; PWM where tick rate stops growing = saturation.
 - Per-wheel asymmetry (left vs right) was speculated in [UNIVERSAL_BALANCE_BOT_VISION.md](UNIVERSAL_BALANCE_BOT_VISION.md); encoders make it measurable.
 
-### 4M.11 — Position containment (was Phase 4.11)
+### 4M.11 — Wheel-encoder integration into balance_app — LANDED 2026-05-19 PM
+
+- Sampling + bookkeeping wired into `balance_app::tick()` (working tree, no commit). 25 new native tests pass.
+- Stall detection wired to HELD with `failure_reason = 7`.
+- Operator command additions (CPR readout, distance, save calibration) PENDING — tracked in [todo.md](todo.md).
+
+### 4M.12 — PWM auto-discovery — CODE LANDED 2026-05-19 PM
+
+- 49 `PWM_DISC*` references in `balance_app.{h,cpp}`; new `CHAR_PWM_RANGE`-style sweep state.
+- Mega flash 14.1 % → 14.7 % (+0.6 % for this feature). Plenty of room.
+- Native test file PENDING — sibling verification agent is writing it; next session should confirm.
+- Output feeds `L298NMotorDriver::stiction_min_pwm` and the Python brute-force tuner's PWM bounds.
+
+### 4M.13 / 4.11a — Position containment (was Phase 4.11) — DESIGN LANDED 2026-05-19 PM
 
 The Phase 4.11 position-containment work that was queued for Uno via pitch double-integration now becomes a Mega job with **wheel-encoder odometry preferred** over IMU-only pitch double-integration.
 
-- New module: `src/control/position_loop.{h,cpp}` — cascade outer loop: position error (encoder ticks) → pitch setpoint command → inner balance loop.
+- Full design landed in [findings/phase_4_11a_design_2026-05-19.md](findings/phase_4_11a_design_2026-05-19.md): odometry math, outer-loop cascade structure, runtime gate for encoder-vs-IMU fallback, slew limits, EEPROM persistence, bench-validation steps.
+- New module (queued): `src/control/position_loop.{h,cpp}` — cascade outer loop: position error (encoder ticks) → pitch setpoint command → inner balance loop.
 - Slow restoring action (~0.5 Hz bandwidth) so the bot drifts back toward the start position without fighting the balance loop.
-- Pitch double-integration becomes a documented fallback for IMU-only operation.
+- Runtime `USE_IMU_ONLY_OUTER_LOOP` gate selects encoder-primary vs pitch-double-integration fallback.
+- Implementation deferred to next session — would have collided with the Phase 4M.12 agent in `balance_app.cpp`.
 - Reference: 2026-05-19 operator observation that the bot wanders during testing and collides with stuff — encoder odometry is the robust fix.
 
 ### 4M.k — K-quality + audit-fix follow-through
@@ -197,13 +213,13 @@ The P0/P1 audit fixes landed in this session (gyro torn-read atomicity, `plant_i
 
 **Goal**: A small, single-purpose Uno program that does one thing — balance — using hardcoded PID + PWM constants generated by an offline Python tuner. **No on-MCU learning. No auto-tune. No BOOTSTRAP.** The reference target is `archive/balancing_robot_reference/SelfBallancingRobot3.ino`. When the operator wants to re-tune (new battery, new wheels, new surface), they run the Python tool offline and reflash.
 
-**Status**: opened 2026-05-19 by the platform-bifurcation pivot. Sibling agents own the source scaffold (`src/applications/balancing_robot_uno/`) and the Python tooling (`tools/sim/`).
+**Status**: opened 2026-05-19 by the platform-bifurcation pivot. Source scaffold landed in [`src/applications/balancing_robot_uno/`](../src/applications/balancing_robot_uno) (4 files, commit c3c0c6b) and Python tooling in [`tools/sim/`](../tools/sim) (`brute_tune.py` + `balance_constants_template.h.in`, same commit). See [verification_2026-05-19.md](findings/verification_2026-05-19.md) for the post-landing build/test matrix.
 
 ### 4U.1 — Source scaffold
 
 - New tree: `src/applications/balancing_robot_uno/`
   - `balance_uno_app.{h,cpp}` — read pitch, run PID, drive motors. ~150 LOC ceiling.
-  - Consumes a generated header `balance_constants_uno.h` (sibling-owned) with `constexpr` PID + PWM values.
+  - Consumes a generated header `balance_constants.h` (landed in `src/applications/balancing_robot_uno/balance_constants.h`, regenerated by `tools/sim/brute_tune.py`).
 - Reuses existing `src/sensors/bno055.cpp`, `src/actuators/l298n_motor_driver.cpp` — no new sensor or actuator code.
 - Compile gate: `USE_BALANCING_ROBOT_UNO` (mutually exclusive with `USE_BALANCING_ROBOT`).
 
@@ -214,7 +230,7 @@ The P0/P1 audit fixes landed in this session (gyro torn-read atomicity, `plant_i
 
 ### 4U.3 — Python brute-force tuner
 
-- Lives in `auto_orientation/tools/sim/` (sibling-owned this session).
+- Lives in `auto_orientation/tools/sim/brute_tune.py` (landed 2026-05-19 commit c3c0c6b; see [tools/sim/README.md](../tools/sim/README.md)).
 - Wraps existing `balance_bot_sim.py` plant model.
 - Grid-search or evolutionary search across PID gain space + PWM scaling space.
 - Fitness = time balanced before tip-over under randomized disturbance injection.
@@ -280,7 +296,7 @@ The P0/P1 audit fixes landed in this session (gyro torn-read atomicity, `plant_i
 - Magnetometer ellipsoid calibration: capture in firmware, fit on host via `tools/auto_calibrate.py`, upload back.
 - WMM-2025 (or coarse city-table) magnetic-declination lookup for true-north heading.
 
-See: [findings/mpu6050_external_mag_pipeline.md](findings/mpu6050_external_mag_pipeline.md) (forthcoming).
+See: [findings/mpu6050_external_mag_pipeline.md](findings/mpu6050_external_mag_pipeline.md) (landed 2026-05-12).
 
 ### 5.6 — Multi-MCU CI matrix
 
@@ -288,7 +304,7 @@ See: [findings/mpu6050_external_mag_pipeline.md](findings/mpu6050_external_mag_p
 - GitHub Actions workflow (or local equivalent) — compiles every env on every push.
 - Catches "this header doesn't compile on AVR" early.
 
-See: [findings/test_infrastructure_expansion.md](findings/test_infrastructure_expansion.md) (forthcoming).
+See: [findings/test_infrastructure_expansion.md](findings/test_infrastructure_expansion.md) (landed 2026-05-12).
 
 ### Phase 5 success metrics
 - Clean compile on all 6 MCU families
@@ -337,7 +353,7 @@ See: [findings/test_infrastructure_expansion.md](findings/test_infrastructure_ex
 - OTA update from browser succeeds
 - Dashboard works in landscape and portrait on mobile
 
-See: [findings/wifi_telemetry_integration_design.md](findings/wifi_telemetry_integration_design.md), [findings/browser_dashboard_architecture.md](findings/browser_dashboard_architecture.md) (forthcoming).
+See: [findings/wifi_telemetry_integration_design.md](findings/wifi_telemetry_integration_design.md), [findings/browser_dashboard_architecture.md](findings/browser_dashboard_architecture.md) (both landed 2026-05-12).
 
 ---
 
@@ -369,7 +385,7 @@ See: [findings/wifi_telemetry_integration_design.md](findings/wifi_telemetry_int
 - Designed for classroom use; emphasis on documentation, not features
 - Companion docs: a beginner-friendly walkthrough in `docs/guides/`
 
-See: [findings/application_catalog.md](findings/application_catalog.md) (forthcoming).
+See: [findings/application_catalog.md](findings/application_catalog.md) (landed 2026-05-12).
 
 ---
 
@@ -429,4 +445,4 @@ These show up in agent findings but are not yet on a phase plan. Promoted to a p
 
 ---
 
-*Last updated: 2026-05-19 (doc audit). When a phase enters or exits, update both this file and `todo.md`. Per-session work logs go to `docs/archive/session_records/`.*
+*Last updated: 2026-05-19 PM (multi-agent landing wave — Phase 4M.0/4M.1/4M.11/4M.12 LANDED; 4M.13/4.11a DESIGN ready for next-session implementation). When a phase enters or exits, update both this file and `todo.md`. Per-session work logs go to `docs/archive/session_records/`.*

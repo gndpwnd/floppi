@@ -110,4 +110,34 @@ Three parallel agents triggered by the user's question "how does the flight_cont
 
 ---
 
-*Last updated: 2026-05-19 (doc audit — indexed midrange_balance_gains, bno055_latency_and_pitch_fusion, theoretical_audit_balance_stack, phase2_characterise_final_plan; marked balance-gain rec docs as superseded by BOOTSTRAP). Add new findings as you discover them.*
+## 2026-05-19 session — audits + cross-project research (platform-bifurcation pivot)
+
+Six new docs landed during the 2026-05-19 strategic-pivot session (commit `c3c0c6b`). Three audits diagnose the existing balance stack; three research notes scope new capabilities for the Mega-universal path. The three research docs are interlinked: encoders give true position feedback, IMU-only containment is the no-encoder fallback, and collision-signature detection is the safety net that runs alongside either.
+
+### Audits (stack diagnosis)
+
+- [audit_code_quality_balance_stack_2026-05-19.md](audit_code_quality_balance_stack_2026-05-19.md) — Read-only audit of `applications/balancing_robot/`, `control/plant_identifier`, `navigation/online_mounting_estimator`, `sensors/bno055`, `actuators/l298n_motor_driver`, `main.cpp`. 4 P0 + 14 P1 + 15 P2 findings across ISR atomicity, state machine, numerics, flash/RAM, test coverage, doc-in-code drift. Read before touching any of those modules.
+- [audit_documentation_2026-05-19.md](audit_documentation_2026-05-19.md) — Read-only audit of `auto_orientation/docs/`. 180 markdowns scanned, 91 broken `.md` links found (87 fixed in-place), 4 INDEX gaps fixed, 9 stale "next-session" pointers traced, 8 phase/date drift edits, 4 cross-doc contradictions surfaced. The before-state baseline for any future doc-cleanup pass.
+- [investigation_held_state_machine_failure_2026-05-19.md](investigation_held_state_machine_failure_2026-05-19.md) — Diagnoses a `test_held_state_machine` 3-fail/3-pass observed by a sibling agent. Root cause: stale binary compiled without `-DUSE_BALANCE_HELD_DETECTION`. HELD source + tests are correct; the bug is a build-process / shell-environment issue. Read before re-investigating any "HELD is broken" report.
+
+### Research (Mega-universal feature scoping)
+
+- [research_collision_signature_bno055.md](research_collision_signature_bno055.md) — Derives the collision detector threshold + debounce window for `VECTOR_LINEARACCEL`. Validates the existing "15 m/s² sustained 2 ticks" default against datasheet noise floor + register-tear glitch + literature signatures. Sibling of [research_imu_only_position_containment.md](research_imu_only_position_containment.md) (containment prevents collisions; this detector catches the ones that happen anyway) and [research_motor_null_space_handling_detection.md](research_motor_null_space_handling_detection.md) (HELD is low-mag sustained idle; collision is high-mag transient any-state — complementary detectors on the same sensor).
+- [research_imu_only_position_containment.md](research_imu_only_position_containment.md) — Compares 5 algorithms (raw LINEARACCEL double-integration, pitch double-integration, ZUPT-augmented, complementary washout, 3-state EKF) for an IMU-only position outer loop. Recommends pitch-double-integration (option B) for the Uno-class flash budget; EKF (option E) for Teensy/ESP32. The no-encoder fallback paired with [research_wheel_encoders_mega_2026-05-19.md](research_wheel_encoders_mega_2026-05-19.md) — read both to choose between them.
+- [research_wheel_encoders_mega_2026-05-19.md](research_wheel_encoders_mega_2026-05-19.md) — Wheel-encoder hardware + library + driver + Mega-pin + integration architecture. Recommends hall-effect motor-integrated quadrature (likely already on the bench bot's TT/N20 motors), 2-ISR-per-channel hand-decoded, pins 18/19 + 2/3 (NOT the I²C 20/21 pair). Unlocks PWM-range auto-discovery, stiction characterisation, true position outer loop, and independent K_motor verification — the IMU-only path ([research_imu_only_position_containment.md](research_imu_only_position_containment.md)) cannot do these robustly. Read together for the encoder-vs-no-encoder Mega trade-off.
+
+---
+
+## 2026-05-19 PM session — landings + design + diagnoses
+
+Multi-agent landing wave that followed the 2026-05-19 AM bifurcation pivot. Collision detection re-landed; wheel encoder driver + integration LIVE; Phase 4M.12 PWM auto-discovery code LANDED. These docs scope what shipped and what's next.
+
+- [phase_4_11a_design_2026-05-19.md](phase_4_11a_design_2026-05-19.md) — Encoder-first position containment outer-loop design (~590 lines). Encoder odometry primary, IMU-only pitch double-integration as fallback via `USE_IMU_ONLY_OUTER_LOOP` runtime gate. Specifies math, cascade structure, slew limits, EEPROM persistence, bench validation. Implementation queued for next session (would have collided with the simultaneous Phase 4M.12 agent in `balance_app.cpp`). Counterpart to [research_imu_only_position_containment.md](research_imu_only_position_containment.md).
+- [tuner_kd_accuracy_2026-05-19.md](tuner_kd_accuracy_2026-05-19.md) — Diagnoses the random-search tuner's chronic Kd underestimate (was ~16 vs reference 38). After fix, Kd lands ~62 — overshoots reference but stable region widened. Stress-plant preset still under-tunes; mechanical-damping-model TODO captured in [todo.md](../todo.md).
+- [mega_orientation_ram_overflow_diagnosis_2026-05-19.md](mega_orientation_ram_overflow_diagnosis_2026-05-19.md) — Root-causes the `mega_orientation` build's RAM overflow to the EKF stub. Identifies ~2257 B reclaimable across three Phase A fixes. Not yet executed; queued in [todo.md](../todo.md) and [MEGA_UNIVERSAL_PLAN.md §9](../MEGA_UNIVERSAL_PLAN.md) item 3.
+- [audit_uno_minimal_2026-05-19.md](audit_uno_minimal_2026-05-19.md) — Audit of the Uno-minimal application scaffold. P0 fixes (startup delay, `ATOMIC_BLOCK`, `<stdint.h>`) and P1 top-5 (incl. new operator commands `g`/`p`) landed; P1 #6-15 + P2 12 findings queued.
+- [phase_4m12_landed_2026-05-19.md](phase_4m12_landed_2026-05-19.md) — (Sibling verification agent writing; link will resolve.) Verification record for the Phase 4M.12 PWM auto-discovery code landing in `balance_app.{h,cpp}`.
+
+---
+
+*Last updated: 2026-05-19 PM (added the PM-session landings + design + diagnoses docs). Add new findings as you discover them.*

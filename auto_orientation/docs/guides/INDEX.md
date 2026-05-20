@@ -14,6 +14,7 @@ How-to and deployment guides. Each guide is task-oriented ("I want to do X").
 | [LIBRARY_STRATEGY.md](LIBRARY_STRATEGY.md) | Why we vendor libs locally rather than `lib_deps` |
 | [FIELD_DEPLOYMENT.md](FIELD_DEPLOYMENT.md) | Deployment checklist before going to the field |
 | [safe_bench_test_workflow.md](safe_bench_test_workflow.md) | Bench-test the balancing robot without wrecking it (mat, barriers, BOOTSTRAP, collision handling, recovery, cheat-sheet) |
+| [encoder_bench_bringup.md](encoder_bench_bringup.md) | Attach wheel encoders to the Mega bot — hardware shopping, wiring, CPR + radius calibration, stall verification, Phase 4M.12 PWM auto-discovery, cheat-sheet |
 
 ---
 

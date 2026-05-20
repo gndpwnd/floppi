@@ -72,9 +72,19 @@ class UnoBalanceApp {
 
   /**
    * Stop motors and freeze the loop (emergency stop). Trigger via 'a' over
-   * serial. Stays disarmed until the firmware is reflashed.
+   * serial. Stays disarmed until re-armed via arm() (e.g. serial 'g') or a
+   * reflash.
    */
   void abort();
+
+  /**
+   * Re-arm after abort() — clears the disarmed latch, resets the PID integral
+   * so we don't slam the motors on the first post-arm tick, and lets step()
+   * drive the wheels again on the next valid pitch sample. Operator preference
+   * is "balance forever", so this is the supported way to recover from an 'a'
+   * stop without reflashing.
+   */
+  void arm();
 
   /**
    * Inspection accessors for serial telemetry. Safe to call from loop().

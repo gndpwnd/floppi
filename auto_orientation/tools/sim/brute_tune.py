@@ -64,9 +64,27 @@ from balance_bot_sim import (  # noqa: E402
     SimPID,
 )
 
-GENERATOR_VERSION = "1.0"
+GENERATOR_VERSION = "1.2"
 DEFAULT_OUTPUT = "src/applications/balancing_robot_uno/balance_constants.h"
 TEMPLATE_NAME = "balance_constants_template.h.in"
+
+# ----------------------------------------------------------------------------
+# Fixed safety constants (NOT tuned — emitted into the generated header so the
+# Uno consumer always sees a complete API). These match the canonical
+# in-tree src/applications/balancing_robot_uno/balance_constants.h.
+# ----------------------------------------------------------------------------
+# TIP_CUTOFF_DEG: if |corrected_pitch| exceeds this, motors stop. Matches the
+#   firmware TIP_THRESHOLD_DEG the trial loop uses, so deployed and simulated
+#   safety behaviour agree.
+SAFETY_TIP_CUTOFF_DEG = 25.0
+# PITCH_SANITY_DEG: BNO055 fused pitch can flip near gimbal lock; reject any
+#   raw reading whose magnitude exceeds this (matches the reference .ino's
+#   `abs(rawPitch) < 90` guard).
+SAFETY_PITCH_SANITY_DEG = 90.0
+# STICTION_PWM: stiction floor — motors don't move below this PWM magnitude.
+#   Matches TrialConfig.min_pwm so deployed gains see the same dead-band the
+#   tuner assumed (15 = reference .ino value).
+SAFETY_STICTION_PWM = 15
 
 # ----------------------------------------------------------------------------
 # Plant presets
@@ -102,14 +120,17 @@ PLANT_PRESETS = {
         IMUParams(group_delay_ms=30.0, pitch_quant_deg=0.1, gyro_noise_dps=1.0),
         -5.0,
     ),
-    # Stress-test plant: literal point-mass pendulum, sluggish motors,
-    # heavy IMU lag. If the tuner finds gains here too, the candidate is
-    # robust.
+    # Stress-test plant (rebalanced 2026-05-19 PM): harder than reference
+    # (g_eff=80 vs 50, weaker K=0.35 vs 0.4, more friction, heavier IMU lag)
+    # but still within the physically-balanceable region (max recoverable
+    # tilt > 25°). Original variant (L=0.20, g_eff~2810 via point-mass mode)
+    # was unbalanceable at any PWM_MAX≤255 — see polish-update §1 in
+    # docs/findings/tuner_kd_accuracy_2026-05-19.md.
     "stress": (
         PlantParams(
-            L=0.20, mass=0.5, K_motor_phys=0.25, g_eff_coeff=50.0,
+            L=0.15, mass=0.5, K_motor_phys=0.35, g_eff_coeff=80.0,
             stiction_floor=20.0, motor_sat_pwm=255.0,
-            use_point_mass_physics=True,
+            use_point_mass_physics=False,
         ),
         IMUParams(group_delay_ms=40.0, pitch_quant_deg=0.1, gyro_noise_dps=1.5),
         -10.0,
@@ -153,6 +174,8 @@ class TrialScore:
     rms_jerk: float
     oscillation_score: float
     tipped: bool
+    steady_pitch_rms_deg: float = 0.0  # RMS pitch over last 25% of trial — catches offset error
+    n_trials_aggregated: int = 1       # >1 when evaluate_candidate ran multiple init signs
 
 
 TIP_THRESHOLD_DEG = 25.0
@@ -160,11 +183,17 @@ TIP_THRESHOLD_DEG = 25.0
 
 @dataclass
 class TrialConfig:
-    duration_s: float = 5.0
-    init_perturbation_deg: float = 3.0
-    disturbance_mag: float = 0.0   # impulse amplitude in deg/s² (0 = none)
-    disturbance_period_s: float = 1.5
-    disturbance_dur_s: float = 0.05
+    # Trial defaults are deliberately AGGRESSIVE so the fitness function
+    # actually rewards damping (Kd). Earlier defaults (init=3°, duration=5 s,
+    # no disturbance) were so easy that any Kp≥40 trivially balanced; lower Kd
+    # then won on noise-jerk smoothness, producing tuned Kd values ~2× below
+    # the reference SelfBallancingRobot3.ino (Kp=65, Ki=12, Kd=38). See
+    # docs/findings/tuner_kd_accuracy_2026-05-19.md for the diagnosis.
+    duration_s: float = 8.0
+    init_perturbation_deg: float = 8.0
+    disturbance_mag: float = 500.0  # impulse amplitude in deg/s² (0 = none)
+    disturbance_period_s: float = 0.8
+    disturbance_dur_s: float = 0.1
     rng_seed: int = 0
     physics_hz: int = 1000
     control_hz: int = 200
@@ -180,9 +209,9 @@ class TrialConfig:
     w_balance: float = 1.0       # +seconds of upright time
     w_tip: float = 10.0          # heavy penalty for tipping
     w_pitch_rms: float = 0.50    # average |pitch| (squared error)
-    w_steady: float = 1.0        # |pitch| over last 25% of trial — kills offset error
+    w_steady: float = 0.5        # |pitch| over last 25% of trial — kills offset error (NOW WIRED 2026-05-19 PM)
     w_oscillation: float = 0.05  # zero-crossing density
-    w_jerk: float = 0.001        # PWM Δ magnitude
+    w_jerk: float = 0.003        # PWM Δ magnitude — bumped 3× to discourage Kd over-correction (2026-05-19 PM)
 
 
 def _disturbance_fn(cfg: TrialConfig) -> Optional[Callable[[float], float]]:
@@ -251,6 +280,11 @@ def run_trial(cand: Candidate, plant_p: PlantParams, imu_p: IMUParams,
     jerk_accum = 0.0
     zero_crossings = 0
     last_pitch_sign = 0
+    # Steady-state pitch RMS: only the LAST 25% of the trial — once transients
+    # have decayed, this measures persistent offset error. Mounts to w_steady.
+    steady_start_idx = int(n_control * 0.75)
+    steady_pitch_sq_accum = 0.0
+    steady_n = 0
 
     for i in range(n_control):
         pitch_now_deg = plant.pitch_rad * RAD_TO_DEG
@@ -271,6 +305,9 @@ def run_trial(cand: Candidate, plant_p: PlantParams, imu_p: IMUParams,
         if abs_err > max_abs_pitch:
             max_abs_pitch = abs_err
         pitch_sq_accum += true_err * true_err
+        if i >= steady_start_idx:
+            steady_pitch_sq_accum += true_err * true_err
+            steady_n += 1
         sign = 1 if true_err > 0 else (-1 if true_err < 0 else 0)
         if sign != 0 and last_pitch_sign != 0 and sign != last_pitch_sign:
             zero_crossings += 1
@@ -311,13 +348,16 @@ def run_trial(cand: Candidate, plant_p: PlantParams, imu_p: IMUParams,
     rms_pitch = math.sqrt(pitch_sq_accum / n)
     rms_jerk = jerk_accum / n
     oscillation = zero_crossings / max(0.1, tcfg.duration_s)
+    steady_rms = math.sqrt(steady_pitch_sq_accum / max(1, steady_n))
 
     # Fitness — bigger is better.
     # Survive longer, stay closer to 0, command smoothly, oscillate less.
+    # w_steady wired 2026-05-19 PM — kills steady-state offset error.
     fitness = (
         tcfg.w_balance * tip_time_s
         - tcfg.w_tip * (TIP_THRESHOLD_DEG if tipped else 0.0)
         - tcfg.w_pitch_rms * rms_pitch
+        - tcfg.w_steady * steady_rms
         - tcfg.w_oscillation * oscillation
         - tcfg.w_jerk * rms_jerk
     )
@@ -326,6 +366,40 @@ def run_trial(cand: Candidate, plant_p: PlantParams, imu_p: IMUParams,
         fitness=fitness, tip_time_s=tip_time_s,
         max_abs_pitch_deg=max_abs_pitch, rms_pitch_deg=rms_pitch,
         rms_jerk=rms_jerk, oscillation_score=oscillation, tipped=tipped,
+        steady_pitch_rms_deg=steady_rms,
+    )
+
+
+def evaluate_candidate(cand: Candidate, plant_p: PlantParams, imu_p: IMUParams,
+                       mounting_offset_deg: float, tcfg: TrialConfig) -> TrialScore:
+    """Run `cand` once per init_signs sign and aggregate (worst-case fitness).
+
+    Wired 2026-05-19 PM — uses init_signs to expose asymmetric controllers
+    (a wrong PITCH_OFFSET survives +ve init but fails -ve init, or vice versa).
+    Returns a TrialScore whose .fitness is the MIN across signs (worst case
+    exposes asymmetry) and whose magnitude fields are averaged or maxed as
+    appropriate.
+    """
+    base_init = abs(tcfg.init_perturbation_deg)
+    signs = tcfg.init_signs if tcfg.init_signs else (+1.0,)
+    scores = []
+    for sign in signs:
+        sub = replace(tcfg, init_perturbation_deg=base_init * sign)
+        scores.append(run_trial(cand, plant_p, imu_p, mounting_offset_deg, sub))
+    if not scores:
+        scores = [run_trial(cand, plant_p, imu_p, mounting_offset_deg, tcfg)]
+    worst = min(scores, key=lambda s: s.fitness)
+    n = len(scores)
+    return TrialScore(
+        fitness=worst.fitness,
+        tip_time_s=sum(s.tip_time_s for s in scores) / n,
+        max_abs_pitch_deg=max(s.max_abs_pitch_deg for s in scores),
+        rms_pitch_deg=sum(s.rms_pitch_deg for s in scores) / n,
+        rms_jerk=sum(s.rms_jerk for s in scores) / n,
+        oscillation_score=sum(s.oscillation_score for s in scores) / n,
+        tipped=any(s.tipped for s in scores),
+        steady_pitch_rms_deg=max(s.steady_pitch_rms_deg for s in scores),
+        n_trials_aggregated=n,
     )
 
 
@@ -570,6 +644,10 @@ def write_header(path: Path, cand: Candidate, score: TrialScore,
     timestamp = time.strftime("%Y-%m-%d %H:%M:%S %Z")
     disturbance = f"{tcfg.disturbance_mag}dps² period={tcfg.disturbance_period_s}s" \
         if tcfg.disturbance_mag > 0 else "none"
+    # PWM_MIN mirrors -PWM_MAX so the PID output range is symmetric and the
+    # motor driver interprets sign as direction (matches in-tree canonical
+    # balance_constants.h convention: PWM_MIN = -255, PWM_MAX = +255).
+    pwm_min_val = -int(cand.pwm_max)
     rendered = template.format(
         timestamp=timestamp,
         generator_version=GENERATOR_VERSION,
@@ -581,9 +659,13 @@ def write_header(path: Path, cand: Candidate, score: TrialScore,
         init_perturbation_deg=tcfg.init_perturbation_deg,
         disturbance_mag=disturbance,
         kp=cand.kp, ki=cand.ki, kd=cand.kd,
-        offset=cand.pitch_offset_deg, pwm_max=cand.pwm_max,
+        offset=cand.pitch_offset_deg,
+        pwm_max=cand.pwm_max,
+        pwm_min=pwm_min_val,
         pid_sample_ms=tcfg.pid_sample_ms,
-        min_pwm=tcfg.min_pwm,
+        stiction_pwm=SAFETY_STICTION_PWM,
+        tip_cutoff_deg=SAFETY_TIP_CUTOFF_DEG,
+        pitch_sanity_deg=SAFETY_PITCH_SANITY_DEG,
     )
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(rendered)
@@ -639,7 +721,10 @@ def tune(mode: str, budget: int, plant_preset: str, init_perturbation: float,
     )
 
     def eval_fn(c: Candidate) -> TrialScore:
-        return run_trial(c, plant_p, imu_p, mount_off, tcfg)
+        # Use evaluate_candidate (2026-05-19 PM) — runs each candidate across
+        # all init_signs and returns the worst-case fitness. Exposes asymmetric
+        # controllers that the single-trial run_trial path would miss.
+        return evaluate_candidate(c, plant_p, imu_p, mount_off, tcfg)
 
     rng = random.Random(seed)
     state: dict = {}
@@ -679,14 +764,18 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--plant", choices=sorted(PLANT_PRESETS), default="reference",
                    help="plant preset (default: reference matches "
                         "SelfBallancingRobot3.ino)")
-    p.add_argument("--init-perturbation", type=float, default=3.0,
-                   help="initial tilt in degrees (default: 3)")
-    p.add_argument("--disturbance", type=float, default=0.0,
+    p.add_argument("--init-perturbation", type=float, default=8.0,
+                   help="initial tilt in degrees (default: 8). Aggressive default "
+                        "so the fitness function actually rewards damping/Kd.")
+    p.add_argument("--disturbance", type=float, default=500.0,
                    help="periodic disturbance magnitude in deg/s² "
-                        "(default: 0 = none; try 15 for impulses)")
+                        "(default: 500 = strong impulses; 0 = none). Aggressive "
+                        "default so high-Kd candidates are rewarded for damping.")
     p.add_argument("--seed", type=int, default=42, help="RNG seed (default: 42)")
-    p.add_argument("--duration", type=float, default=5.0,
-                   help="trial duration in seconds (default: 5)")
+    p.add_argument("--duration", type=float, default=8.0,
+                   help="trial duration in seconds (default: 8). Longer than "
+                        "the perturbation decay time so steady-state error and "
+                        "disturbance rejection both matter to the fitness.")
     p.add_argument("--no-write", action="store_true",
                    help="don't write the output header (dry run)")
     p.add_argument("--quiet", action="store_true",

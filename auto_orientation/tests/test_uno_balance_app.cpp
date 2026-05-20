@@ -224,7 +224,126 @@ static void test_step_drives_both_wheels_symmetric() {
               "both wheels receive identical PWM");
 }
 
-// 7. abort() latches motors off.
+// 7. read_imu() failure → motors stop on the next step().
+//    Regression for the "I2C glitch → silent quit" path. P1 from
+//    docs/findings/audit_uno_minimal_2026-05-19.md §4.
+static void test_read_imu_fails_motors_stop() {
+  printf("\n[test_read_imu_fails_motors_stop]\n");
+  MockIMU imu;
+  MockMotors motors;
+  PIDController pid(BALANCE_KP, BALANCE_KI, BALANCE_KD, PWM_MIN, PWM_MAX);
+  UnoBalanceApp app(imu, motors, pid);
+  app.begin();
+
+  // First, prime with a valid sample so pitch_valid_ becomes true.
+  imu.set_pitch(-3.6f);  // corrected ≈ +5°
+  TEST_ASSERT(app.read_imu(), "valid pre-fail read succeeds");
+  int16_t pwm = app.step();
+  TEST_ASSERT(pwm != 0, "PID drives motors with valid pitch");
+
+  // Now simulate I²C failure: imu.read() returns false. read_imu() must
+  // invalidate the cached pitch — even though a previous sample was good.
+  imu.set_readable(false);
+  TEST_ASSERT(!app.read_imu(), "read_imu returns false on imu.read() failure");
+
+  // Next step() must stop motors and report 0 PWM. The bot must NOT keep
+  // driving on the stale-but-valid prior sample.
+  pwm = app.step();
+  TEST_ASSERT(pwm == 0, "step() returns 0 after read failure");
+  TEST_ASSERT(motors.last_left() == 0 && motors.last_right() == 0,
+              "motors halted after read failure");
+}
+
+// 8. After a tip cutoff trips and the bot is righted, step() should resume
+//    balancing with NO stale integrator wind-up. The PID is reset on the tick
+//    that detects the tip, so the next post-righting step() should produce
+//    PWM equal to a fresh-bot PID response at that pitch.
+//    P1 from audit §4 / §6.
+static void test_tip_recovery_clears_integral() {
+  printf("\n[test_tip_recovery_clears_integral]\n");
+  MockIMU imu;
+  MockMotors motors;
+  PIDController pid(BALANCE_KP, BALANCE_KI, BALANCE_KD, PWM_MIN, PWM_MAX);
+  UnoBalanceApp app(imu, motors, pid);
+  app.begin();
+
+  // Reference baseline: drive the PID at a steady small pitch, just to record
+  // the "fresh PID" PWM for comparison.
+  PIDController ref_pid(BALANCE_KP, BALANCE_KI, BALANCE_KD, PWM_MIN, PWM_MAX);
+  ref_pid.set_tunings(BALANCE_KP, BALANCE_KI, BALANCE_KD);
+  ref_pid.set_sample_time(PID_SAMPLE_MS);
+  ref_pid.set_output_limits((float)PWM_MIN, (float)PWM_MAX);
+  ref_pid.set_setpoint(0.0f);
+  ref_pid.set_d_term_lpf_tau_sec(0.0f);
+  ref_pid.reset();
+  // Single fresh step at corrected pitch = +3°
+  const float fresh_pwm = ref_pid.compute(3.0f, PID_SAMPLE_MS);
+
+  // 1) Drive several steps at a large in-bounds pitch to wind up the I-term.
+  //    corrected = raw - PITCH_OFFSET_DEG, so raw = corrected + PITCH_OFFSET_DEG.
+  imu.set_pitch(15.0f + PITCH_OFFSET_DEG);  // corrected ≈ +15°
+  for (int i = 0; i < 30; ++i) {
+    app.read_imu();
+    app.step();
+  }
+
+  // 2) Trip the cutoff. PID must be reset by step() on the trip tick.
+  imu.set_pitch(40.0f);  // corrected ≈ +48.6 > TIP_CUTOFF_DEG
+  TEST_ASSERT(app.read_imu(), "tip-magnitude raw read accepted");
+  app.step();
+  TEST_ASSERT(app.is_tipped(), "tip flag set");
+
+  // 3) Right the bot to a small lean and step once. PID output should match
+  //    the fresh-PID baseline within a small tolerance — i.e. the wind-up
+  //    accumulated in (1) was discarded by the reset in (2).
+  //    Note: production main.cpp calls set_d_term_lpf_tau_sec(0.0f) after
+  //    app.begin(). We mirror that here so the comparison against fresh_pwm
+  //    (which uses tau=0) is apples-to-apples.
+  pid.set_d_term_lpf_tau_sec(0.0f);
+  imu.set_pitch(3.0f + PITCH_OFFSET_DEG);  // corrected = +3°
+  TEST_ASSERT(app.read_imu(), "post-righting read accepted");
+  int16_t pwm = app.step();
+  TEST_ASSERT(!app.is_tipped(), "tipped flag clears after righting");
+  // After integral reset, first post-righting PWM should be within ~10 counts
+  // of the fresh-PID response (D-term acts on derivative of measurement,
+  // which is identical between fresh and reset PID at first sample).
+  const float diff = std::fabs((float)pwm - fresh_pwm);
+  TEST_ASSERT(diff < 10.0f, "post-righting PWM ~ fresh-PID PWM (integral cleared)");
+}
+
+// 9. Re-arming after abort() restores balancing.
+//    P1 from audit §4: serial 'g' must let the operator recover from 'a' without
+//    reflashing.
+static void test_arm_recovers_after_abort() {
+  printf("\n[test_arm_recovers_after_abort]\n");
+  MockIMU imu;
+  MockMotors motors;
+  PIDController pid(BALANCE_KP, BALANCE_KI, BALANCE_KD, PWM_MIN, PWM_MAX);
+  UnoBalanceApp app(imu, motors, pid);
+  app.begin();
+
+  imu.set_pitch(-3.6f);  // corrected ≈ +5°
+  app.read_imu();
+
+  // Abort: latch disarm.
+  app.abort();
+  TEST_ASSERT(!app.is_armed(), "armed cleared by abort");
+  TEST_ASSERT(app.step() == 0, "step returns 0 while disarmed");
+
+  // Re-arm via the new arm() entry point.
+  app.arm();
+  TEST_ASSERT(app.is_armed(), "armed re-asserted by arm()");
+  TEST_ASSERT(!app.is_tipped(), "arm() clears tipped flag");
+
+  // After re-arm with valid pitch, step() must drive motors again.
+  app.read_imu();
+  int16_t pwm = app.step();
+  TEST_ASSERT(pwm != 0, "step() drives motors after re-arm");
+  TEST_ASSERT(motors.last_left() == motors.last_right(),
+              "motors still symmetric after re-arm");
+}
+
+// 10. abort() latches motors off.
 static void test_abort_latches() {
   printf("\n[test_abort_latches]\n");
   MockIMU imu;
@@ -262,6 +381,9 @@ int main() {
   test_step_tip_cutoff();
   test_step_pwm_sign_and_range();
   test_step_drives_both_wheels_symmetric();
+  test_read_imu_fails_motors_stop();
+  test_tip_recovery_clears_integral();
+  test_arm_recovers_after_abort();
   test_abort_latches();
 
   printf("\n=== Results: %d/%d passed, %d failed ===\n",

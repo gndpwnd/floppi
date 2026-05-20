@@ -163,7 +163,6 @@ ExtendedKalmanFilter::ExtendedKalmanFilter()
   memset(P_, 0, sizeof(Matrix16x16));
   memset(F_, 0, sizeof(Matrix16x16));
   memset(Q_, 0, sizeof(Matrix16x16));
-  memset(P_temp_, 0, sizeof(Matrix16x16));
 
   // Initialize state: identity quaternion
   state_[0] = 1.0f;  // w = 1
@@ -354,16 +353,17 @@ bool ExtendedKalmanFilter::predict(const float gyro_rad_s[3], const float accel_
 
   compute_f_jacobian_(gyro_rad_s, accel_m_s2, dt_sec);
 
-  // P_temp = F * P
-  matrix_mult_16x16(F_, P_, P_temp_);
+  // FP = F * P (stack local replaces former P_temp_ member; ~1 KB stack peak)
+  Matrix16x16 FP;
+  matrix_mult_16x16(F_, P_, FP);
 
   // F_T = F^T
   Matrix16x16 F_T;
   matrix_transpose_16x16(F_, F_T);
 
-  // P = F_temp * F_T + Q
+  // P = FP * F_T + Q
   Matrix16x16 FPF_T;
-  matrix_mult_16x16(P_temp_, F_T, FPF_T);
+  matrix_mult_16x16(FP, F_T, FPF_T);
 
   // Add Q
   for (int i = 0; i < 16; i++) {
@@ -531,9 +531,10 @@ bool ExtendedKalmanFilter::update(const float gps_pos_ned_m[3], float gps_accura
     }
   }
 
-  // P = (I - K*H) * P
-  matrix_mult_16x16(I_KH, P_, P_temp_);
-  memcpy(P_, P_temp_, sizeof(Matrix16x16));
+  // P = (I - K*H) * P  (stack local replaces former P_temp_ member)
+  Matrix16x16 P_new;
+  matrix_mult_16x16(I_KH, P_, P_new);
+  memcpy(P_, P_new, sizeof(Matrix16x16));
 
   // Enforce symmetry and positive-definiteness
   Matrix16x16 P_symmetric;
@@ -746,12 +747,13 @@ void ExtendedKalmanFilter::update_covariance_update_(const float K[3][16],
     }
   }
 
+  // Build (I - K*H) into a stack local (replaces former P_temp_ member).
+  Matrix16x16 I_KH;
   for (int i = 0; i < 16; i++) {
     for (int j = 0; j < 16; j++) {
-      float I_KH_ij = (i == j ? 1.0f : 0.0f) - KH[i][j];
-      P_temp_[i][j] = I_KH_ij;
+      I_KH[i][j] = (i == j ? 1.0f : 0.0f) - KH[i][j];
     }
   }
 
-  matrix_mult_16x16(P_temp_, P_, P_);
+  matrix_mult_16x16(I_KH, P_, P_);
 }

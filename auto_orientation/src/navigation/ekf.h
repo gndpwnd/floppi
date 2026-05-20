@@ -223,7 +223,12 @@ class ExtendedKalmanFilter {
   Matrix16x16 P_;           ///< 16x16 covariance matrix
   Matrix16x16 F_;           ///< State transition Jacobian (computed in predict)
   Matrix16x16 Q_;           ///< Process noise covariance
-  Matrix16x16 P_temp_;      ///< Temporary matrix (for computations)
+  // P_temp_ removed (2026-05-19): was a 1 KB scratch buffer used as a
+  // ping-pong matrix during predict() and update() covariance arithmetic.
+  // Every call site can use a function-scope local instead — same algorithm,
+  // ~1 KB SRAM reclaimed per EKF instance. Stack peak rises by ~1 KB during
+  // predict()/update() only.
+  // See docs/findings/mega_orientation_ram_overflow_diagnosis_2026-05-19.md (F1).
 
   // ========================================================================
   // GPS Dropout Tracking

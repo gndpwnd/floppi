@@ -150,6 +150,20 @@ static const uint16_t EE_ACT_LEN   = 8;
 static const uint8_t  EE_ACT_MAGIC = 0xAC;
 static const uint8_t  EE_ACT_VER   = 0x01;
 
+#ifdef USE_WHEEL_ENCODERS
+// Phase 4M.12 — PWM range auto-discovery record. Layout:
+//   [magic 0xAD][ver 0x01][min_lo][min_hi][max_lo][max_hi][reserved][crc] (8 B).
+// Mega-only. 0x220 is reserved by the sibling encoder-cal agent (CPR + radius);
+// we land at 0x230 so the two slots don't collide. Calibration blob headroom:
+// the cal blob runs 0x000..0x100 (256 B reserved), mount lives at 0x200,
+// actuator at 0x210, encoder-cal at 0x220, PWM-discovery at 0x230 — leaves
+// 4096 - 0x238 = 3528 bytes free on Mega EEPROM.
+static const uint16_t EE_PWMDISC_ADDR  = 0x230;
+static const uint16_t EE_PWMDISC_LEN   = 8;
+static const uint8_t  EE_PWMDISC_MAGIC = 0xAD;
+static const uint8_t  EE_PWMDISC_VER   = 0x01;
+#endif
+
 static uint8_t xor_crc8_(const uint8_t* d, uint16_t n) {
     uint8_t c = 0; for (uint16_t i = 0; i < n; ++i) c ^= d[i]; return c;
 }
@@ -189,6 +203,31 @@ static bool load_actuator_(uint8_t& stiction) {
     stiction = buf[2];
     return true;
 }
+
+#ifdef USE_WHEEL_ENCODERS
+static bool save_pwm_discovery_(uint16_t min_pwm, uint16_t max_pwm) {
+    uint8_t buf[EE_PWMDISC_LEN] = {0};
+    buf[0] = EE_PWMDISC_MAGIC;
+    buf[1] = EE_PWMDISC_VER;
+    buf[2] = (uint8_t)(min_pwm & 0xFF);
+    buf[3] = (uint8_t)((min_pwm >> 8) & 0xFF);
+    buf[4] = (uint8_t)(max_pwm & 0xFF);
+    buf[5] = (uint8_t)((max_pwm >> 8) & 0xFF);
+    buf[7] = xor_crc8_(buf, 7);
+    if (!ps::write(EE_PWMDISC_ADDR, buf, EE_PWMDISC_LEN)) return false;
+    return ps::commit();
+}
+
+static bool load_pwm_discovery_(uint16_t& min_pwm, uint16_t& max_pwm) {
+    uint8_t buf[EE_PWMDISC_LEN];
+    if (!ps::read(EE_PWMDISC_ADDR, buf, EE_PWMDISC_LEN)) return false;
+    if (buf[0] != EE_PWMDISC_MAGIC || buf[1] != EE_PWMDISC_VER) return false;
+    if (xor_crc8_(buf, 7) != buf[7]) return false;
+    min_pwm = (uint16_t)buf[2] | ((uint16_t)buf[3] << 8);
+    max_pwm = (uint16_t)buf[4] | ((uint16_t)buf[5] << 8);
+    return true;
+}
+#endif
 
 // ---- Button handling ---------------------------------------------------------
 static int      g_last_button   = HIGH;
@@ -324,6 +363,31 @@ void setup() {
         }
     }
 
+#ifdef USE_WHEEL_ENCODERS
+    // Phase 4M.12 — apply saved PWM-discovery bounds if present. The
+    // discovered MIN_PWM is the encoder-confirmed stiction floor and is
+    // strictly more trustworthy than the CHARACTERISE (`k`) gyro-based
+    // estimate (encoders measure actual wheel motion, not chassis rotation),
+    // so it overrides the actuator-slot value if both exist.
+    //
+    // MAX_PWM isn't applied to any in-firmware bound yet — the Python brute-
+    // force tuner is the consumer (it reads the EEPROM blob over serial /
+    // dashboard and uses the bounds to seed its search space). Saved so the
+    // tuner can consume on the next iteration without re-running discovery.
+    {
+        uint16_t min_pwm = 0, max_pwm = 0;
+        if (load_pwm_discovery_(min_pwm, max_pwm) &&
+            min_pwm >= PWM_DISC_STEP_PWM && min_pwm <= 200 &&
+            max_pwm > min_pwm && max_pwm <= 255) {
+            motors.set_stiction_min_pwm((uint8_t)min_pwm);
+            Serial.print(F("ld pd min="));
+            Serial.print(min_pwm);
+            Serial.print(F(" max="));
+            Serial.println(max_pwm);
+        }
+    }
+#endif
+
     // App
     BalanceAppConfig cfg = BalanceApp::default_config();
     app.begin(cfg, millis());
@@ -442,6 +506,16 @@ void loop() {
         } else if (c == 'k') {
             app.enter_characterise_actuator(now);
         }
+#ifdef USE_WHEEL_ENCODERS
+        else if (c == 'p') {
+            // Phase 4M.12 — PWM range auto-discovery. Operator must lift the
+            // bot off the ground before issuing; firmware ramps PWM 0→255 and
+            // watches encoders for MIN_PWM (stiction) + MAX_PWM (saturation).
+            // Result is saved to EEPROM on completion (see PWM_DISCOVERY→IDLE
+            // handler below); next boot can consume the bounds.
+            app.enter_pwm_discovery(now);
+        }
+#endif
     }
 
     // Item 3 — loop-side responsibilities only. The 5 ms PID tick runs in the
@@ -491,6 +565,26 @@ void loop() {
             }
             // Stiction reported via `s` status; no separate print needed.
         }
+#ifdef USE_WHEEL_ENCODERS
+        else if (last_state == BalanceAppState::PWM_DISCOVERY &&
+                 cur == BalanceAppState::IDLE) {
+            // Phase 4M.12 — persist discovered bounds (success path only).
+            // Failure paths (timeout, abort) leave the stored slot untouched
+            // so the previous-run value (if any) remains usable.
+            const PwmDiscoveryResult& pd = app.get_pwm_discovery_result();
+            if (pd.discovered &&
+                pd.discovered_min_pwm > 0 &&
+                pd.discovered_max_pwm > pd.discovered_min_pwm) {
+                save_pwm_discovery_(pd.discovered_min_pwm,
+                                    pd.discovered_max_pwm);
+                Serial.print(F("sv pd min=")); Serial.print(pd.discovered_min_pwm);
+                Serial.print(F(" max="));      Serial.println(pd.discovered_max_pwm);
+            } else {
+                Serial.print(F("pd fail r="));
+                Serial.println(pd.failure_reason);
+            }
+        }
+#endif
         last_state = cur;
     }
 
@@ -525,7 +619,19 @@ void loop() {
 #include "sensors/bno085.h"
 #include "sensors/gps.h"
 #include "math/coordinates.h"
+
+// USE_EKF gating — the 16-state EKF costs ~4 KB SRAM (4 x 16x16 float matrices).
+// On the Mega's 8 KB SRAM this blows the budget; mega_orientation passes
+// -D USE_EKF=0 to skip the filter (it is currently a stub with placeholder
+// inputs anyway). Default ON for any other host that opts into this app.
+// See docs/findings/mega_orientation_ram_overflow_diagnosis_2026-05-19.md.
+#ifndef USE_EKF
+#define USE_EKF 1
+#endif
+
+#if USE_EKF
 #include "navigation/ekf.h"
+#endif
 
 #if ENABLE_SNAPSHOT_RECORDER
 #include "features/snapshot_recorder.h"
@@ -536,9 +642,11 @@ BNO085 imu;
 GPS gps;
 SensorOutputManager output_manager;
 
+#if USE_EKF
 // Phase 3: Extended Kalman Filter for sensor fusion
 ExtendedKalmanFilter ekf;
 bool ekf_initialized = false;
+#endif
 
 // Coordinate frame reference point (initialized on first GPS fix)
 ECEF coordinate_frame_origin_ecef;
@@ -633,11 +741,14 @@ void setup() {
 }
 
 void loop() {
+#if USE_EKF
   // ========================================================================
   // Initialize EKF on first IMU data (Phase 3)
   // ========================================================================
   if (!ekf_initialized && imu.read() && imu.hasNewData()) {
-    // Create initial covariance matrix with large uncertainties
+    // Create initial covariance matrix with large uncertainties.
+    // Note: P_init lives on the stack and is ~1 KB — fine on Teensy/ESP32,
+    // tight on Mega but transient (this block runs once at boot).
     Matrix16x16 P_init;
     memset(P_init, 0, sizeof(Matrix16x16));
 
@@ -665,6 +776,7 @@ void loop() {
       CAL_PRINTLN("WARNING: EKF initialization failed");
     }
   }
+#endif  // USE_EKF
 
   // ========================================================================
   // Read BNO085 Orientation (high frequency: ~100 Hz)
@@ -673,6 +785,7 @@ void loop() {
     const OrientationData& orientation = imu.getOrientation();
     output_manager.updateOrientation(orientation);
 
+#if USE_EKF
     // Phase 3: Feed IMU data to EKF for prediction step
     if (ekf_initialized) {
       static uint32_t last_ekf_predict_ms = 0;
@@ -692,6 +805,7 @@ void loop() {
       }
       last_ekf_predict_ms = now_ms;
     }
+#endif  // USE_EKF
 
 #if ENABLE_SNAPSHOT_RECORDER
     // Check for button press and record snapshot if triggered
@@ -730,6 +844,7 @@ void loop() {
     // Update output manager with latest position
     output_manager.updatePosition(position);
 
+#if USE_EKF
     // Phase 3: GPS dropout handling via EKF
     if (ekf_initialized) {
       if (position.fix_quality >= 1) {
@@ -762,7 +877,30 @@ void loop() {
         ekf.set_gps_dropout(true);
       }
     }
-  } else if (ekf_initialized && gps.isInitialized()) {
+#else
+    // EKF disabled — still log the GPS fix in calibration mode so the human
+    // operator gets the same visibility as the EKF-enabled build.
+    if (position.fix_quality >= 1 && IS_CALIBRATION_MODE) {
+      CAL_PRINTLN("GPS: Fix acquired");
+      Serial.print("  Lat: ");
+      Serial.print(position.latitude, 6);
+      Serial.print(", Lon: ");
+      Serial.print(position.longitude, 6);
+      Serial.print(", Alt: ");
+      Serial.print(position.altitude, 1);
+      Serial.println(" m");
+      Serial.print("  Satellites: ");
+      Serial.print(position.num_satellites);
+      Serial.print(", Fix Quality: ");
+      Serial.print(position.fix_quality);
+      Serial.print(", Accuracy: ");
+      Serial.print(position.accuracy_m, 1);
+      Serial.println(" m");
+    }
+#endif  // USE_EKF
+  }
+#if USE_EKF
+  else if (ekf_initialized && gps.isInitialized()) {
     // Periodically check GPS timeout for dropout detection
     static uint32_t last_gps_check_ms = 0;
     uint32_t now_ms = millis();
@@ -781,6 +919,19 @@ void loop() {
       }
     }
   }
+#else
+  else if (gps.isInitialized()) {
+    // EKF disabled — still surface "waiting for fix" status in cal mode.
+    static uint32_t last_gps_check_ms = 0;
+    uint32_t now_ms = millis();
+    if (now_ms - last_gps_check_ms >= 1000) {
+      last_gps_check_ms = now_ms;
+      if (IS_CALIBRATION_MODE && !gps.hasLock()) {
+        CAL_PRINTLN("GPS: Waiting for fix...");
+      }
+    }
+  }
+#endif  // USE_EKF
 
   // ========================================================================
   // Output Sensor Data (frequency-controlled to ~10 Hz)
@@ -793,6 +944,7 @@ void loop() {
     }
   }
 
+#if USE_EKF
   // Phase 3: EKF Health Diagnostics (every 10 seconds in calibration mode)
   if (ekf_initialized && IS_CALIBRATION_MODE) {
     static uint32_t last_ekf_diag_ms = 0;
@@ -816,6 +968,7 @@ void loop() {
       Serial.println();
     }
   }
+#endif  // USE_EKF
 }
 
 #else
