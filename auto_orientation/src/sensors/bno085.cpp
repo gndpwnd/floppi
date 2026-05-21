@@ -102,7 +102,7 @@ bool BNO085::begin() {
   if (hasCalibrationInEEPROM()) {
     uint8_t saved_cal[256];
     uint16_t saved_cal_length = 0;
-    if (restoreFromEEPROM(saved_cal, &saved_cal_length)) {
+    if (restoreFromEEPROM(saved_cal, sizeof(saved_cal), &saved_cal_length)) {
       Serial.println("  Found saved calibration in EEPROM, restoring...");
       if (writeCalibrationProfile(saved_cal, saved_cal_length)) {
         Serial.println("  ✓ Calibration restored successfully!");
@@ -393,6 +393,10 @@ bool BNO085::validateQuaternionMagnitude(float tolerance) {
 
 bool BNO085::setCalibrationProfile(const uint8_t* profile_data,
                                     uint16_t length) {
+  if (!profile_data) {
+    return false;
+  }
+
   if (length > sizeof(calibration_data_)) {
     return false;
   }

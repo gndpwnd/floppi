@@ -1,3 +1,11 @@
+> **STATUS UPDATE (2026-05-21):** The S3 (barometer) and S5 (GPS) READY-TO-CODE
+> sections below are **SUPERSEDED** — that code has since landed. See
+> `phase_w2_barometer_landed_2026-05-20.md` and `phase_w5_gps_landed_2026-05-20.md`
+> for the as-shipped W2/W5 implementations (`src/barometer.cpp`, `src/gps.cpp`,
+> `include/barometer.h`, `include/gps.h`, plus the baro/gps blocks in
+> `web_server.cpp`). The S1 (swarm-API) and S4 (ESP32 GPIO) portions remain
+> valid and unchanged. Body retained below for historical context.
+
 # Session 3 Readiness Gate — flight_controller (2026-05-20)
 
 > Agent: `fc-session3-readiness@flight_controller:2`

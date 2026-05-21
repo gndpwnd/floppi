@@ -9,6 +9,8 @@
 
 #include "mounting_calibration.h"
 
+#include "../util/crc8.h"
+
 #include <math.h>
 #include <string.h>
 
@@ -58,16 +60,20 @@ inline void quat_normalize(float q[4]) {
 
 
 // ============================================================================
-// CRC8 — simple XOR (matches calculateCRC8 in calibration_storage.cpp)
+// CRC8 — CRC-8-CCITT, delegating to the shared util::crc8_ccitt() leaf
 // ============================================================================
+//
+// This used to be a plain XOR-sum ("crc ^= data[i]"), which is NOT a CRC: it
+// silently misses every even-count bitflip within a single column. The
+// 2026-05-20 P1 hardening (NEW-P1-001) replaced that weak checksum everywhere
+// else; this site was missed. It now delegates to util::crc8_ccitt() — the one
+// canonical CRC-8-CCITT used by calibration_storage.cpp's calculateCRC8 too.
+// The record version byte (AUTO_ORIENT_RECORD_VERSION) was bumped 0x01 -> 0x02
+// so pre-upgrade records carrying the old XOR checksum are cleanly rejected on
+// read rather than mis-validated against the new algorithm.
 
 uint8_t auto_orient_crc8(const uint8_t* data, uint16_t len) {
-    if (!data || len == 0) return 0;
-    uint8_t crc = 0;
-    for (uint16_t i = 0; i < len; ++i) {
-        crc ^= data[i];
-    }
-    return crc;
+    return util::crc8_ccitt(data, len);
 }
 
 

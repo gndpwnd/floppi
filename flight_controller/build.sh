@@ -272,8 +272,61 @@ monitor() {
     print_info "Starting serial monitor"
     print_warning "Press Ctrl+A then Ctrl+X to exit"
     echo -e "${MAGENTA}══════════════════════════════════════════════════════════${NC}"
-    
+
     pio device monitor
+}
+
+build_matrix_entry() {
+    # Build a single coverage-matrix entry: an env plus extra -D flags
+    # injected via PLATFORMIO_BUILD_FLAGS (PlatformIO appends these to the
+    # environment's build_flags).
+    local env="$1"
+    local extra_flags="$2"
+
+    print_info "Matrix build: $env  (extra flags: ${extra_flags:-none})"
+    echo -e "${GREEN}══════════════════════════════════════════════════════════${NC}"
+
+    PLATFORMIO_BUILD_FLAGS="$extra_flags" pio run -e "$env"
+    local result=$?
+
+    if [[ $result -eq 0 ]]; then
+        print_success "Matrix build OK: $env"
+        return 0
+    else
+        print_error "Matrix build FAILED ($env) exit code: $result"
+        return $result
+    fi
+}
+
+build_matrix() {
+    # Coverage matrix — exercises flag combinations that the per-env builds
+    # do not cover on their own. Each entry is "env|extra build flags".
+    print_header
+    print_info "Running build coverage matrix"
+    echo -e "${CYAN}══════════════════════════════════════════════════════════${NC}"
+
+    local matrix=(
+        "esp32|"
+        "esp32s3|"
+        "esp32|-D USE_BAROMETER -D USE_GPS"
+        "esp32s3|-D USE_BAROMETER -D USE_GPS"
+    )
+
+    local failures=0
+    for entry in "${matrix[@]}"; do
+        local env="${entry%%|*}"
+        local flags="${entry#*|}"
+        build_matrix_entry "$env" "$flags" || failures=$((failures + 1))
+        echo ""
+    done
+
+    if [[ $failures -eq 0 ]]; then
+        print_success "Build matrix completed — all ${#matrix[@]} entries OK"
+        return 0
+    else
+        print_error "Build matrix completed with $failures failure(s)"
+        return 1
+    fi
 }
 
 # ======================================================================
@@ -296,6 +349,7 @@ main_menu() {
         echo "  7) Clean all environments"
         echo "  8) Serial monitor"
         echo "  9) Show environment details"
+        echo " 10) Run build coverage matrix (ESP32/S3, USE_BAROMETER+USE_GPS)"
         echo "  0) Exit"
         echo -e "${CYAN}══════════════════════════════════════════════════════════${NC}"
         
@@ -358,6 +412,11 @@ main_menu() {
                 echo ""
                 read -p "Press Enter to continue..."
                 ;;
+            10)
+                build_matrix
+                echo ""
+                read -p "Press Enter to continue..."
+                ;;
             0)
                 print_header
                 echo -e "${GREEN}Thank you for using dRehmFlight!${NC}"
@@ -403,6 +462,9 @@ if [[ $# -gt 0 ]]; then
         "monitor"|"serial")
             monitor
             ;;
+        "matrix")
+            build_matrix
+            ;;
         "list"|"envs")
             print_header
             print_environments
@@ -416,6 +478,7 @@ if [[ $# -gt 0 ]]; then
             echo "  ./build.sh upload [env]       - Upload to environment"
             echo "  ./build.sh monitor            - Start serial monitor"
             echo "  ./build.sh list               - List environments"
+            echo "  ./build.sh matrix             - Run build coverage matrix"
             echo ""
             echo -e "${BOLD}Examples:${NC}"
             echo "  ./build.sh build teensy40     - Build for Teensy 4.0"

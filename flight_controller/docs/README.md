@@ -19,6 +19,17 @@ Open-source VTOL flight controller firmware for Teensy 4.0/4.1, based on dRehmFl
 | [2_calibration_guide.md](2_calibration_guide.md) | Manual and automatic calibration procedures |
 | [3_troubleshooting.md](3_troubleshooting.md) | Problem solving reference |
 
+## Optional ESP32 Sensors
+
+ESP32 builds support two optional, telemetry-only sensors (default OFF, gated by
+`#define` flags in `include/config.h`). They add data to the WiFi telemetry feed
+only — neither touches the flight loop.
+
+| Sensor | Flag | Setup Doc |
+|--------|------|-----------|
+| Barometer (pressure/temp/relative altitude — telemetry-only) | `USE_BAROMETER` | [phase_w2_barometer_landed_2026-05-20.md](findings/phase_w2_barometer_landed_2026-05-20.md) |
+| GPS (raw NMEA passthrough — no parsing, no navigation) | `USE_GPS` | [phase_w5_gps_landed_2026-05-20.md](findings/phase_w5_gps_landed_2026-05-20.md) |
+
 ## Documentation Subfolders
 
 | Folder | Contents |
@@ -47,7 +58,8 @@ See [0_quickstart.md](0_quickstart.md) for the full guide.
 | [serial_monitor.py](../tools/serial_monitor.py) | Raw serial monitor (scripting backend) |
 | [flash_and_run.sh](../tools/flash_and_run.sh) | Build + flash + serial monitor |
 | [calibration_reset.py](../tools/calibration_reset.py) | Reset config.h to factory defaults |
-| [test_calibration.sh](../tests/test_calibration.sh) | Automated test suite (18 tests / 42 assertions) |
+| [test_calibration.sh](../tests/test_calibration.sh) | Automated calibration test suite (18 tests / 42 assertions) |
+| [build_tests.sh](../tools/build_tests.sh) | Native host-side (`g++`) unit-test runner — pure-math tests in `tests/native/` |
 
 ## Related Projects
 

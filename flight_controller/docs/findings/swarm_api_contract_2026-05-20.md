@@ -16,6 +16,19 @@ This document is the joint contract between the ESP32 `flight_controller` firmwa
 and the sibling Python `swarm_api` project. Both sides should reference it. When
 either side changes, re-stamp the "Verified" block above with the new SHA.
 
+### Revision history
+
+- **2026-05-20 (reconciled)** — Workstreams W2 (barometer) and W5 (GPS) added
+  new `baro` and `gps` telemetry blocks to `serializeDisplayData()` in
+  `web_server.cpp` (so they appear on both `GET /api/status` and the `/ws`
+  stream). The W2/W5 landing reports deliberately deferred the contract-doc
+  update to this workstream (W6). This revision reconciles the contract to
+  match the code: the `baro` and `gps` blocks are now documented in §3.1, and
+  §7 gains a concrete `api_version` recommendation. No code changed in this
+  revision — documentation only. See
+  `phase_w2_barometer_landed_2026-05-20.md` and
+  `phase_w5_gps_landed_2026-05-20.md` for the implementation detail.
+
 ---
 
 ## 1. Overview
@@ -138,6 +151,65 @@ Field reference:
 
 Note: numeric fields use ArduinoJson `serialized(String(...))` — emitted as raw
 JSON numbers with fixed decimals, not strings.
+
+#### 3.1a Optional `baro` block (compile-gated — `USE_BAROMETER`)
+
+When the firmware is built with `USE_BAROMETER` defined, `serializeDisplayData()`
+adds a `"baro"` object to the response (`web_server.cpp:99-110`). It is **absent
+entirely** from `/api/status` and `/ws` when `USE_BAROMETER` is not compiled in
+— the default. A client must treat the whole `baro` object as optional and
+key its presence off `("baro" in payload)`, not off a field value.
+
+```json
+"baro": { "ok": true, "pressure_pa": 101180.4, "altitude_m": 12.07, "temp_c": 23.41 }
+```
+
+| Field | Type | Unit | Meaning |
+|---|---|---|---|
+| `baro.ok` | bool | — | Barometer liveness — `true` if the sensor ACKed and is being read; `false` if absent/failed. |
+| `baro.pressure_pa` | number | pascals (Pa), 1 dp | Compensated barometric pressure. |
+| `baro.altitude_m` | number | metres, 2 dp | Derived **relative** altitude vs the configured sea-level reference pressure. |
+| `baro.temp_c` | number | degrees Celsius, 2 dp | Sensor die temperature (not free-air calibrated). |
+
+- Present only when the firmware is compiled with `USE_BAROMETER` (default
+  OFF — see `config.h`). Absent builds emit no `baro` key at all.
+- Telemetry-only: the barometer never feeds the flight loop. `altitude_m` is a
+  relative readout, not an absolute MSL altitude, and is unfiltered against any
+  navigation source.
+- Numeric fields use the same `serialized(String(...))` fixed-decimal emission
+  as the rest of the snapshot — raw JSON numbers, not strings.
+
+#### 3.1b Optional `gps` block (compile-gated — `USE_GPS`)
+
+When the firmware is built with `USE_GPS` defined, `serializeDisplayData()`
+adds a `"gps"` object to the response (`web_server.cpp:112-129`). As with
+`baro`, the whole object is **absent entirely** when `USE_GPS` is not compiled
+in — the default. Key its presence off `("gps" in payload)`.
+
+```json
+"gps": { "nmea": "$GNGGA,123519.00,4807.0380,N,...*47", "age_ms": 230, "ok": true }
+```
+
+| Field | Type | Unit | Meaning |
+|---|---|---|---|
+| `gps.nmea` | string | raw NMEA | Most-recent complete NMEA sentence, verbatim (≤82 chars, including the `$` and `*CC` checksum). |
+| `gps.age_ms` | int | milliseconds | Age of that sentence — `millis()` since it was framed. |
+| `gps.ok` | bool | — | Liveness bit — `true` if a sentence arrived within `GPS_STALE_TIMEOUT_MS`; `false` means GPS missing/unpowered/no link. **A liveness bit, not a fix-quality bit.** |
+
+- Present only when the firmware is compiled with `USE_GPS` (default OFF — see
+  `config.h`). Absent builds emit no `gps` key at all.
+- **Passthrough data — no flight-loop meaning.** The firmware parses *nothing*
+  beyond `$…\r\n` sentence framing and the liveness bit. There is no lat/lon/
+  alt/sats/fix decoding in firmware; `gps.nmea` carries the raw sentence and
+  **parsing it (including fix quality) is entirely the consumer's job**. No
+  GPS-derived value reaches the Core-0 flight loop — the worst failure mode is
+  a stale `gps` field.
+- `gps.nmea` may be any NMEA talker (`$GP…`, `$GN…`, `$GL…`, `$GA…`) — the
+  framer is talker-agnostic. A client must not assume a fixed talker prefix.
+- Privacy note: raw NMEA contains absolute latitude/longitude. With no auth or
+  TLS on the surface (see §8), an enabled `USE_GPS` means anyone on the LAN can
+  read the drone's position. The `config.h` `USE_GPS` block carries the same
+  warning.
 
 ### 3.2 `POST /api/commands`
 
@@ -329,15 +401,37 @@ Cross-core safety:
 
 **There is no protocol version field anywhere** — not in `/api/status`, not in
 the command schema, not in the outbound telemetry payload, not in any header.
-The swarm_api client (`drone.py`) likewise assumes a fixed schema.
+The swarm_api client (`drone.py`) likewise assumes a fixed schema. The addition
+of the optional `baro` (W2) and `gps` (W5) blocks on 2026-05-20 makes this gap
+more pressing: the `/api/status` schema is now demonstrably mutable, yet a
+client still has no machine-readable way to tell *which* schema it is talking
+to.
 
-GAP / recommendation (do **not** implement here):
-- Add an `"api_version"` integer to `/api/status` and the outbound telemetry
-  payload (e.g. start at `1`). Cheap: one line in `serializeDisplayData()` and
-  one in `handleApiClient()`.
-- The swarm_api client should read it and warn/refuse on mismatch.
-- Until then, the "Verified … against …@SHA" stamp at the top of this document
-  is the de-facto version marker. Any schema change must bump that stamp.
+### 7.1 RECOMMENDATION — introduce an integer `api_version` field
+
+> **Status: RECOMMENDED — not yet implemented.** As of this revision the
+> firmware emits **no** `api_version` field. A client must NOT depend on it
+> existing yet; treat its absence as "version 0 / pre-versioning".
+
+Concrete recommendation, to be picked up by a future code workstream (not this
+documentation-only revision):
+
+- Add a top-level integer `"api_version"` to the `/api/status` (and `/ws`)
+  JSON, **starting at `1`**. One line in `serializeDisplayData()`:
+  `root["api_version"] = 1;`. Mirror it in the outbound `/api/telemetry`
+  payload (`handleApiClient()` in `api_client.cpp`).
+- Semantics: a plain monotonically-increasing integer. **Bump it by 1 on any
+  backward-incompatible change** to the wire schema (a removed/renamed field, a
+  changed type or unit). Purely additive, optional, compile-gated blocks like
+  `baro`/`gps` do **not** require a bump — a client keying optional blocks off
+  presence (`"baro" in payload`) stays compatible.
+- This integer becomes the **de-facto compatibility marker**: the swarm_api
+  client reads `payload.get("api_version", 0)` and warns or refuses on a value
+  it does not recognise.
+- Until `api_version` ships, the "Verified … against …@SHA" stamp at the top
+  of this document remains the only version marker, and any schema change must
+  re-stamp it. `api_version` is the intended replacement for that
+  human-managed stamp with a machine-readable field.
 
 ---
 
@@ -345,10 +439,18 @@ GAP / recommendation (do **not** implement here):
 
 Things a `swarm_api` client author will stumble on:
 
-1. **No auth, no TLS.** Anyone on the LAN can fly or OTA-flash a drone. Acceptable
+1. **No auth, no TLS.** Anyone on the LAN can fly or OTA-flash a drone — and,
+   with `USE_GPS` enabled, read its absolute position (see §3.1b). Acceptable
    only on an isolated/trusted network. If the swarm runs on shared WiFi this is
-   a real risk. Decision needed: add a shared token header, or document the
-   "isolated SSID only" requirement.
+   a real risk. **This is a known, intentional development-phase decision — not
+   an unreported bug.** `scope.md` explicitly lists "swarm-API authentication /
+   TLS — intentionally NOT implemented in the current development phase" in its
+   out-of-scope section (footnote `[^api-auth]`, dated 2026-05-20): the FC is
+   assumed to run on a closed, trusted lab LAN. A shared-secret header or TLS is
+   **deferred, not refused**. A future reader should treat this as a tracked
+   scope decision and not re-raise it as a defect; revisit only before any
+   non-lab deployment. Decision still open for that future phase: add a shared
+   token header, or formally require an isolated SSID.
 2. **No protocol version** (see §7).
 3. **Inbound command-pull (`GET .../api/commands`) is unimplemented.** The URL is
    built in `setupApiClient()` but never called. A swarm design that expects the

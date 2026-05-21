@@ -170,7 +170,16 @@ public:
 
 private:
     // Leaky integral of wheel velocity — an estimate of accumulated drift in
-    // metres. Leaked toward 0 every update so it can never wind up.
+    // metres. update() bleeds it by pos_leak_ every tick; that exponential
+    // washout is the *only* thing bounding it — there is NO hard clamp on
+    // position_m_. The bound is therefore soft and bias-dependent: against a
+    // zero-mean velocity signal the leak holds it near 0, but a *systematic*
+    // encoder bias b drives a non-zero steady state of roughly
+    // b*dt*pos_leak_/(1-pos_leak_) (the leak balances the bias inflow, it
+    // does not reject it). Known TD-7 consideration: over a long (>10 min)
+    // RUN a small persistent bias can still settle the integrator at a
+    // standing offset despite POS_LEAK — informational only, to be quantified
+    // by the bench disturbance benchmark (Workstream K), not a fault here.
     float position_m_;
 
     // Slew-limiter memory: the nudge actually emitted last update().

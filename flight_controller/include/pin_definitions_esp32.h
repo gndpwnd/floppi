@@ -402,11 +402,13 @@
         #error "ESP32 GPIO conflict B: SERVO_PIN_3 (GPIO 4) collides with the selected receiver RX (IBUS_RX_PIN / DSM_RX_PIN / SERIAL_CMD_RX_PIN). setupServos() drives GPIO 4 via LEDC on every build, fighting the Serial1 UART. Override SERVO_PIN_3 (or the receiver pin) in the PIN OVERRIDES section of config.h. See docs/findings/esp32_gpio_conflict_resolution_2026-05-20.md."
     #endif
 
-    // TODO(C-1): future barometer guard. When USE_BAROMETER lands, the Wire1
-    // barometer defaults (proposed BARO_SDA/SCL on GPIO 25/26) collide with
-    // MOTOR_PIN_1/MOTOR_PIN_2. Add a guard here once USE_BAROMETER and the
-    // BARO_*_PIN symbols exist. Not added now — premature (no such flag yet).
-    // See docs/findings/session3_readiness_2026-05-20.md finding C-1.
+    // RESOLVED (C-1): no barometer GPIO guard is needed. W2 has landed and the
+    // barometer shares the primary `Wire` bus (GPIO 21/22) with the IMU — it
+    // does NOT use Wire1 / GPIO 25/26, so it touches no MOTOR_PIN. There are no
+    // BARO_*_PIN symbols and nothing for a guard to catch. The earlier C-1
+    // concern assumed a Wire1 baro on GPIO 25/26; that design was not adopted.
+    // See docs/findings/phase_w2_barometer_landed_2026-05-20.md and config.h's
+    // BAROMETER section. (Was: docs/findings/session3_readiness_2026-05-20.md C-1.)
 
 #endif // USE_ESP32 && !USE_ESP32S3
 

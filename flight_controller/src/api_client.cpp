@@ -22,6 +22,22 @@
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 
+// Optional barometer telemetry — read directly from the baro module's
+// spinlock-guarded snapshot. Mirrors the "baro" block emitted by
+// serializeDisplayData() in web_server.cpp. Self-contained: adds no field
+// to DisplayData_t. Compiles out entirely when USE_BAROMETER is undefined.
+#ifdef USE_BAROMETER
+#include "barometer.h"
+#endif
+
+// Optional GPS passthrough telemetry — read directly from the GPS module's
+// spinlock-guarded snapshot. Mirrors the "gps" block emitted by
+// serializeDisplayData() in web_server.cpp. Compiles out entirely when
+// USE_GPS is undefined.
+#ifdef USE_GPS
+#include "gps.h"
+#endif
+
 // Only compile API client when server URL is configured
 #if __has_include("wifi_credentials.h")
     #include "wifi_credentials.h"
@@ -86,7 +102,37 @@ void handleApiClient(const DisplayData_t* data) {
     doc["heap"] = ESP.getFreeHeap();
     doc["uptime_ms"] = millis();
 
-    char buf[384];
+#ifdef USE_BAROMETER
+    // Barometer telemetry — mirrors the "baro" block in serializeDisplayData()
+    // (web_server.cpp). Same field names, types, units and fixed-decimal
+    // emission. Absent entirely from the POST body when USE_BAROMETER is OFF.
+    JsonObject baro = doc["baro"].to<JsonObject>();
+    baro["ok"] = baroTelemetryOk();
+    baro["pressure_pa"] = serialized(String(baroTelemetryPressurePa(), 1));
+    baro["altitude_m"]  = serialized(String(baroTelemetryAltitudeM(), 2));
+    baro["temp_c"]      = serialized(String(baroTelemetryTemperatureC(), 2));
+#endif
+
+#ifdef USE_GPS
+    // GPS passthrough telemetry — mirrors the "gps" block in
+    // serializeDisplayData() (web_server.cpp). gps.nmea is the most-recent
+    // complete sentence verbatim; gps.ok is a liveness bit; gps.age_ms is the
+    // age of that sentence. Absent entirely from the POST body when USE_GPS
+    // is OFF.
+    {
+        char gps_nmea[GPS_NMEA_MAX];
+        uint32_t gps_age = gpsTelemetryNMEA(gps_nmea, sizeof(gps_nmea));
+        JsonObject gps = doc["gps"].to<JsonObject>();
+        gps["nmea"]   = gps_nmea;
+        gps["age_ms"] = gps_age;
+        gps["ok"]     = gpsTelemetryOk();
+    }
+#endif
+
+    // Buffer worst case: base payload ~260 B + baro block ~90 B + gps block
+    // (82-char max NMEA sentence) ~130 B ≈ 480 B. 512 B covers it with margin.
+    // serializeJson() returns the actual length and never overruns the buffer.
+    char buf[512];
     size_t len = serializeJson(doc, buf, sizeof(buf));
 
     // POST telemetry (blocking, OK on Core 1)

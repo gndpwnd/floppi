@@ -2,7 +2,9 @@
 
 End-user documentation for the Phase 4 self-balancing robot reference application.
 
-This is the first full-stack application the framework ships: an Arduino Mega + IMU + L298N + 2 DC motors that learns its own mounting offset and PID gains on the bench, then balances autonomously over USB-untethered battery power.
+This is the first full-stack application the framework ships: an Arduino Mega + IMU + wheel encoders + L298N + 2 DC motors that learns its own mounting offset and PID gains on the bench, then balances autonomously over USB-untethered battery power.
+
+Gains are not relay-feedback auto-tuned. The app derives them at boot: the **BOOTSTRAP** state pulses the motors to measure K_motor and derives the inner-loop PID gains analytically (Phase 4M.2 adds an encoder-driven K cross-check that aborts BOOTSTRAP on slip/bind disagreement). On encoder-equipped builds a **position/velocity cascade** (Phase 4M.13) adds an outer station-keeping loop whose gains are themselves auto-derived in closed form via pole-placement at BOOTSTRAP finalise (Phase 4M.14). No hand-tuned or relay-tuned constants on the operating path.
 
 ---
 
@@ -22,7 +24,8 @@ This is the first full-stack application the framework ships: an Arduino Mega + 
 - [../../findings/MASTER_DESIGN.md](../../findings/MASTER_DESIGN.md) — Phase 4 task plan, including this application
 - [../../findings/balance_point_and_mounting_research.md](../../findings/balance_point_and_mounting_research.md) — why the one-shot mounting capture works
 - [../../findings/online_adaptive_balance_tracking.md](../../findings/online_adaptive_balance_tracking.md) — the slow drift compensator that runs alongside the main loop
-- [../../findings/auto_pid_tuning_research.md](../../findings/auto_pid_tuning_research.md) — the relay-feedback auto-tuner this app uses
+- [../../findings/phase_4m14_landed_2026-05-20.md](../../findings/phase_4m14_landed_2026-05-20.md) — analytical auto-derivation of the outer-loop (position/velocity cascade) gains
+- [../../findings/workstream_f_review_2026-05-20.md](../../findings/workstream_f_review_2026-05-20.md) — review of the BOOTSTRAP K cross-check + velocity outer-loop landing
 - [../../findings/tetherless_operation_strategy.md](../../findings/tetherless_operation_strategy.md) — button/LED/buzzer state machine
 - [../../findings/disturbance_compensation_research.md](../../findings/disturbance_compensation_research.md) — push-detect + accel feedforward
 - [../../findings/application_catalog.md](../../findings/application_catalog.md) — where this application sits in the overall application priority list
@@ -33,11 +36,11 @@ This is the first full-stack application the framework ships: an Arduino Mega + 
 
 ```bash
 cd auto_orientation
-pio run -e arduino_mega_balancing -t upload
+pio run -e mega_balance -t upload
 ```
 
 For everything else, start with [USER_GUIDE.md](USER_GUIDE.md).
 
 ---
 
-*Last updated: 2026-05-12.*
+*Last updated: 2026-05-20.*

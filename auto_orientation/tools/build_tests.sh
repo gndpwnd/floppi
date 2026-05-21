@@ -230,6 +230,14 @@ build_test "test_balance_app_pwm_discovery" \
     "${SRC_BAL_FULL} src/sensors/wheel_encoder.cpp src/control/position_loop.cpp" \
     "-fpermissive"
 
+# Workstream G (item G4) — BalanceApp telemetry-accessor tests. Same native
+# encoder build profile as test_balance_app_encoder: USE_WHEEL_ENCODERS pulls
+# the outer-loop getters in, NATIVE_TEST switches WheelEncoder to its mock
+# backend. Links position_loop.cpp for the PositionLoop pass-throughs.
+build_test "test_balance_telemetry" \
+    "-DUNIT_TEST -DNATIVE_TEST -DUSE_WHEEL_ENCODERS" \
+    "${SRC_BAL_FULL} src/sensors/wheel_encoder.cpp src/control/position_loop.cpp"
+
 # HELD state-machine test — the canonical reason this rewrite exists.
 # REQUIRES -DUSE_BALANCE_HELD_DETECTION (also guarded by #error inside
 # tests/test_held_state_machine.cpp itself).
@@ -254,6 +262,21 @@ build_test "test_l298n_motor" \
     "-DUNIT_TEST" \
     "src/actuators/l298n_motor_driver.cpp" \
     "-Isrc/actuators"
+
+# ----------------------------------------------------------------------------
+# Outer-loop (PositionLoop) tests — printf-based, no test framework.
+# PositionLoop is a pure control module: link only position_loop.cpp.
+# Compile lines copied verbatim from each test's docblock.
+# ----------------------------------------------------------------------------
+build_test "test_position_loop" \
+    "-Iinclude -Isrc" \
+    "src/control/position_loop.cpp" \
+    "-fpermissive"
+
+build_test "test_position_gain_derivation" \
+    "-Iinclude -Isrc" \
+    "src/control/position_loop.cpp" \
+    "-fpermissive"
 
 # ----------------------------------------------------------------------------
 # Unity-framework tests (compile only if unity is available on the host).

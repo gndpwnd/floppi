@@ -159,6 +159,16 @@ static void onWsEvent(AsyncWebSocket* server, AsyncWebSocketClient* client,
                     uint16_t ch4 = doc["ch4"] | (uint16_t)1500;
                     uint16_t ch5 = doc["ch5"] | (uint16_t)1000;
                     uint16_t ch6 = doc["ch6"] | (uint16_t)1000;
+                    // Defense-in-depth: clamp each channel to the valid RC pulse
+                    // range [1000, 2000] us before forwarding. getDesState()
+                    // also constrain()s downstream, but clamping here keeps the
+                    // command surface robust against out-of-range input.
+                    ch1 = constrain(ch1, 1000, 2000);
+                    ch2 = constrain(ch2, 1000, 2000);
+                    ch3 = constrain(ch3, 1000, 2000);
+                    ch4 = constrain(ch4, 1000, 2000);
+                    ch5 = constrain(ch5, 1000, 2000);
+                    ch6 = constrain(ch6, 1000, 2000);
                     setWifiCommandChannels(ch1, ch2, ch3, ch4, ch5, ch6);
                 }
             }
@@ -225,6 +235,17 @@ void setupWebServer() {
             uint16_t ch4 = doc["ch4"] | (uint16_t)1500;
             uint16_t ch5 = doc["ch5"] | (uint16_t)1000;
             uint16_t ch6 = doc["ch6"] | (uint16_t)1000;
+
+            // Defense-in-depth: clamp each channel to the valid RC pulse range
+            // [1000, 2000] us before forwarding. getDesState() also constrain()s
+            // downstream, but clamping here keeps the command surface robust
+            // against out-of-range input.
+            ch1 = constrain(ch1, 1000, 2000);
+            ch2 = constrain(ch2, 1000, 2000);
+            ch3 = constrain(ch3, 1000, 2000);
+            ch4 = constrain(ch4, 1000, 2000);
+            ch5 = constrain(ch5, 1000, 2000);
+            ch6 = constrain(ch6, 1000, 2000);
 
             setWifiCommandChannels(ch1, ch2, ch3, ch4, ch5, ch6);
             request->send(200, "application/json", "{\"ok\":true}");

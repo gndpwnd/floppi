@@ -1,17 +1,18 @@
 # Todo: Auto Orientation Framework
 
 **Current phase**: Phase 4 — bifurcated 2026-05-19 into Phase 4M (Mega-universal) and Phase 4U (Uno-minimal)
-**Last updated**: 2026-05-20 (reconciliation pass after sync ec4ef53 — Phase 4M.0/4M.1/4M.12 VERIFIED LANDED; calibration security fixes + `mega_orientation` RAM fix landed; architecture plan + 5 audits + state reconciliation delivered; tuner workflow GREEN; tuner first run YELLOW (8 s sim))
+**Last updated**: 2026-05-21 (Workstream G bench-tuning support + Phase 4M.14 test coverage + two P1 security fixes landed — see [archive/session_records/2026-05-21_multi_agent_workstream_g_security.md](archive/session_records/2026-05-21_multi_agent_workstream_g_security.md))
 
 ### Next session — focus
 
-Phase 4M.0/4M.1/4M.12 are done. Workstream B (AUTO_TUNE dead-code removal) and json_formatter/test-coverage work also landed today. Next-session work centers on:
+The Mega cascade is feature-complete through Phase 4M.14 and Workstream-G codeable items have landed. The remaining work is **bench-hardware-gated** — it cannot be advanced statically:
 
-1. **Phase 4M.11 `e` command + EEPROM CPM/radius** (Workstream D in [findings/architecture_plan_2026-05-20.md](findings/architecture_plan_2026-05-20.md) §2)
-2. **Tuner bench validation** (8 s sim → 30 s real-bot)
-3. **Phase 4M.2 (K cross-check) + Phase 4M.13 (velocity outer loop)** — Workstream F
+1. **F-3 — `K_VEL` bench observation** — validate the 4M.14-derived velocity gain on the real plant.
+2. **Regression-baseline capture** — record a known-good `g`-telemetry run with `tools/plot_bench_run.py`.
+3. **Real-motor PWM-discovery validation** — verify the Gap-3 `stiction_min_pwm` wiring against real stiction.
+4. **Tuner bench validation** (Phase 4U) — 8 s sim → 30 s real-bot.
 
-See "Pending — 2026-05-20" section below for full list.
+See "Completed 2026-05-21 → Bench-hardware-gated" below for detail.
 
 For phase-level context see [roadmap.md](roadmap.md). For framework bounds see [scope.md](scope.md). For the pivot rationale see operator memory `project_strategic_pivot_2026-05-19.md` and [scope.md §Platform bifurcation](scope.md#platform-bifurcation-2026-05-19--mega-universal-vs-uno-minimal).
 
@@ -40,14 +41,35 @@ Today's reconciliation / fix / audit wave landed against the err0r-device merge 
 
 ---
 
+## Completed 2026-05-21
+
+Workstream G bench-tuning support + Phase 4M.14 test coverage + security hardening. Full session record: [archive/session_records/2026-05-21_multi_agent_workstream_g_security.md](archive/session_records/2026-05-21_multi_agent_workstream_g_security.md). All uncommitted.
+
+- [x] **Workstream G codeable items** — G1 telemetry accessors on `BalanceApp`; G2 `g` serial command (CSV telemetry line); G3 `tools/plot_bench_run.py` host plotter; Gap-3 PWM-discovery results wired live into `stiction_min_pwm`; TD-7 windup comment in `position_loop.h`. New docs: [findings/workstream_g_bench_protocol_2026-05-21.md](findings/workstream_g_bench_protocol_2026-05-21.md), [guides/gain_logbook_template.md](guides/gain_logbook_template.md).
+- [x] **Phase 4M.14 test coverage** — `test_position_loop` + `test_position_gain_derivation` + new `test_balance_telemetry` wired into `tools/build_tests.sh`. Native suite 17/17 pass (3 Unity tests skipped — host lacks `unity.h`).
+- [x] **Two P1 security fixes** — `mounting_calibration.cpp` fake-CRC → real CRC-8-CCITT (mounting-record version bumped, old blobs rejected); `restoreFromEEPROM()` stack-buffer-overflow closed via a `buf_capacity` parameter (16 call sites updated). Plus a P3 `bno085.cpp` null-guard.
+- [x] **platformio.ini hygiene** — `default_envs` retargeted off legacy `uno_balance` (~93.6% flash) to `mega_balance`; lean Uno envs de-duped via `[uno_minimal_base]`.
+- [x] **Code-quality + doc-drift** — P3 comment polish in `balance_app.cpp` (F-2/F-6/F-8); doc fixes to `scope.md`, `balancing_robot/INDEX.md`, `balancing_robot_uno/README.md`, `tools/README.md`.
+- [x] **Build verification** — all 6 AO firmware envs build clean.
+
+### Bench-hardware-gated — next session (needs the physical robot)
+
+These cannot be advanced statically. See the 2026-05-21 session record and [findings/workstream_g_bench_protocol_2026-05-21.md](findings/workstream_g_bench_protocol_2026-05-21.md).
+
+- [ ] **F-3 — `K_VEL` bench observation** — confirm the 4M.14-derived velocity gain behaves on the real plant; the analytical derivation is unvalidated against hardware.
+- [ ] **Regression-baseline capture** — record a known-good `g`-telemetry run with `tools/plot_bench_run.py` as the regression reference.
+- [ ] **Real-motor PWM-discovery validation** — verify the Gap-3 `stiction_min_pwm` wiring against actual motor stiction on the bench.
+
+---
+
 ## Pending — 2026-05-20
 
 Surfaced by today's audits, state reconciliation, and architecture plan. Listed here for next-session pickup.
 
 - [ ] **Tuner bench validation** (Phase 4U) — when hardware available; sim currently produces 8 s balanced vs 30 s target. Iterate plant model where sim under-predicts performance, OR confirm the discrepancy is sim-only and 30 s+ is reachable on hardware.
-- [ ] **Phase 4M.11 — `e` cmd + EEPROM CPM/radius** (Workstream D in [findings/architecture_plan_2026-05-20.md](findings/architecture_plan_2026-05-20.md) §2). Operator command for CPR readout / distance / save calibration plus the EEPROM persistence path. Highest-impact remaining 4M item.
-- [ ] **Phase 4M.2 — K cross-check** (Workstream F) — IMU vs encoder K_motor reconciliation before BOOTSTRAP exits to RUN.
-- [ ] **Phase 4M.13 — velocity / position outer loop** (Workstream F) — design ready in [findings/phase_4_11a_design_2026-05-19.md](findings/phase_4_11a_design_2026-05-19.md); implementation now Workstream F per [findings/architecture_plan_2026-05-20.md](findings/architecture_plan_2026-05-20.md) §2.
+- [x] **Phase 4M.11 — `e` cmd + EEPROM CPM/radius** — DONE 2026-05-20 (Workstream D). See [findings/phase_4m11_landed_2026-05-20.md](findings/phase_4m11_landed_2026-05-20.md).
+- [x] **Phase 4M.2 — K cross-check** — DONE 2026-05-20 (Workstream F). See [findings/phase_4m2_landed_2026-05-20.md](findings/phase_4m2_landed_2026-05-20.md).
+- [x] **Phase 4M.13 — velocity / position outer loop** — DONE 2026-05-20 (Workstream F). See [findings/phase_4m13_landed_2026-05-20.md](findings/phase_4m13_landed_2026-05-20.md). Follow-on Phase 4M.14 (outer-loop gain auto-derivation) also DONE 2026-05-20 — see [findings/phase_4m14_landed_2026-05-20.md](findings/phase_4m14_landed_2026-05-20.md).
 
 ### AO → FC integration (cross-project bridge, deferred)
 
@@ -506,4 +528,4 @@ See [roadmap.md#phase-7](roadmap.md#phase-7--application-catalog-expansion). Top
 
 ---
 
-*Last updated: 2026-05-20 (end-of-session reconciliation — Phase 4M.0/4M.1/4M.12 VERIFIED LANDED; calibration security fixes + `mega_orientation` RAM fix + architecture plan + 5 audits + state reconciliation landed; Workstream B AUTO_TUNE dead-code deletion COMPLETE + json_formatter 3 P1 bugs fixed + test coverage (json_formatter / calibration_storage / bootstrap_k_preservation) + build fixes landed; tuner workflow GREEN with first run YELLOW at 8 s sim. Session record: [archive/session_records/2026-05-20_multi_agent_sync_audits_and_fixes.md](archive/session_records/2026-05-20_multi_agent_sync_audits_and_fixes.md). Next-session focus: Phase 4M.11 `e` cmd + EEPROM, bench-validate tuner output, Phase 4M.2/4M.13 Workstream F). When you finish an item, move it to "Recently completed" with date. When you start a new item, mark it in-progress in `TodoWrite`.*
+*Last updated: 2026-05-21 (Workstream G bench-tuning support codeable items + Phase 4M.14 native test coverage + two P1 security fixes (mounting CRC + `restoreFromEEPROM()` buffer-overflow) landed; Mega cascade Phases 4M.2/4M.11/4M.13/4M.14 all confirmed LANDED — Workstream F complete; all 6 firmware envs build clean, native suite 17/17. All uncommitted. Session record: [archive/session_records/2026-05-21_multi_agent_workstream_g_security.md](archive/session_records/2026-05-21_multi_agent_workstream_g_security.md). Next-session focus: bench-hardware-gated — F-3 K_VEL observation, regression-baseline capture, real-motor PWM-discovery validation, tuner bench validation). When you finish an item, move it to "Recently completed" with date. When you start a new item, mark it in-progress in `TodoWrite`.*

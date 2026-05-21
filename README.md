@@ -17,19 +17,30 @@ floppi provides flight controller firmware and flight computer integration softw
 ### Core Components
 
 1. **Flight Controller Firmware** (`/flight_controller/`)
-   - dRehmFlight-based firmware for Teensy 4.0/4.1
+   - dRehmFlight-based firmware for Teensy 4.0/4.1 and ESP32/S3
    - PID control loops and stabilization
-   - Sensor integration (IMU, GPS, barometer, magnetometer)
-   - Multiple receiver protocols (SBUS, iBUS, DSM)
-   - Flight modes: Rate, Angle, Altitude Hold, Position Hold
+   - IMU sensor integration (MPU6050/MPU9250)
+   - Multiple receiver protocols (SBUS, iBUS, DSM, PPM, PWM)
+   - Flight modes: Rate, Angle (compile-time selected)
+   - ESP32 WiFi telemetry and command API
 
-2. **Flight Computer Integration** (`/flight_computer/`)
-   - ESP32 WiFi telemetry and control
-   - Raspberry Pi autonomous navigation
-   - Vision processing and object tracking
-   - Swarm coordination (future)
+2. **Swarm API** (`/swarm_api/`)
+   - Python FastAPI ground-station control application
+   - Browser dashboard for manual control and real-time telemetry
+   - Controls ESP32-based drones over WiFi (HTTP + WebSocket)
+   - Drone fleet management and mDNS discovery
 
-3. **Documentation** (`/docs/`)
+3. **fc_tool** (`/fc_tool/`)
+   - Cross-platform desktop tool (Rust + Tauri)
+   - Serial monitoring and real-time data visualization
+   - Dynamic multi-graph plotter for firmware diagnostics
+
+4. **Auto Orientation** (`/auto_orientation/`)
+   - Universal sensor calibration toolkit
+   - Automatic detection of absolute orientation and position from multi-sensor combinations
+   - Balancing-robot reference application (Arduino Uno/Mega)
+
+5. **Documentation** (`/docs/`)
    - Setup guides and wiring diagrams
    - Calibration procedures
    - API documentation

@@ -114,11 +114,15 @@
 #ifdef USE_BAROMETER
     // Select ONE sensor type. BMP280 is the implemented default — cheapest,
     // most common, adequate for a telemetry-grade vertical readout. BMP388 /
-    // MS5611 are accepted by the config but currently fall back to a graceful
-    // no-op driver (telemetry reports not-ok) until their drivers land.
+    // MS5611 now have full drivers; pick one here or override via a build flag.
+    // Override (no edit needed): pass -DBAROMETER_BMP388 or -DBAROMETER_MS5611
+    // on the command line / platformio.ini; the guard below then skips the
+    // BMP280 default so exactly one selector is active.
+    #if !defined(BAROMETER_BMP280) && !defined(BAROMETER_BMP388) && !defined(BAROMETER_MS5611)
     #define BAROMETER_BMP280       // default — cheapest, most common
-    //#define BAROMETER_BMP388     // lower noise, FIFO (driver: follow-up)
-    //#define BAROMETER_MS5611     // best resolution (driver: follow-up)
+    #endif
+    //#define BAROMETER_BMP388     // lower noise, FIFO
+    //#define BAROMETER_MS5611     // best resolution
 
     // I2C address — most BMP280 breakouts default to 0x76 (SDO=GND);
     // 0x77 if SDO is pulled high. The barometer shares the primary `Wire`
@@ -307,6 +311,9 @@
 //#define CALIBRATED_ESC          // Stage 3: ESC endpoints calibrated ('e')
 //#define CALIBRATED_PID          // Stage 4: PID gains tuned ('g')
 //#define CALIBRATED_FILTERS      // Stage 4: Filters/limits tuned ('p')
+#ifdef USE_BAROMETER
+//#define CALIBRATED_BAROMETER    // Barometer sea-level reference set ('b')
+#endif
 #ifdef USE_MPU9250
 //#define CALIBRATED_MAG          // Stage 1: Magnetometer calibrated
 #endif

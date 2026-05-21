@@ -78,4 +78,4 @@ Navigation map for `auto_orientation/docs/`. Each subfolder is themed; open its 
 
 ---
 
-*Last updated: 2026-05-19 (doc audit; Phase 4.10c BOOTSTRAP landed 2026-05-18 PM evening per commit 7a4d27f). Maintained by: project planning sessions. If you add a doc, add a one-line entry to the appropriate subfolder INDEX.md.*
+*Last updated: 2026-05-21 (Workstream G + Phase 4M.14 test coverage + security-hardening session — see [archive/session_records/2026-05-21_multi_agent_workstream_g_security.md](archive/session_records/2026-05-21_multi_agent_workstream_g_security.md)). Maintained by: project planning sessions. If you add a doc, add a one-line entry to the appropriate subfolder INDEX.md.*

@@ -27,6 +27,18 @@ This roadmap tracks project-level features and milestones for the flight control
 
 **Next-session target**: hardware validation when ESCs/motors return (see `todo.md` Calibration Phases); remaining no-hardware items in [findings/future_session_scaffolding_2026-05-20.md](findings/future_session_scaffolding_2026-05-20.md) §3-4 Sessions 2-3.
 
+## 2026-05-21 Status Snapshot
+
+- **Sensor workstreams closed out**: barometer (W2), barometer field-calibration (W4), GPS passthrough (W5), and swarm telemetry (W6) are all landed — no queued static coding work remains. Full record: [archive/session_records/2026-05-21_multi_agent_sensors_w6_native_tests.md](archive/session_records/2026-05-21_multi_agent_sensors_w6_native_tests.md); detail: [findings/session_synthesis_2026-05-21.md](findings/session_synthesis_2026-05-21.md).
+- **Barometer drivers**: BMP280 + BMP388 + MS5611 all implemented; selector build-flag-overridable (`src/barometer.cpp`, `include/barometer.h`).
+- **Native test harness**: new host-side `g++` suite — `tools/build_tests.sh` + `tests/native/` (filters/barometer/mixer/attitude), 5/5 green (~110 checks). Pure-math only by operator direction; not to be expanded for coverage's sake.
+- **Build coverage matrix**: `build.sh`/`build.bat` gained a `USE_BAROMETER`+`USE_GPS` × esp32/esp32s3 matrix runner.
+- **Teensy parity**: ESP32/Teensy split confirmed correct by design — 0 parity work. See [findings/teensy_parity_assessment_2026-05-21.md](findings/teensy_parity_assessment_2026-05-21.md).
+- **Known low-priority item**: `imu.cpp` `Madgwick6DOF()` returns NaN on a mathematically-exact zero-gradient accel input (never occurs with real sensor data) — robustness gap, not scheduled.
+- **All 2026-05-21 changes are UNCOMMITTED** (working tree only).
+
+**Next-session target (unchanged)**: hardware-bench validation — BMP388/MS5611 drivers vs real sensors, `'b'` calibration + swarm telemetry end-to-end, motor/ESC test framework (needs ESCs + protocol decision).
+
 ---
 
 ## Core Features

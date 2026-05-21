@@ -215,7 +215,7 @@ static void test_round_trip_sizes() {
         uint8_t out[CAL_DATA_MAX_SIZE];
         std::memset(out, 0, sizeof(out));
         uint16_t got_len = 0;
-        EXPECT_TRUE(restoreFromEEPROM(out, &got_len), "restore succeeded");
+        EXPECT_TRUE(restoreFromEEPROM(out, sizeof(out), &got_len), "restore succeeded");
         EXPECT_EQ_U16(got_len, len, "length round-trips");
         EXPECT_TRUE(std::memcmp(in, out, len) == 0, "payload round-trips");
     }
@@ -245,7 +245,7 @@ static void test_length_300_byte_no_truncation() {
     uint8_t out[CAL_DATA_MAX_SIZE];
     std::memset(out, 0, sizeof(out));
     uint16_t got_len = 0;
-    EXPECT_TRUE(restoreFromEEPROM(out, &got_len), "restore succeeded");
+    EXPECT_TRUE(restoreFromEEPROM(out, sizeof(out), &got_len), "restore succeeded");
     EXPECT_EQ_U16(got_len, LEN, "length is 300, not 44");
     EXPECT_TRUE(std::memcmp(in, out, LEN) == 0, "all 300 bytes match");
 
@@ -274,7 +274,7 @@ static void test_length_exact_256() {
     uint8_t out[CAL_DATA_MAX_SIZE];
     std::memset(out, 0, sizeof(out));
     uint16_t got_len = 0;
-    EXPECT_TRUE(restoreFromEEPROM(out, &got_len), "restore succeeded");
+    EXPECT_TRUE(restoreFromEEPROM(out, sizeof(out), &got_len), "restore succeeded");
     EXPECT_EQ_U16(got_len, LEN, "length is 256");
     EXPECT_TRUE(std::memcmp(in, out, LEN) == 0, "256 bytes match");
 
@@ -317,7 +317,7 @@ static void test_single_bit_flip_detection() {
 
             uint8_t out[LEN];
             uint16_t got_len = 0;
-            bool ok = restoreFromEEPROM(out, &got_len);
+            bool ok = restoreFromEEPROM(out, sizeof(out), &got_len);
             total++;
             if (!ok) detected++;
         }
@@ -375,7 +375,7 @@ static void test_two_bit_flip_detection() {
 
         uint8_t out[LEN];
         uint16_t got_len = 0;
-        bool ok = restoreFromEEPROM(out, &got_len);
+        bool ok = restoreFromEEPROM(out, sizeof(out), &got_len);
         total++;
         if (!ok) detected++;
     }
@@ -427,7 +427,7 @@ static void test_version_mismatch_rejected() {
 
         uint8_t out[CAL_DATA_MAX_SIZE];
         uint16_t got_len = 0;
-        bool ok = restoreFromEEPROM(out, &got_len);
+        bool ok = restoreFromEEPROM(out, sizeof(out), &got_len);
         EXPECT_TRUE(!ok, "v1 blob rejected");
     }
 
@@ -445,7 +445,7 @@ static void test_version_mismatch_rejected() {
 
         uint8_t out[CAL_DATA_MAX_SIZE];
         uint16_t got_len = 0;
-        bool ok = restoreFromEEPROM(out, &got_len);
+        bool ok = restoreFromEEPROM(out, sizeof(out), &got_len);
         EXPECT_TRUE(!ok, "future version rejected");
     }
 
@@ -478,7 +478,7 @@ static void test_marker_rejection() {
 
         uint8_t out[CAL_DATA_MAX_SIZE];
         uint16_t got_len = 0;
-        bool ok = restoreFromEEPROM(out, &got_len);
+        bool ok = restoreFromEEPROM(out, sizeof(out), &got_len);
         EXPECT_TRUE(!ok, "bad marker rejected");
     }
 
@@ -526,7 +526,7 @@ static void test_oversize_and_zero_length() {
 
         uint8_t out[CAL_DATA_MAX_SIZE];
         uint16_t got_len = 0;
-        EXPECT_TRUE(!restoreFromEEPROM(out, &got_len),
+        EXPECT_TRUE(!restoreFromEEPROM(out, sizeof(out), &got_len),
                     "restore rejects stored_length=0");
     }
 
@@ -545,7 +545,7 @@ static void test_oversize_and_zero_length() {
 
         uint8_t out[CAL_DATA_MAX_SIZE];
         uint16_t got_len = 0;
-        EXPECT_TRUE(!restoreFromEEPROM(out, &got_len),
+        EXPECT_TRUE(!restoreFromEEPROM(out, sizeof(out), &got_len),
                     "restore rejects stored_length > CAL_DATA_MAX_SIZE");
     }
 
@@ -616,7 +616,7 @@ static void test_clear_makes_restore_fail() {
     {
         uint8_t out[32];
         uint16_t got_len = 0;
-        EXPECT_TRUE(restoreFromEEPROM(out, &got_len), "restore pre-clear");
+        EXPECT_TRUE(restoreFromEEPROM(out, sizeof(out), &got_len), "restore pre-clear");
     }
 
     EXPECT_TRUE(clearCalibrationFromEEPROM(), "clear");
@@ -625,7 +625,7 @@ static void test_clear_makes_restore_fail() {
     {
         uint8_t out[32];
         uint16_t got_len = 0;
-        EXPECT_TRUE(!restoreFromEEPROM(out, &got_len),
+        EXPECT_TRUE(!restoreFromEEPROM(out, sizeof(out), &got_len),
                     "restore returns false after clear");
     }
 
@@ -647,8 +647,8 @@ static void test_null_argument_handling() {
 
     uint8_t buf[8];
     uint16_t len = 0;
-    EXPECT_TRUE(!restoreFromEEPROM(NULL, &len), "restore rejects NULL data");
-    EXPECT_TRUE(!restoreFromEEPROM(buf, NULL),  "restore rejects NULL length");
+    EXPECT_TRUE(!restoreFromEEPROM(NULL, sizeof(buf), &len), "restore rejects NULL data");
+    EXPECT_TRUE(!restoreFromEEPROM(buf, sizeof(buf), NULL),  "restore rejects NULL length");
 
     // calculateCRC8 must return 0 on NULL data per its own contract.
     EXPECT_EQ_U8(calculateCRC8(NULL, 100), 0x00, "CRC on NULL data is 0");
@@ -683,7 +683,7 @@ static void test_overwrite_cycle() {
     uint8_t out[CAL_DATA_MAX_SIZE];
     std::memset(out, 0, sizeof(out));
     uint16_t got_len = 0;
-    EXPECT_TRUE(restoreFromEEPROM(out, &got_len), "restore");
+    EXPECT_TRUE(restoreFromEEPROM(out, sizeof(out), &got_len), "restore");
     EXPECT_EQ_U16(got_len, 30, "length is 30 (B's), not 100 (A's)");
     EXPECT_TRUE(std::memcmp(out, second, 30) == 0, "content is B's");
 
@@ -713,7 +713,7 @@ static void test_crc_byte_corruption() {
 
     uint8_t out[24];
     uint16_t got_len = 0;
-    EXPECT_TRUE(!restoreFromEEPROM(out, &got_len), "restore rejects bad CRC");
+    EXPECT_TRUE(!restoreFromEEPROM(out, sizeof(out), &got_len), "restore rejects bad CRC");
 
     test_end();
 }

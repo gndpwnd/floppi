@@ -62,6 +62,37 @@ Self-contained &mdash; only standard library Python 3.
 
 Streams a `generate_balance_trajectory.py`-style CSV (`timestamp_ms,raw_pitch_deg,...`) over serial to a connected MCU at real-time (or scaled) pace and captures the firmware's response on the same port. Used for hardware-in-the-loop testing of the balance bot without an IMU. Text protocol (`pitch:%.3f\n`) is the default; a 4-byte binary float protocol is also available for future firmware. Linux operators: stop `ModemManager` first if reads look truncated.
 
+### `plot_bench_run.py` &mdash; balance-robot bench telemetry analysis/plot
+
+Host-side analysis for AO Mega balance-robot bench runs (Workstream G
+item G3). The Mega `g` serial command emits one flat, 10-field line per
+poll:
+
+```
+G,<millis>,<pitch_deg>,<pitch_sp_deg>,<wheel_vel_mps>,<position_m>,<nudge_deg>,<k_pos>,<k_vel>,<pos_leak>
+```
+
+Capture a run by polling `g` repeatedly over a serial terminal (or pipe
+`serial_monitor.py` to a file); lines that aren't `G,`-prefixed are
+ignored, so interleaved boot/log output is harmless.
+
+The script plots the time-series (pitch overlaid with its setpoint,
+wheel velocity, position, nudge), prints a per-channel min/max/mean/
+stddev table with sample count / duration / effective rate, and reports
+the three derived gains (`k_pos` / `k_vel` / `pos_leak`) &mdash; warning
+if any change mid-run, which signals a re-derivation event.
+
+```
+tools/plot_bench_run.py capture.txt              # show the plot
+tools/plot_bench_run.py capture.txt --save run.png   # write PNG (headless)
+tools/plot_bench_run.py capture.txt --no-plot    # summary table only
+tools/serial_monitor.py /dev/ttyACM0 | tools/plot_bench_run.py -   # stdin
+```
+
+Standard library + `matplotlib` only. `--no-plot` works even without
+matplotlib installed; empty / invalid captures exit non-zero with a
+clear message.
+
 ### `auto_calibrate.py` &mdash; mag ellipsoid-fit blob packer (skeleton)
 
 CLI wrapper for magnetometer calibration: reads a CSV of `mx,my,mz` samples and emits a binary blob in `bno055` (22 B), `bno085` (256 B), or `mpu_external` (48 B float[12]) layout. **Skeleton only** &mdash; currently does mean-as-offset + identity soft-iron, not a real ellipsoid fit. Phase 5.5 follow-up will replace the stub with the Renaudin 2010 least-squares formulation.

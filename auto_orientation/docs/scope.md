@@ -1,7 +1,7 @@
 # Project Scope: Auto Orientation Framework
 
 **Status**: Framework expansion (Phase 3 of original plan complete: BNO085 + GPS + EKF, 143+ tests passing)
-**Last updated**: 2026-05-19
+**Last updated**: 2026-05-20
 
 > **Design direction**: see [MINIMIZE_ACCELERATIONS_PHILOSOPHY.md](MINIMIZE_ACCELERATIONS_PHILOSOPHY.md) for the project's current direction on the balancing-robot reference application.
 
@@ -38,11 +38,13 @@ The audit table is annotated below.
 
 ## Build environments (post-2026-05-18 cleanup)
 
-The platformio.ini is intentionally tiny. Four balance-robot envs (only two enabled today; ESP32/Teensy scaffolded for future port) and two orientation-framework envs.
+The platformio.ini is intentionally tiny. Three active balance-robot envs (`mega_balance` plus the two Uno builds), one legacy/dead env (`uno_balance`), two scaffolded envs (ESP32/Teensy, for a future port) and two orientation-framework envs.
 
 | Env name | Status | Board | Flash | Default IMU | Notes |
 |---|---|---|---|---|---|
-| `uno_balance` | **active** | Arduino Uno | 32 KB | BNO055 | **Pivot 2026-05-19**: targets the new minimal hardcoded program under `src/applications/balancing_robot_uno/`. PID + PWM constants brute-forced offline via Python (`tools/sim/`). No on-MCU learning. |
+| `uno_balance` | **legacy/dead** | Arduino Uno | 32 KB | BNO055 | The old universal-stack-on-Uno path, superseded by the 2026-05-19 platform bifurcation. Kept only so `platformio.ini` history is readable; do not extend it. The live Uno builds are `arduino_uno_minimal` and `arduino_uno_tuning` below. |
+| `arduino_uno_minimal` | **active** | Arduino Uno | 32 KB | BNO055 | **Lean flight build** for the minimal program under `src/applications/balancing_robot_uno/`. `pitch → PID(Kp,Ki,Kd) → PWM`, no adaptive layer. Reads tuned gains from EEPROM at boot (falls back to the `balance_constants.h` cold-start seed). Targets <50% Uno flash. |
+| `arduino_uno_tuning` | **active** | Arduino Uno | 32 KB | BNO055 | **Guided P→I→D tuning build** — `arduino_uno_minimal` plus a serial-driven `TuningSession` state machine (`-D UNO_GUIDED_TUNING`). Walks the operator through Kp, Ki, Kd one term at a time while the bot balances live, then persists the result to EEPROM via `tune_storage`. The flight build compiles all of this out. |
 | `mega_balance` | **active** | Arduino Mega 2560 | 256 KB | BNO055 | **Pivot 2026-05-19**: home of the universal/adaptive stack — BOOTSTRAP, RLS, collision detection, OnlineMountingEstimator, position containment (Phase 4M.11). Wheel encoders preferred over IMU-only pitch double-integration. |
 | `esp32_balance` | *scaffolded* | ESP32 dev | 1.3 MB | BNO055 | Needs MsTimer2 → esp_timer port; WiFi cascade landed. |
 | `teensy_balance` | *scaffolded* | Teensy 4.0 | 1.9 MB | BNO055 | Needs MsTimer2 → IntervalTimer port; FPU + 600 MHz. |
@@ -238,7 +240,7 @@ Cross-references: [roadmap.md §Sequencing discipline](roadmap.md), [findings/op
 
 ---
 
-## Current state (2026-05-12)
+## Current state (2026-05-20)
 
 | Layer | Status | Tests |
 |-------|--------|-------|
@@ -476,4 +478,4 @@ See [findings/application_catalog.md](findings/application_catalog.md) for the f
 
 ---
 
-*Last updated: 2026-05-12. This document is the source of truth for what the framework is and is not. When in doubt, scope it against this file; if the answer isn't here, raise it in a session and update accordingly.*
+*Last updated: 2026-05-20. This document is the source of truth for what the framework is and is not. When in doubt, scope it against this file; if the answer isn't here, raise it in a session and update accordingly.*

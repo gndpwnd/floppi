@@ -486,7 +486,7 @@ void setup() {
     // BNO055 calibration: restore from EEPROM, or run the wizard.
     {
         uint8_t cb[32]; uint16_t cl = 0;
-        if (!restoreFromEEPROM(cb, &cl) || cl != 22 ||
+        if (!restoreFromEEPROM(cb, sizeof(cb), &cl) || cl != 22 ||
             !imu.setCalibrationProfile(cb, cl)) {
             run_bno_cal_wizard_(imu);
         }
@@ -662,6 +662,31 @@ void loop() {
             Serial.print(app.get_mount_offset_deg(), 2); Serial.print(' ');
             Serial.print(app.get_last_output());     Serial.print(' ');
             Serial.println(motors.stiction_min_pwm());
+        } else if (c == 'g') {
+            // Workstream G (G2) — flat telemetry line, drain-on-demand. Emitted
+            // ONLY when the operator sends 'g' (never periodic), so it cannot
+            // perturb the 5 ms PID tick. Fixed field order so a host parser can
+            // rely on it — DO NOT reorder / insert fields:
+            //   G,<millis>,<pitch_deg>,<pitch_sp_deg>,<wheel_vel_mps>,
+            //     <position_m>,<nudge_deg>,<k_pos>,<k_vel>,<pos_leak>
+            // On the Uno (no wheel encoders) the four outer-loop fields and the
+            // wheel velocity are 0 — the arity is kept constant so one parser
+            // serves both builds.
+            Serial.print(F("G,"));
+            Serial.print(millis());                       Serial.print(',');
+            Serial.print(app.get_pitch_deg(), 3);         Serial.print(',');
+            Serial.print(app.get_pitch_setpoint_deg(), 3); Serial.print(',');
+#ifdef USE_WHEEL_ENCODERS
+            Serial.print(app.get_wheel_velocity_mps(now), 4); Serial.print(',');
+            Serial.print(app.get_position_m(), 4);        Serial.print(',');
+            Serial.print(app.get_pos_nudge_deg(), 3);     Serial.print(',');
+            Serial.print(app.get_k_pos(), 3);             Serial.print(',');
+            Serial.print(app.get_k_vel(), 3);             Serial.print(',');
+            Serial.println(app.get_pos_leak(), 4);
+#else
+            // No encoders → outer loop is absent; emit zeros to hold the arity.
+            Serial.println(F("0.0000,0.0000,0.000,0.000,0.000,0.0000"));
+#endif
         } else if (c == 'b') {
             // Manual BOOTSTRAP trigger — same as long-press, but operator can
             // bind it to a non-button console. Skips CAPTURE_MOUNTING, uses
@@ -749,6 +774,23 @@ void loop() {
                 pd.discovered_max_pwm > pd.discovered_min_pwm) {
                 save_pwm_discovery_(pd.discovered_min_pwm,
                                     pd.discovered_max_pwm);
+                // Gap-3 — wire the just-discovered MIN_PWM into the LIVE motor
+                // driver's stiction floor so a completed `p` run takes effect
+                // this session (previously it only applied on the next boot
+                // via load_pwm_discovery_). The encoder-confirmed MIN is the
+                // most trustworthy stiction estimate (it measures actual wheel
+                // motion, not chassis rotation), so it overrides the
+                // CHARACTERISE/EEPROM value — mirroring the boot-time apply.
+                // Guarded by the SAME sane-PWM bounds as load_pwm_discovery_'s
+                // boot path (min in [PWM_DISC_STEP_PWM,200], max>min, max<=255):
+                // if the result is outside that envelope we leave the existing
+                // default exactly as before — no regression to no-data behaviour.
+                if (pd.discovered_min_pwm >= PWM_DISC_STEP_PWM &&
+                    pd.discovered_min_pwm <= 200 &&
+                    pd.discovered_max_pwm <= 255) {
+                    motors.set_stiction_min_pwm(
+                        (uint8_t)pd.discovered_min_pwm);
+                }
                 Serial.print(F("sv pd min=")); Serial.print(pd.discovered_min_pwm);
                 Serial.print(F(" max="));      Serial.println(pd.discovered_max_pwm);
             } else {

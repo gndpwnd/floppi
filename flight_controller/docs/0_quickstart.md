@@ -270,6 +270,22 @@ graph TD
 
 ---
 
+## Optional ESP32 Sensors
+
+ESP32 builds support two optional, telemetry-only sensors. Both default **OFF**, are
+enabled via `#define` flags in `include/config.h`, and compile to zero bytes when off.
+Neither feeds the flight loop — they only add data to the WiFi telemetry feed.
+
+| Sensor | Flag | Notes |
+|--------|------|-------|
+| Barometer | `USE_BAROMETER` | Pressure / temperature / relative altitude. Telemetry-only — no altitude-hold. |
+| GPS | `USE_GPS` | Raw NMEA passthrough. The firmware parses nothing; bytes are relayed to an external flight computer. No navigation. |
+
+Setup detail: [phase_w2_barometer_landed_2026-05-20.md](findings/phase_w2_barometer_landed_2026-05-20.md)
+and [phase_w5_gps_landed_2026-05-20.md](findings/phase_w5_gps_landed_2026-05-20.md).
+
+---
+
 ## Next Steps
 
 1. [Calibration Guide](2_calibration_guide.md) -- Detailed calibration procedures (all 17 commands)

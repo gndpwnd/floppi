@@ -67,12 +67,26 @@ private:
     float _altitude_m;
     float _sea_level_pa;
 
-    // BMP280/BMP388 factory trim values, read once in begin().
+    // BMP280 factory trim values, read once in begin() (BMP280 path only).
     uint16_t _dig_t1;
     int16_t  _dig_t2, _dig_t3;
     uint16_t _dig_p1;
     int16_t  _dig_p2, _dig_p3, _dig_p4, _dig_p5, _dig_p6, _dig_p7, _dig_p8, _dig_p9;
     int32_t  _t_fine;
+
+#if defined(BAROMETER_BMP388)
+    // BMP388 factory trim, NVM-read then scaled to float quantisation
+    // coefficients per the Bosch BMP3 datasheet (§9.1, float compensation).
+    float _b3_t1, _b3_t2, _b3_t3;
+    float _b3_p1, _b3_p2, _b3_p3, _b3_p4, _b3_p5, _b3_p6;
+    float _b3_p7, _b3_p8, _b3_p9, _b3_p10, _b3_p11;
+    float _b3_t_lin;   // linearised temperature, shared term (like _t_fine)
+#endif
+
+#if defined(BAROMETER_MS5611)
+    // MS5611 factory PROM calibration coefficients C1..C6 (datasheet §PROM).
+    uint16_t _ms_c1, _ms_c2, _ms_c3, _ms_c4, _ms_c5, _ms_c6;
+#endif
 };
 
 //=============================================================================

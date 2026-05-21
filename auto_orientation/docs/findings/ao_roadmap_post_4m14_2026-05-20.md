@@ -1,5 +1,20 @@
 # Auto-Orientation Roadmap — Post-4M.14 Forward Plan
 
+> ## ⚠️ SUPERSEDED / STATUS UPDATE (2026-05-20, doc-fix-b)
+> **Phase 4M.14 HAS LANDED.** The "Note on 4M.14 detail availability" below is
+> stale: the sibling design doc *and* the landing report now both exist on disk —
+> see [`phase_4m14_design_2026-05-20.md`](phase_4m14_design_2026-05-20.md),
+> [`phase_4m14_landed_2026-05-20.md`](phase_4m14_landed_2026-05-20.md), and the
+> read-only review [`phase_4m14_review_2026-05-20.md`](phase_4m14_review_2026-05-20.md).
+> The three dynamic outer-loop gains (`K_POS`, `K_VEL`, `POS_LEAK`) are now
+> **auto-derived** at runtime, retiring the Phase 4M.13 hardcoded constants; both
+> `mega_balance` and `uno_balance` build green.
+>
+> **Live next step:** Workstream G (bench-tuning protocol & telemetry pipeline) —
+> see §"Workstream G" below and [`workstream_f_review_2026-05-20.md`](workstream_f_review_2026-05-20.md).
+> The §3 reconciliation this doc asked for is moot — 4M.14 landed as designed.
+> The doc body below is kept unedited for historical context.
+
 **Agent:** ao-roadmap-post4m14@floppi:1 (planning agent)
 **Date:** 2026-05-20
 **Status:** forward-looking roadmap — scopes the next 1–3 sessions

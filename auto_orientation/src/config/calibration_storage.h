@@ -109,6 +109,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <stddef.h>  // size_t (buf_capacity parameter of restoreFromEEPROM)
 
 // EEPROM storage configuration
 #define CAL_EEPROM_BASE 0x00         // Start address in EEPROM
@@ -164,8 +165,12 @@ bool saveToEEPROM(const uint8_t* cal_data, uint16_t length);
  * Reads calibration data previously saved via saveToEEPROM().
  * Performs validity checks (marker, CRC) before returning.
  *
- * @param[out] cal_data   Buffer to receive calibration data (min 256 bytes)
- * @param[out] length     Pointer to uint16_t; on return contains bytes read
+ * @param[out] cal_data     Buffer to receive calibration data
+ * @param[in]  buf_capacity Capacity of cal_data in bytes; the stored payload
+ *                          is rejected if it would not fit (prevents a stack
+ *                          buffer overflow when a caller passes a buffer
+ *                          smaller than the stored length)
+ * @param[out] length       Pointer to uint16_t; on return contains bytes read
  * @return true if restore succeeded and data is valid, false otherwise
  *
  * Failure cases:
@@ -173,11 +178,13 @@ bool saveToEEPROM(const uint8_t* cal_data, uint16_t length);
  * - CRC8 check fails (data corruption detected)
  * - Format version mismatch (rejected outright; caller must re-calibrate)
  * - Stored length is 0 or > CAL_DATA_MAX_SIZE
+ * - Stored length exceeds buf_capacity (would overflow caller's buffer)
  *
  * @note If this returns false, caller should skip restoration and proceed
  *       with normal sensor initialization.
  */
-bool restoreFromEEPROM(uint8_t* cal_data, uint16_t* length);
+bool restoreFromEEPROM(uint8_t* cal_data, size_t buf_capacity,
+                       uint16_t* length);
 
 /**
  * @brief Check if valid calibration is stored in EEPROM

@@ -1,6 +1,6 @@
 # Flight Controller Firmware - Todo
 
-> Last updated: 2026-05-20 (end-of-session reconciliation)
+> Last updated: 2026-05-21 (end-of-session reconciliation)
 
 ## In Progress
 
@@ -14,7 +14,18 @@ _Receiver now connected. No ESCs/motors yet._
 
 ## Next Session: Hardware Validation
 
-_The Session 1 doc deliverables ([findings/future_session_scaffolding_2026-05-20.md](findings/future_session_scaffolding_2026-05-20.md) §4) all landed 2026-05-20 — see "Completed 2026-05-20" below. Remaining no-hardware work moves to Future Sessions Backlog; hardware calibration phases below are the next focus once ESCs/motors return._
+_The barometer/GPS/swarm-telemetry workstreams (W2/W4/W5/W6) all closed out 2026-05-21 — see "Completed 2026-05-21" below. There is **no queued static coding work**; everything remaining is hardware-gated._
+
+### Hardware-gated next steps (need bench / ESCs / sensors)
+
+- [ ] **Bench-validate the BMP388 + MS5611 barometer drivers** against real sensors — datasheet-reviewed but not hardware-tested. See [archive/session_records/2026-05-21_multi_agent_sensors_w6_native_tests.md](archive/session_records/2026-05-21_multi_agent_sensors_w6_native_tests.md).
+- [ ] **Confirm `'b'` barometer sea-level calibration + swarm telemetry baro/gps blocks end-to-end** against the `swarm_api` server; confirm the `api_version` field once the server adopts it. See [findings/swarm_api_contract_2026-05-20.md](findings/swarm_api_contract_2026-05-20.md).
+- [ ] **Motor / ESC test framework** — needs ESCs/motors/rig **and** an ESC-protocol decision. Spec only (unimplemented): `docs/plans/motor-test-framework-plan.md`.
+- [ ] General on-hardware testing — calibration phases below, once ESCs/motors return.
+
+### Known low-priority robustness item (not scheduled)
+
+- [ ] `imu.cpp` `Madgwick6DOF()` returns NaN on a mathematically-exact zero-gradient accel input. Never occurs with real (noisy) sensor data, so not a flight risk. A future guard could clamp the gradient-normalisation denominator.
 
 ## Future Sessions Backlog
 
@@ -143,6 +154,19 @@ _Tasks waiting on something (include reason)_
 ## Recently Completed
 
 _For context; clear periodically_
+
+### Completed 2026-05-21
+
+_Full session record: [archive/session_records/2026-05-21_multi_agent_sensors_w6_native_tests.md](archive/session_records/2026-05-21_multi_agent_sensors_w6_native_tests.md). Wire-level detail: [findings/session_synthesis_2026-05-21.md](findings/session_synthesis_2026-05-21.md). All changes UNCOMMITTED._
+
+- [x] **W6 — swarm telemetry baro/GPS blocks** — outbound `/api/telemetry` POST now carries barometer + GPS data; JSON buffer 384→512 B (`src/api_client.cpp`). Wire contract reconciled in [findings/swarm_api_contract_2026-05-20.md](findings/swarm_api_contract_2026-05-20.md).
+- [x] **W4 — barometer field calibration** — `'b'` serial command + `CALIBRATED_BAROMETER` marker + new `lib/Calibration/calibration_baro.{h,cpp}`.
+- [x] **BMP388 + MS5611 barometer drivers** — implemented alongside BMP280; selector build-flag-overridable (`-DBAROMETER_BMP388` / `-DBAROMETER_MS5611`). All three datasheet-reviewed.
+- [x] **Native host-side test harness** — `tools/build_tests.sh` (glob-discovery) + `tests/native/` (filters/barometer/mixer/attitude), 5/5 green (~110 checks). Pure-math only by operator direction.
+- [x] **Build coverage matrix** — `build.sh`/`build.bat` gained a `USE_BAROMETER`+`USE_GPS` × esp32/esp32s3 matrix runner.
+- [x] **RC-channel clamp** — `[1000,2000]µs` clamp in `src/web_server.cpp` (P3, defense-in-depth).
+- [x] **Teensy parity recon** — ESP32/Teensy split confirmed correct by design; 0 parity work. See [findings/teensy_parity_assessment_2026-05-21.md](findings/teensy_parity_assessment_2026-05-21.md).
+- [x] **Doc-drift fixes** — findings INDEX W2/W5 mislabel, `session3_readiness` superseded banner, `0_quickstart` + `README` baro/GPS notes, `pin_definitions_esp32.h` C-1 TODO resolved.
 
 ### Completed 2026-05-20
 

@@ -607,11 +607,12 @@ void BalanceApp::step_run_(uint32_t now_ms) {
     // Also poll read_velocity_dps so each encoder's internal velocity window
     // advances — stalled() reads that cached velocity rather than re-deriving.
     //
-    // failure reason 7 (motor_stall) is the new BootstrapResult.failure_reason
-    // sentinel for encoder-detected wheel stall during RUN. Defined here as
-    // documentation; RUN doesn't write BootstrapResult, but transitioning to
-    // HELD via the same reason code keeps the operator-visible failure surface
-    // unified across BOOTSTRAP and RUN telemetry.
+    // NOTE on failure-reason taxonomy: an encoder-detected wheel stall during
+    // RUN does NOT use BootstrapResult.failure_reason — RUN never writes that
+    // struct. Reason 7 is k_disagreement (Phase 4M.2 BOOTSTRAP K cross-check),
+    // a different event entirely. A RUN stall instead routes the bot to HELD,
+    // tagged via held_entry_reason_, keeping the operator-visible failure
+    // surface coherent without overloading the BOOTSTRAP reason codes.
     const uint16_t cmd_mag = (last_output_ < 0) ? (uint16_t)(-last_output_)
                                                 : (uint16_t) last_output_;
     enc_left_.report_commanded_pwm(cmd_mag, now_ms);
@@ -1594,9 +1595,14 @@ void BalanceApp::derive_position_gains_(float wheel_radius_m,
 
     // Skip the derivation entirely if the encoder geometry cannot be trusted
     // (no valid wheel radius from the 0x220 encoder cal) — §7.3.
-    // wheel_radius_m is consumed as the §3.6/§7.3 encoder-geometry validity
-    // gate (a trustworthy radius is the evidence the encoder chain is sound);
-    // see the header comment for why it does not enter G_outer's magnitude.
+    //
+    // wheel_radius_m's NUMERIC VALUE is not used: G_outer = g·(π/180) has no
+    // wheel-radius term (see the header DEVIATION note). The radius enters the
+    // derivation only as a presence/range validity GATE — the caller reduces
+    // it to wheel_radius_valid := r in (0,1), i.e. "the 0x220 encoder cal is
+    // present and plausible." A trustworthy radius is taken as evidence the
+    // encoder chain calibrated cleanly; its magnitude is deliberately discarded
+    // here, hence the explicit (void) cast below.
     (void)wheel_radius_m;
 
     if (wheel_radius_valid) {
@@ -1650,9 +1656,12 @@ void BalanceApp::derive_position_gains_(float wheel_radius_m,
     position_loop_.set_gains(k_pos, k_vel);
     position_loop_.set_pos_leak(pos_leak);
 
-    // Non-fatal telemetry: 0 = derived & applied, 9 = rejected, fallback in
-    // force. This is NOT a BootstrapResult.failure_reason — BOOTSTRAP still
-    // succeeds either way (§7.4).
+    // Non-fatal telemetry: 0 = derived & applied; 9 = "derived_gains_oob"
+    // (derivation rejected, *_FALLBACK gains in force — see the
+    // posgains_failure_reason_ doc in balance_app.h). This is NOT a
+    // BootstrapResult.failure_reason — BOOTSTRAP still succeeds either way
+    // (§7.4). The bare 9 follows the BootstrapResult.failure_reason convention
+    // (reasons 1-8 are likewise bare literals documented at their declaration).
     posgains_failure_reason_ = derived ? 0 : 9;
 }
 #endif  // USE_WHEEL_ENCODERS

@@ -174,7 +174,7 @@ src/applications/balancing_robot_uno/
 ├── uno_balance_app.h     # UnoBalanceApp class — IMU read, PID step, motor write
 ├── uno_balance_app.cpp   # implementation (~150 LOC)
 ├── balance_constants.h   # hand-editable COLD-START SEED (see §7)
-├── tune_storage.h        # EEPROM tune-block API — saveTuning/loadTuning/hasTuning
+├── tune_storage.h        # EEPROM tune-block API — tune_storage::save_tuning/load_tuning/has_tuning
 ├── tune_storage.cpp      # EEPROM persistence (region base 0x200, CRC8)
 ├── tuning_session.h      # TuningSession state machine — guided P/I/D walkthrough
 └── tuning_session.cpp    # implementation; gated on UNO_GUIDED_TUNING (tuning build only)

@@ -171,4 +171,46 @@ Multi-agent landing wave that followed the 2026-05-19 AM bifurcation pivot. Coll
 
 ---
 
-*Last updated: 2026-05-20 (post-sync hygiene pass — doc-fixer compact entries integrated above + err0r 2026-05-19 PM session additions kept; the 2026-05-19 AM-session detail block was de-duplicated into the compact entries in "Platform-bifurcation pivot" + "Audits & quality reviews" sections above; 2026-05-20 sync-session findings — architecture_plan, state_reconciliation, mega_ram_fix, security_fix_calibration, tuner_format_alignment — added and the four "in progress" audit placeholders resolved).*
+## 2026-05-20 session — Mega cascade completion, Uno guided tuning, audits
+
+Multi-agent landing wave that completed the Mega two-stage cascade controller (Phases 4M.2 → 4M.14) and shipped the Uno on-device guided P→I→D tuning feature. Each phase has a landing report; reviews and audits scope what shipped and what's next.
+
+### Mega cascade landings (Workstream F)
+
+- [phase_4m2_landed_2026-05-20.md](phase_4m2_landed_2026-05-20.md) — Phase 4M.2 (F.1): encoder-driven `K_motor` cross-check in BOOTSTRAP; measures `K_gyro` pitch-rate response per unit PWM during the four-pulse sequence.
+- [phase_4m11_landed_2026-05-20.md](phase_4m11_landed_2026-05-20.md) — Phase 4M.11 (Workstream D): `e` serial command + EEPROM wheel-encoder calibration wizard (operator rolls bot 1.000 m by hand). Implements RWE §5.
+- [phase_4m13_landed_2026-05-20.md](phase_4m13_landed_2026-05-20.md) — Phase 4M.13 (F.2): velocity/position outer loop — the balance stack becomes a two-stage cascade. Five outer-loop gains landed hardcoded pending 4M.14 auto-derivation.
+- [phase_4m14_design_2026-05-20.md](phase_4m14_design_2026-05-20.md) — Phase 4M.14 (F.3) design spec: analytical auto-derivation of the outer-loop gains; contract for the `4M.14-impl` workstream (re-run after a usage-limit loss).
+- [phase_4m14_landed_2026-05-20.md](phase_4m14_landed_2026-05-20.md) — Phase 4M.14 (F.3) landing: the three dynamic `PositionLoop` gains (`K_POS`, `K_VEL`, `POS_LEAK`) are now derived at runtime, retiring the Phase 4M.13 hardcoded constants; both builds green.
+- [phase_4m14_review_2026-05-20.md](phase_4m14_review_2026-05-20.md) — Read-only review of Phase 4M.14: the implementation deviated from its design spec — assesses whether the deviation is physically sound or a reverse-fit.
+- [workstream_f_review_2026-05-20.md](workstream_f_review_2026-05-20.md) — Read-only audit of the three Workstream-F landings (4M.2, 4M.11, 4M.13) — EEPROM slot map, cascade soundness. Verdict: sound for bench deployment.
+
+### Uno guided tuning
+
+- [uno_guided_tuning_design_2026-05-20.md](uno_guided_tuning_design_2026-05-20.md) — Design for the Uno on-device interactive serial-driven guided P→I→D tuning experience (Option B hybrid, build-env split); operator-driven scope pivot.
+- [guided_tuning_review_2026-05-20.md](guided_tuning_review_2026-05-20.md) — Review of the guided-tuning feature against design §2 and embedded-safety criteria. Verdict: feature sound, cleared for bench use, no must-fix items.
+
+### Audits & synthesis
+
+- [ao_security_reaudit_2026-05-20.md](ao_security_reaudit_2026-05-20.md) — Security posture re-audit of the code that landed today (Phases 4M.2/4M.11/4M.13, Workstream-F review, guided tuning) plus prior findings whose files changed; static read, no builds.
+- [ao_uno_techdebt_2026-05-20.md](ao_uno_techdebt_2026-05-20.md) — Tech-debt audit of `balancing_robot_uno/` — maintainability, dead code, duplication, naming, build-flag hygiene; cross-references the security and guided-tuning reviews rather than duplicating them.
+- [ao_session_synthesis_2026-05-20.md](ao_session_synthesis_2026-05-20.md) — Static synthesis of everything that landed in `auto_orientation/` on 2026-05-20 (landing reports + reviews + spot-checks).
+- [ao_roadmap_post_4m14_2026-05-20.md](ao_roadmap_post_4m14_2026-05-20.md) — Forward-looking roadmap scoping the workstreams after Phase 4M.14, with a 2-session dispatch proposal. Carries a SUPERSEDED banner — 4M.14 has since landed; live next step is Workstream G.
+
+---
+
+## 2026-05-21 session — Workstream G, 4M.14 test coverage, security hardening
+
+Multi-agent, orchestrator-managed wave. Made the Mega cascade observable on the
+bench (telemetry accessors + `g` command + host plotting) and safe (two P1
+calibration-storage hardening fixes), plus test-coverage closure for Phase
+4M.14. No new control phase — remaining items are bench-hardware-gated.
+
+Canonical session record: [../archive/session_records/2026-05-21_multi_agent_workstream_g_security.md](../archive/session_records/2026-05-21_multi_agent_workstream_g_security.md).
+
+- [session_synthesis_2026-05-21.md](session_synthesis_2026-05-21.md) — Synthesis of everything that landed in `auto_orientation/` on 2026-05-21: Workstream-G G1/G2/G3/Gap-3 codeable items, the 4M.14 gain-derivation suite wired into `build_tests.sh` (native 14→18), two P1 security fixes (mounting CRC + `restoreFromEEPROM()` buffer-overflow), platformio.ini de-dup, and doc-drift fixes. Uncommitted. Bench-gated next steps: F-3 K_VEL observation, regression-baseline capture, real-motor PWM-discovery validation.
+- [workstream_g_bench_protocol_2026-05-21.md](workstream_g_bench_protocol_2026-05-21.md) — Bench-tuning protocol for capturing and interpreting `g`-command telemetry runs with `tools/plot_bench_run.py`.
+
+---
+
+*Last updated: 2026-05-21 (2026-05-21 multi-agent session findings added). Prior: 2026-05-20 (post-sync hygiene pass — doc-fixer compact entries integrated above + err0r 2026-05-19 PM session additions kept; the 2026-05-19 AM-session detail block was de-duplicated into the compact entries in "Platform-bifurcation pivot" + "Audits & quality reviews" sections above; 2026-05-20 sync-session findings — architecture_plan, state_reconciliation, mega_ram_fix, security_fix_calibration, tuner_format_alignment — added and the four "in progress" audit placeholders resolved).*

@@ -18,6 +18,10 @@
 #include "debug.h"
 #include "radioComm.h"
 
+#ifdef USE_BAROMETER
+#include "calibration_baro.h"
+#endif
+
 #if defined(USE_ESP32) && defined(USE_WIFI)
 #include <WiFi.h>
 #include "wifi_config.h"
@@ -86,6 +90,14 @@ static void printCalibrationStatus() {
     Serial.println(F("  [x] ESC endpoints (e)"));
     #else
     Serial.println(F("  [ ] ESC endpoints (e) — REMOVE PROPS, follow power cycle"));
+    #endif
+
+    #ifdef USE_BAROMETER
+    #ifdef CALIBRATED_BAROMETER
+    Serial.println(F("  [x] Barometer sea-level reference (b)"));
+    #else
+    Serial.println(F("  [ ] Barometer sea-level reference (b) — keep still, run 'b'"));
+    #endif
     #endif
 
     Serial.println(F("\n--- Stage 4: Full Drone (tethered) ---"));
@@ -660,6 +672,12 @@ static void processSerialLine(char* line) {
                 Serial.println(F("\n>>> Sequential Calibration requested via serial"));
                 calibration_mode = CALIB_SEQUENTIAL;
                 return;
+            #ifdef USE_BAROMETER
+            case 'b': case 'B':
+                Serial.println(F("\n>>> Barometer Calibration requested via serial"));
+                calibrateBarometer();
+                return;
+            #endif
             case 'c': case 'C':
                 printCalibrationStatus();
                 return;
@@ -684,6 +702,9 @@ static void processSerialLine(char* line) {
                 Serial.println(F("  o - IMU + Orientation detection"));
                 Serial.println(F("  f - Failsafe auto-detection (measures receiver failsafe)"));
                 Serial.println(F("  e - ESC endpoint calibration (min/max PWM)"));
+                #ifdef USE_BAROMETER
+                Serial.println(F("  b - Barometer calibration (sea-level reference)"));
+                #endif
                 Serial.println(F("  s - Status (show channel values)"));
                 Serial.println(F("  t - Toggle telemetry (off/IMU/full/quat) for fc_tool"));
                 Serial.println(F("  g - Show/set PID gains (g <name> <value>)"));

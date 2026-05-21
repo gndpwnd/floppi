@@ -106,7 +106,8 @@ bool saveToEEPROM(const uint8_t* cal_data, uint16_t length) {
 // RESTORE CALIBRATION FROM PERSISTENT STORAGE
 // ============================================================================
 
-bool restoreFromEEPROM(uint8_t* cal_data, uint16_t* length) {
+bool restoreFromEEPROM(uint8_t* cal_data, size_t buf_capacity,
+                       uint16_t* length) {
   /*
    * Restore calibration data via the persistent_storage HAL, with validation.
    *
@@ -151,6 +152,15 @@ bool restoreFromEEPROM(uint8_t* cal_data, uint16_t* length) {
   // Length is now a full uint16_t — no more silent high-byte truncation.
   uint16_t stored_length = (uint16_t)len_lo | ((uint16_t)len_hi << 8);
   if (stored_length == 0 || stored_length > CAL_DATA_MAX_SIZE) {
+    return false;
+  }
+
+  // Reject any record whose payload would not fit in the caller's buffer.
+  // Without this guard a CRC-valid record with stored_length in 33..506
+  // overflows callers that pass a smaller buffer (e.g. main.cpp's 32-byte
+  // cb[]) — a stack buffer overflow. The CAL_DATA_MAX_SIZE check above only
+  // bounds against the on-disk maximum, not the caller's actual capacity.
+  if (stored_length > buf_capacity) {
     return false;
   }
 

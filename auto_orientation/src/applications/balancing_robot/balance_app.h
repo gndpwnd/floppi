@@ -656,6 +656,38 @@ public:
     float           get_pitch_deg() const { return pitch_deg_; }
     float           get_mount_offset_deg() const;
 
+    // ----- Workstream G — telemetry accessors (G1) -------------------------
+    // Read-through getters exposing the current RUN-rate state for the 'g'
+    // serial telemetry command (main.cpp). Pure const reads over existing
+    // members / sub-object accessors — no new ISR-written state, no behaviour
+    // change. The telemetry path is main-loop, read-only, drain-on-demand.
+    //
+    // get_pitch_setpoint_deg(): the pitch setpoint the inner PID is currently
+    // tracking. On the Mega this is the PositionLoop nudge (degrees); on the
+    // Uno it is a fixed 0.0. Sourced from the live PID so it reflects whatever
+    // step_run_ most recently pushed via set_setpoint().
+    float get_pitch_setpoint_deg() const { return pid_.get_setpoint(); }
+#ifdef USE_WHEEL_ENCODERS
+    // Mean wheel tread velocity in m/s (positive = forward) — the same
+    // 0.5·(left+right) average step_run_ feeds the outer loop. NON-const and
+    // takes now_ms because read_velocity_mps() advances each encoder's
+    // internal windowed sample; pass the most recent step()/tick() now_ms so
+    // the window semantics stay coherent with the control loop.
+    float get_wheel_velocity_mps(uint32_t now_ms) {
+        return 0.5f * (enc_left_.read_velocity_mps(now_ms) +
+                       enc_right_.read_velocity_mps(now_ms));
+    }
+    // Outer-loop (PositionLoop) telemetry — pure const pass-throughs.
+    //   get_position_m()      — leaky-integrated drift estimate (m)
+    //   get_pos_nudge_deg()   — last pitch-setpoint nudge the outer loop applied
+    //   get_k_pos()/_k_vel()/_pos_leak() — the derived (4M.14) outer-loop gains
+    float get_position_m() const   { return position_loop_.position_m(); }
+    float get_pos_nudge_deg() const { return position_loop_.last_nudge_deg(); }
+    float get_k_pos() const        { return position_loop_.k_pos(); }
+    float get_k_vel() const        { return position_loop_.k_vel(); }
+    float get_pos_leak() const     { return position_loop_.pos_leak(); }
+#endif
+
     // HELD-entry reason codes (audit P1-SM-3). Diagnostic byte stamped by each
     // RUN→HELD path so the `s` status drain can tell operators WHY HELD fired
     // (collision impact vs. operator handling vs. encoder/gyro anomaly). The
@@ -793,6 +825,12 @@ private:
     // TODO: VERIFY AXIS ON BENCH — currently assuming Y (consistent with
     // pitch_deg_ source via quaternion_to_euler_degrees, but body-axis
     // mounting can re-map). See balance_app.cpp read_imu_ §3.
+    //
+    // ISR safety: main-loop multi-byte reads of these floats are safe even
+    // though an AVR float read is not atomic — every WRITE to raw_gyro_dps_[]
+    // is wrapped in an ATOMIC_BLOCK inside read_imu_, so a read can never
+    // observe a half-updated value (write-side atomicity; workstream_f_review
+    // P1-ISR-1).
     float    raw_gyro_dps_[3];
 
     // HELD bookkeeping
