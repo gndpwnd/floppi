@@ -69,23 +69,39 @@ void setupMotors() {
     ledcAttachPin(MOTOR_PIN_5, MOTOR_LEDC_CH_5);
     ledcAttachPin(MOTOR_PIN_6, MOTOR_LEDC_CH_6);
 
-    // Setup LEDC channels for servos (50Hz)
-    ledcSetup(SERVO_LEDC_CH_1, LEDC_SERVO_FREQ, LEDC_TIMER_BITS);
-    ledcSetup(SERVO_LEDC_CH_2, LEDC_SERVO_FREQ, LEDC_TIMER_BITS);
-    ledcSetup(SERVO_LEDC_CH_3, LEDC_SERVO_FREQ, LEDC_TIMER_BITS);
-    ledcSetup(SERVO_LEDC_CH_4, LEDC_SERVO_FREQ, LEDC_TIMER_BITS);
-    ledcSetup(SERVO_LEDC_CH_5, LEDC_SERVO_FREQ, LEDC_TIMER_BITS);
-    ledcSetup(SERVO_LEDC_CH_6, LEDC_SERVO_FREQ, LEDC_TIMER_BITS);
-    ledcSetup(SERVO_LEDC_CH_7, LEDC_SERVO_FREQ, LEDC_TIMER_BITS);
-
-    // Attach LEDC channels to servo pins
-    ledcAttachPin(SERVO_PIN_1, SERVO_LEDC_CH_1);
-    ledcAttachPin(SERVO_PIN_2, SERVO_LEDC_CH_2);
-    ledcAttachPin(SERVO_PIN_3, SERVO_LEDC_CH_3);
-    ledcAttachPin(SERVO_PIN_4, SERVO_LEDC_CH_4);
-    ledcAttachPin(SERVO_PIN_5, SERVO_LEDC_CH_5);
-    ledcAttachPin(SERVO_PIN_6, SERVO_LEDC_CH_6);
-    ledcAttachPin(SERVO_PIN_7, SERVO_LEDC_CH_7);
+    // Setup + attach LEDC channels for servos (50Hz), only channels 1..SERVO_COUNT.
+    // Attaching fewer channels leaves the higher servo GPIOs free: with
+    // SERVO_COUNT<=5 nothing drives SERVO_PIN_6/7, so the W1b ch6/7 pin-mirror
+    // in pin_definitions_esp32.h causes no LEDC double-claim. For SERVO_COUNT>=6
+    // give SERVO_PIN_6/7 distinct pin overrides in config.h.
+    #if SERVO_COUNT >= 1
+        ledcSetup(SERVO_LEDC_CH_1, LEDC_SERVO_FREQ, LEDC_TIMER_BITS);
+        ledcAttachPin(SERVO_PIN_1, SERVO_LEDC_CH_1);
+    #endif
+    #if SERVO_COUNT >= 2
+        ledcSetup(SERVO_LEDC_CH_2, LEDC_SERVO_FREQ, LEDC_TIMER_BITS);
+        ledcAttachPin(SERVO_PIN_2, SERVO_LEDC_CH_2);
+    #endif
+    #if SERVO_COUNT >= 3
+        ledcSetup(SERVO_LEDC_CH_3, LEDC_SERVO_FREQ, LEDC_TIMER_BITS);
+        ledcAttachPin(SERVO_PIN_3, SERVO_LEDC_CH_3);
+    #endif
+    #if SERVO_COUNT >= 4
+        ledcSetup(SERVO_LEDC_CH_4, LEDC_SERVO_FREQ, LEDC_TIMER_BITS);
+        ledcAttachPin(SERVO_PIN_4, SERVO_LEDC_CH_4);
+    #endif
+    #if SERVO_COUNT >= 5
+        ledcSetup(SERVO_LEDC_CH_5, LEDC_SERVO_FREQ, LEDC_TIMER_BITS);
+        ledcAttachPin(SERVO_PIN_5, SERVO_LEDC_CH_5);
+    #endif
+    #if SERVO_COUNT >= 6
+        ledcSetup(SERVO_LEDC_CH_6, LEDC_SERVO_FREQ, LEDC_TIMER_BITS);
+        ledcAttachPin(SERVO_PIN_6, SERVO_LEDC_CH_6);
+    #endif
+    #if SERVO_COUNT >= 7
+        ledcSetup(SERVO_LEDC_CH_7, LEDC_SERVO_FREQ, LEDC_TIMER_BITS);
+        ledcAttachPin(SERVO_PIN_7, SERVO_LEDC_CH_7);
+    #endif
 
 #else
     // Teensy: Setup motor pins as outputs

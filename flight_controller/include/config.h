@@ -507,6 +507,21 @@
 #define USE_STANDARD_PWM    // Standard PWM (1000-2000μs)
 
 //=============================================================================
+// Servo Channel Count
+//=============================================================================
+// How many servo channels setupMotors() LEDC-attaches on ESP32 (channels
+// 1..SERVO_COUNT). Range 0-7. Default 7 keeps existing builds byte-identical.
+//
+// Lowering this frees the higher servo GPIOs: an airframe with SERVO_COUNT<=5
+// never drives SERVO_PIN_6/7, so the W1b ch6/7 pin-mirror (SERVO_PIN_6/7 =
+// SERVO_PIN_4/5 in pin_definitions_esp32.h) is moot — no LEDC double-claim.
+// The mirror only matters when SERVO_COUNT>=6, which then needs explicit
+// distinct SERVO_PIN_6/7 overrides in the PIN OVERRIDES section.
+#ifndef SERVO_COUNT
+    #define SERVO_COUNT 7
+#endif
+
+//=============================================================================
 // Loop Rate
 //=============================================================================
 // Can be overridden by platformio.ini build flags (-D LOOP_FREQUENCY_HZ=1000)
