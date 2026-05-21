@@ -106,35 +106,53 @@
     #ifdef USE_ESP32S3
         #define SERVO_PIN_3 1
     #else
-        #define SERVO_PIN_3 4
+        // 2026-05-20: moved off GPIO 4 (was 4). GPIO 4 is shared by
+        // IBUS_RX/DSM_RX/SERIAL_CMD_RX — Conflict B. Reassigned to GPIO 13
+        // (free on 4-motor airframes; was MOTOR_PIN_6) so any receiver
+        // protocol can be enabled. See esp32_gpio_conflict_resolution_2026-05-20.md.
+        #define SERVO_PIN_3 13
     #endif
 #endif
 #ifndef SERVO_PIN_4
     #ifdef USE_ESP32S3
         #define SERVO_PIN_4 2
     #else
-        #define SERVO_PIN_4 16
+        // 2026-05-20: moved off GPIO 16 (was 16). GPIO 16 = SBUS_RX_PIN —
+        // Conflict A. Reassigned to GPIO 5 (free when servo ch6 unused;
+        // 1-5 servo airframes never use ch6). See esp32_gpio_conflict_resolution_2026-05-20.md.
+        #define SERVO_PIN_4 5
     #endif
 #endif
 #ifndef SERVO_PIN_5
     #ifdef USE_ESP32S3
         #define SERVO_PIN_5 10
     #else
-        #define SERVO_PIN_5 17
+        // 2026-05-20: moved off GPIO 17 (was 17). GPIO 17 = SBUS_TX_PIN —
+        // Conflict A. Reassigned to GPIO 18 (free when servo ch7 unused;
+        // 1-5 servo airframes never use ch7). See esp32_gpio_conflict_resolution_2026-05-20.md.
+        #define SERVO_PIN_5 18
     #endif
 #endif
 #ifndef SERVO_PIN_6
     #ifdef USE_ESP32S3
         #define SERVO_PIN_6 11
     #else
-        #define SERVO_PIN_6 5
+        // 2026-05-20: GPIO 5 was reassigned to SERVO_PIN_4 (Conflict A fix).
+        // No free ESP32 GPIO remains for ch6 — mirror SERVO_PIN_4's pin.
+        // Harmless: 1-5 servo airframes never command ch6, and this keeps
+        // every servo pin off every receiver pin (no Conflict A/B revival).
+        #define SERVO_PIN_6 SERVO_PIN_4
     #endif
 #endif
 #ifndef SERVO_PIN_7
     #ifdef USE_ESP32S3
         #define SERVO_PIN_7 12
     #else
-        #define SERVO_PIN_7 18
+        // 2026-05-20: GPIO 18 was reassigned to SERVO_PIN_5 (Conflict A fix).
+        // No free ESP32 GPIO remains for ch7 — mirror SERVO_PIN_5's pin.
+        // Harmless: 1-5 servo airframes never command ch7, and this keeps
+        // every servo pin off every receiver pin (no Conflict A/B revival).
+        #define SERVO_PIN_7 SERVO_PIN_5
     #endif
 #endif
 
@@ -353,5 +371,43 @@
  * - Use a good quality 5V power source rated for at least 500mA
  * - For flight, use a dedicated 5V BEC
  */
+
+//========================================================================================================================//
+//                              ESP32 GPIO CONFLICT GUARDS (compile-time)                                                 //
+//========================================================================================================================//
+// Catches the known-bad ESP32 GPIO double-claims surfaced by the 2026-05-20
+// wiring-guide audit. setupServos() in motors.cpp calls ledcAttachPin() for ALL
+// servo pins on every ESP32 build (no USE_SERVO gate), so a servo pin that
+// equals a receiver pin is an electrical double-claim even with no servo wired.
+//
+// These #error directives refuse to compile a config that genuinely enables
+// both colliding claimants. They do NOT change any pin — resolve a fired guard
+// via the PIN OVERRIDES section of config.h.
+// See: docs/findings/esp32_gpio_conflict_resolution_2026-05-20.md (Option C).
+//
+// Standard ESP32 only — ESP32-S3 pin maps have no equivalent conflicts.
+#if defined(USE_ESP32) && !defined(USE_ESP32S3)
+
+    // --- Conflict A: SBUS RX/TX (GPIO 16/17) vs SERVO_PIN_4 / SERVO_PIN_5 ---
+    #if defined(USE_SBUS_RECEIVER) && \
+        (SERVO_PIN_4 == SBUS_RX_PIN || SERVO_PIN_5 == SBUS_TX_PIN)
+        #error "ESP32 GPIO conflict A: SERVO_PIN_4/SERVO_PIN_5 (GPIO 16/17) collide with SBUS_RX_PIN/SBUS_TX_PIN. setupServos() drives these pins via LEDC on every build, fighting the SBUS UART. Override SERVO_PIN_4/SERVO_PIN_5 (or the SBUS pins) in the PIN OVERRIDES section of config.h. See docs/findings/esp32_gpio_conflict_resolution_2026-05-20.md."
+    #endif
+
+    // --- Conflict B: GPIO 4 multi-claim — SERVO_PIN_3 vs the selected
+    //     serial receiver / serial-command RX (iBUS / DSM / serial-cmd) ---
+    #if (defined(USE_IBUS_RECEIVER)   && SERVO_PIN_3 == IBUS_RX_PIN)       || \
+        (defined(USE_DSM_RECEIVER)    && SERVO_PIN_3 == DSM_RX_PIN)        || \
+        (defined(USE_SERIAL_COMMANDS) && SERVO_PIN_3 == SERIAL_CMD_RX_PIN)
+        #error "ESP32 GPIO conflict B: SERVO_PIN_3 (GPIO 4) collides with the selected receiver RX (IBUS_RX_PIN / DSM_RX_PIN / SERIAL_CMD_RX_PIN). setupServos() drives GPIO 4 via LEDC on every build, fighting the Serial1 UART. Override SERVO_PIN_3 (or the receiver pin) in the PIN OVERRIDES section of config.h. See docs/findings/esp32_gpio_conflict_resolution_2026-05-20.md."
+    #endif
+
+    // TODO(C-1): future barometer guard. When USE_BAROMETER lands, the Wire1
+    // barometer defaults (proposed BARO_SDA/SCL on GPIO 25/26) collide with
+    // MOTOR_PIN_1/MOTOR_PIN_2. Add a guard here once USE_BAROMETER and the
+    // BARO_*_PIN symbols exist. Not added now — premature (no such flag yet).
+    // See docs/findings/session3_readiness_2026-05-20.md finding C-1.
+
+#endif // USE_ESP32 && !USE_ESP32S3
 
 #endif // PIN_DEFINITIONS_ESP32_H

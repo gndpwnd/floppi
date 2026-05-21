@@ -32,6 +32,10 @@
 #include "uno_balance_app.h"
 #include "balance_constants.h"
 
+#ifdef UNO_GUIDED_TUNING
+#include "tuning_session.h"
+#endif
+
 // ----------------------------------------------------------------------------
 // Module instances (file-scope — no heap)
 // ----------------------------------------------------------------------------
@@ -60,6 +64,11 @@ static PIDController      balance_pid(0.0f, 0.0f, 0.0f,
                                       static_cast<float>(PWM_MAX));
 
 static UnoBalanceApp      app(imu, motors, balance_pid);
+
+#ifdef UNO_GUIDED_TUNING
+// Guided P->I->D tuning state machine over the serial CLI. Tuning build only.
+static TuningSession      tuningSession;
+#endif
 
 // ----------------------------------------------------------------------------
 // MsTimer2 ISR: 5 ms PID tick
@@ -110,6 +119,10 @@ static void handle_serial() {
       case 's':
       case 'S':
         print_status_line();
+#ifdef UNO_GUIDED_TUNING
+        // Tuning build: also emit the stage + working-gains line.
+        tuningSession.print_status();
+#endif
         break;
       case 'p':
       case 'P':
@@ -120,6 +133,11 @@ static void handle_serial() {
         Serial.println(telem_periodic ? F("on") : F("off"));
         break;
       default:
+#ifdef UNO_GUIDED_TUNING
+        // Tuning build: route guided-tuning command chars (t + - * n b r w q).
+        // 'a'/'g'/'s'/'p' are handled above; print_status above also covers 's'.
+        tuningSession.handle_command((char)c);
+#endif
         // ignore — minimal program, no other commands
         break;
     }
@@ -150,6 +168,12 @@ void setup() {
   }
 
   app.begin();
+
+#ifdef UNO_GUIDED_TUNING
+  // Bind the guided-tuning session to the app (seeds working gains from
+  // whatever app.begin() loaded — EEPROM tune block or balance_constants seed).
+  tuningSession.begin(app);
+#endif
 
   // PID_v1 parity: the reference SelfBallancingRobot3.ino used PID_v1, which
   // computes the derivative on the raw measurement with NO low-pass filter.

@@ -82,6 +82,7 @@
 
 #ifdef USE_WHEEL_ENCODERS
 #include "../../sensors/wheel_encoder.h"
+#include "../../control/position_loop.h"
 #endif
 
 enum class BalanceAppState : uint8_t {
@@ -109,7 +110,13 @@ enum class BalanceAppState : uint8_t {
 //
 // `discovered_min_pwm` / `discovered_max_pwm` are in raw PWM units (0..255).
 // `discovered=true` only when BOTH bounds were measured cleanly within the
-// timeout. `failure_reason` codes: 0=ok, 4=user_abort, 8=pwm_discovery_timeout.
+// timeout. `failure_reason` codes: 0=ok, 4=user_abort, 8=pwm_discovery_timeout,
+// 9=pwm_discovery_collision (Phase 4M.12 Gap 1 — the three-gate LIA detector
+// latched a collision during the PWM ramp; an impact injects encoder/gyro
+// motion that is not motor-driven, so the discovered MIN/MAX would be wrong —
+// abort rather than persist contaminated bounds. Mirrors BOOTSTRAP/CHARACTERISE
+// collision-abort. Value 9 is the next free code: 1-8 are taken by Bootstrap/
+// PwmDiscoveryResult, which share the numeric space without collision).
 struct PwmDiscoveryResult {
     uint16_t discovered_min_pwm;
     uint16_t discovered_max_pwm;
@@ -131,7 +138,12 @@ struct BootstrapResult {
     uint8_t  failure_reason;   // 0=ok, 1=pitch_out_of_range, 2=no_response,
                                // 3=k_out_of_bounds, 4=user_abort,
                                // 5=collision (LIA spike during baseline/pulse),
-                               // 6=baseline_noisy (operator handled bot during baseline)
+                               // 6=baseline_noisy (operator handled bot during baseline),
+                               // 7=k_disagreement (Phase 4M.2 — gyro-derived K and
+                               //   encoder-derived K differ by more than
+                               //   BOOTSTRAP_K_DISAGREE_FRAC; Mega-only, only
+                               //   reachable when USE_WHEEL_ENCODERS is defined —
+                               //   indicates wheel slip / mechanical binding)
     bool     converged;        // true iff K_motor was pushed to PlantIdentifier
 };
 
@@ -238,6 +250,33 @@ constexpr uint16_t ENCODER_STALL_PWM_THRESHOLD = 100;
 constexpr uint16_t ENCODER_STALL_TIME_MS       = 300;
 
 // ---------------------------------------------------------------------------
+// BOOTSTRAP encoder-driven K cross-check (Phase 4M.2 — Workstream F.1,
+// research_wheel_encoders_mega_2026-05-19.md §6 "K_motor verification").
+//
+// BOOTSTRAP measures K_motor twice from the SAME ±PWM pulse sequence:
+//   K_gyro    — chassis pitch-rate response per PWM (the existing estimate,
+//               (|Δω_gyro|/τ) / pwm_total), and
+//   K_encoder — wheel angular-rate response per PWM, (|Δv_wheel|/τ) / pwm_total,
+//               averaged over the SAME pulses that passed the gyro quality gate.
+// The two are not the same physical gain, but on a healthy drivetrain they
+// track each other tightly: both are "plant response per commanded PWM" under
+// identical excitation. A gross divergence means the wheels spun without
+// moving the chassis (slip) or the chassis moved without the wheels turning
+// (mechanical binding / encoder fault) — either way the gyro-derived K that
+// would seed the PID is untrustworthy. Fail BOOTSTRAP rather than balance on
+// a bad K.
+//
+// BOOTSTRAP_K_DISAGREE_FRAC (0.30):
+//   Relative-difference ceiling, |K_g - K_e| / max(K_g, K_e). 30% is the
+//   threshold called out in research §6 ("disagree by more than ~30%"). It is
+//   deliberately loose: K_gyro and K_encoder respond to different inertias
+//   (chassis pitch moment vs. wheel+gearbox moment) so a 10-20% steady offset
+//   is expected and benign. 30% only trips on a genuine slip/bind regime,
+//   where the ratio blows past 2× in bench observations — well clear of the
+//   benign band, so the gate has no realistic false-positive surface.
+constexpr float BOOTSTRAP_K_DISAGREE_FRAC = 0.30f;
+
+// ---------------------------------------------------------------------------
 // PWM range auto-discovery (Phase 4M.12 — MEGA_UNIVERSAL_PLAN.md §7d).
 //
 // Operator lifts the bot off the ground and triggers PWM_DISCOVERY. The
@@ -297,6 +336,76 @@ constexpr int16_t  PWM_DISC_MIN_VELOCITY_DPS   = 5;
 constexpr int16_t  PWM_DISC_PLATEAU_DELTA_DPS  = 2;
 constexpr uint8_t  PWM_DISC_PLATEAU_COUNT      = 3;
 constexpr uint16_t PWM_DISC_TIMEOUT_MS         = 8000;
+
+// ---------------------------------------------------------------------------
+// Phase 4M.14 — analytical auto-derivation of the PositionLoop outer-loop
+// gains (Workstream F.3; design: phase_4m14_design_2026-05-20.md). This
+// retires the Phase 4M.13 hardcoded K_POS / K_VEL / POS_LEAK: at BOOTSTRAP
+// finalise, after the 4M.2 K cross-check passes, derive_position_gains()
+// computes them in closed form and pushes them into position_loop_. The
+// 4M.13 values survive as the *_FALLBACK constants in position_loop.h. This
+// resolves the workstream_f_review_2026-05-20.md finding 4M.13-13 sequencing
+// flag — the gains are now derived from a mechanism, not bench-tuned.
+//
+// The outer "plant" (nudge in degrees → wheel acceleration) linearises to a
+// double integrator with gain G_outer (m/s² per degree, §2.4). Closing the
+// PD law nudge = -K_POS·x - K_VEL·v and matching the closed-loop polynomial
+// s² + G·K_VEL·s + G·K_POS to a target s² + 2ζ_o·ω_o·s + ω_o² gives:
+//
+//     K_POS = ω_o² / G_outer
+//     K_VEL = 2·ζ_o·ω_o / G_outer
+//
+// — structurally identical to the inner loop's Kp = ω_n²/K_motor mapping in
+// plant_identifier.h. POS_LEAK is derived separately from a washout tau as
+// exp(-dt/tau). All quantities (g_eff, ts, wheel radius r, dt) are already
+// known by BOOTSTRAP finalise; the derivation adds no measurement phase.
+//
+// The constants below are dimensionless design ratios and structural safety
+// envelopes — scope.md §"The rule" permits them (same category as
+// CHARACTERISE's "6 pulses"); they are not chassis-specific tuned numerics.
+
+// Inner/outer bandwidth-separation factor N. ω_o = ω_n,inner / N. The cascade
+// is only stable if the outer loop is decisively slower than the inner; N=8
+// (≥5 is the rule) buys an 8× frequency margin so the loops cannot fight.
+constexpr float POSLOOP_INNER_OUTER_BW_RATIO = 8.0f;
+
+// Outer-loop damping ratio ζ_o. 1.0 = critically damped — the slowest non-
+// oscillatory response. The outer loop is a station-keeper and must NOT
+// overshoot (overshoot = driving past station then back = visible creeping).
+constexpr float POSLOOP_OUTER_DAMPING = 1.0f;
+
+// Washout time-constant tau (seconds) for the leaky position integrator.
+// POS_LEAK = exp(-dt/tau). 20 s is the OnlineMountingEstimator time-scale and
+// comfortably (5×) slower than the outer loop's ~4 s settling time, so the
+// washout does not eat into the station-keeping bandwidth (§5.2).
+constexpr float POSLOOP_WASHOUT_TAU_S = 20.0f;
+
+// Inner-loop settling-time target ts, mirrored from PlantIdentifier's class
+// default (plant_identifier.h:91-92 — 0.5 s). PlantIdentifier owns it but
+// exposes no getter and is outside this phase's write-zone; main.cpp never
+// calls set_target_settling_time_sec(), so the default is authoritative. The
+// derivation reads it to form ω_n,inner = 4/ts.
+constexpr float POSLOOP_INNER_TS_SEC     = 0.5f;    // inner-loop settling target
+
+// Chassis gravitational tipping coefficient g_eff (deg/s², PlantIdentifier's
+// class default — plant_identifier.h:86-89). NOTE: the 4M.14 derivation does
+// NOT use this for G_outer (see the DEVIATION note in derive_position_gains_;
+// the lean-to-acceleration gain is gravitational g, not the angular tipping
+// coefficient). Retained as a documented reference value only.
+constexpr float POSLOOP_G_EFF_DEG_S2     = 50.0f;   // gravitational tipping coeff
+
+// Sanity-clamp envelope for the derived gains (phase_4m14_design §7.1). A
+// corrupt-but-CRC-valid wheel radius would propagate into G_outer and produce
+// a wildly wrong gain; these bounds (centred on the 4M.13 fallback values)
+// admit any sane bench-class chassis but reject a gross error. If a derived
+// value lands outside its window the clamp "fires" and BalanceApp reverts the
+// WHOLE gain set to the *_FALLBACK constants (§7.2).
+constexpr float POSLOOP_K_POS_MIN = 1.0f;
+constexpr float POSLOOP_K_POS_MAX = 30.0f;
+constexpr float POSLOOP_K_VEL_MIN = 0.5f;
+constexpr float POSLOOP_K_VEL_MAX = 15.0f;
+constexpr float POSLOOP_LEAK_MIN  = 0.990f;   // tau ~0.5 s
+constexpr float POSLOOP_LEAK_MAX  = 0.9999f;  // tau ~50 s
 #endif  // USE_WHEEL_ENCODERS
 
 /**
@@ -635,6 +744,13 @@ public:
     // need to know which wheel — not exposed in the minimal v1 inspector
     // set per task spec ("encoder_stalled()" without per-wheel detail).
     bool encoder_stalled();
+
+    // Phase 4M.14 — outcome of the last outer-loop gain derivation. 0 = the
+    // gains were derived and applied; 9 (derived_gains_oob) = the derivation
+    // was rejected and the conservative *_FALLBACK gains are in force. This
+    // is non-fatal telemetry, NOT a BOOTSTRAP failure (the bot still
+    // balances). Zero before the first BOOTSTRAP.
+    uint8_t get_posgains_failure_reason() const { return posgains_failure_reason_; }
 #endif
 
     // Direct accessor used by callers that want to drive an external user
@@ -745,6 +861,24 @@ private:
     void step_bootstrap_(uint32_t now_ms);
 #ifdef USE_WHEEL_ENCODERS
     void step_pwm_discovery_(uint32_t now_ms);
+
+    // Phase 4M.14 — derive the PositionLoop outer-loop gains in closed form
+    // and push them into position_loop_. Called once at BOOTSTRAP finalise,
+    // after the 4M.2 K cross-check has passed (a passed cross-check is the
+    // evidence the encoder chain — and therefore the wheel radius this
+    // derivation trusts — is sound; phase_4m14_design §3.6).
+    //
+    // Computes K_POS/K_VEL by pole-placement (§3) and POS_LEAK from a washout
+    // tau (§5.2), then sanity-clamps each against the POSLOOP_*_MIN/MAX
+    // envelope. If any clamp fires — or if `wheel_radius_valid` is false (no
+    // trustworthy radius from the encoder cal) — the whole set is reverted to
+    // the *_FALLBACK constants, set_gains()/set_pos_leak() install the
+    // fallback, and posgains_failure_reason_ is set to 9 (non-fatal). On the
+    // success path posgains_failure_reason_ stays 0.
+    //
+    // @param wheel_radius_m     Calibrated wheel radius (m) — encoder geometry.
+    // @param wheel_radius_valid true iff a trustworthy radius is available.
+    void derive_position_gains_(float wheel_radius_m, bool wheel_radius_valid);
 #endif
 
     // Phase 2 CHAR_ACT state — pulse-sweep accumulator + result.
@@ -770,6 +904,15 @@ private:
     float    bs_noise_alpha_max_;   // peak |α| seen during baseline window
     float    bs_prev_gyro_;         // for inter-tick gyro α differentiation
     float    bs_k_sum_;             // running sum of valid K samples
+#ifdef USE_WHEEL_ENCODERS
+    // Phase 4M.2 encoder-driven K cross-check. bs_pulse_start_vel_ snapshots
+    // the mean wheel velocity (dps) at pulse start, mirroring
+    // bs_pulse_start_gyro_; bs_k_enc_sum_ accumulates K_encoder over the SAME
+    // pulses that pass the gyro quality gate so the two K means are computed
+    // from an identical pulse set. Both reset in enter_state_(BOOTSTRAP).
+    float    bs_pulse_start_vel_;   // mean wheel velocity (dps) at pulse start
+    float    bs_k_enc_sum_;         // running sum of encoder-derived K samples
+#endif
     BootstrapResult bootstrap_result_;
 
     // Per-pulse telemetry buffer (see PulseLog struct above). Written from the
@@ -818,6 +961,23 @@ private:
     uint8_t  pwm_disc_plateau_run_;
     bool     pwm_disc_min_locked_;
     PwmDiscoveryResult pwm_discovery_result_;
+
+    // Phase 4M.13 — velocity/position outer loop. The cascade's outer stage:
+    // step_run_ feeds it the mean wheel velocity (m/s) each tick and uses the
+    // returned pitch-setpoint nudge in place of the previous hardcoded
+    // pid_.set_setpoint(0.0f). reset() on RUN entry. Mega-only — without
+    // encoders step_run_ keeps the plain zero setpoint, so this member and
+    // the cascade are entirely #ifdef'd out on the Uno path.
+    PositionLoop position_loop_;
+
+    // Phase 4M.14 — non-fatal telemetry for the outer-loop gain derivation.
+    // posgains_failure_reason_ is 0 when the derivation succeeded and its
+    // result was applied; 9 (derived_gains_oob) when the derivation was
+    // rejected and the *_FALLBACK gains are in force. failure_reason=9 is
+    // deliberately NOT a BootstrapResult.failure_reason / BOOTSTRAP abort —
+    // a fallback is a degraded success, the bot still balances
+    // (phase_4m14_design §7.4). Cleared (0) on every BOOTSTRAP entry.
+    uint8_t posgains_failure_reason_;
 #endif
 
     // Helpers

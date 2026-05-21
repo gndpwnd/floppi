@@ -223,11 +223,11 @@ build_test "test_balance_app_soft_cutoff" \
 
 build_test "test_balance_app_encoder" \
     "-DUNIT_TEST -DNATIVE_TEST -DUSE_WHEEL_ENCODERS" \
-    "${SRC_BAL_FULL} src/sensors/wheel_encoder.cpp"
+    "${SRC_BAL_FULL} src/sensors/wheel_encoder.cpp src/control/position_loop.cpp"
 
 build_test "test_balance_app_pwm_discovery" \
     "-DUNIT_TEST -DNATIVE_TEST -DUSE_WHEEL_ENCODERS" \
-    "${SRC_BAL_FULL} src/sensors/wheel_encoder.cpp" \
+    "${SRC_BAL_FULL} src/sensors/wheel_encoder.cpp src/control/position_loop.cpp" \
     "-fpermissive"
 
 # HELD state-machine test — the canonical reason this rewrite exists.
@@ -244,7 +244,8 @@ build_test "test_held_state_machine" \
 build_test "test_uno_balance_app" \
     "-DUNIT_TEST" \
     "src/applications/balancing_robot_uno/uno_balance_app.cpp \
-     src/control/pid_controller.cpp"
+     src/control/pid_controller.cpp \
+     src/applications/balancing_robot_uno/tune_storage.cpp"
 
 # ----------------------------------------------------------------------------
 # Driver / hardware abstraction tests (printf-based).

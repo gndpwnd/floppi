@@ -442,6 +442,33 @@ Servo 6  →  Pin 11
 Servo 7  →  Pin 12
 ```
 
+**ESP32 servo pins (GPIO numbers):**
+
+As of 2026-05-20 (Workstream W1b) the ESP32 servo pins were reassigned so they
+no longer overlap any RC-receiver pin — any RC protocol (SBUS / iBUS / DSM) can
+now be enabled alongside servos.
+
+```
+Servo Signal Wires  →  ESP32 GPIO
+─────────────────────────────────
+Servo 1  →  GPIO 32
+Servo 2  →  GPIO 33
+Servo 3  →  GPIO 13   (was GPIO 4 — moved off iBUS/DSM/serial-cmd RX)
+Servo 4  →  GPIO 5    (was GPIO 16 — moved off SBUS RX)
+Servo 5  →  GPIO 18   (was GPIO 17 — moved off SBUS TX)
+Servo 6  →  GPIO 5    (shares ch4's pin)
+Servo 7  →  GPIO 18   (shares ch5's pin)
+```
+
+- **Servo ch3 (GPIO 13)** coincides with `MOTOR_PIN_6`. This is safe on a
+  ≤4-motor airframe (ch3 and motor 6 are never both used). On a 5- or 6-motor
+  airframe, override `SERVO_PIN_3` in `config.h`.
+- **Servo ch6 / ch7** share pins with ch4 / ch5 — usable on a ≤5-servo airframe
+  (ch6/ch7 are never commanded there). Override `SERVO_PIN_6` / `SERVO_PIN_7`
+  in `config.h` if you need more than 5 servos.
+- See [findings/esp32_gpio_conflict_resolution_2026-05-20.md](findings/esp32_gpio_conflict_resolution_2026-05-20.md)
+  for the full rationale.
+
 **⚠️ Servo Power:**
 - Do NOT power servos from Teensy!
 - Use separate 5V BEC rated for servo current (often 3A+)
@@ -615,4 +642,4 @@ Before first flight, verify:
 
 **When all checked ✅ → Ready for calibration!**
 
-📖 **Next:** [CALIBRATION_GUIDE.md](./CALIBRATION_GUIDE.md)
+📖 **Next:** [2_calibration_guide.md](./2_calibration_guide.md)

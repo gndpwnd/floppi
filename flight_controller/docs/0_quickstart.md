@@ -265,7 +265,7 @@ graph TD
 
 | Command | Purpose |
 |---------|---------|
-| `./tests/test_calibration.sh /dev/ttyACM0` | Run automated test suite (19 tests) |
+| `./tests/test_calibration.sh /dev/ttyACM0` | Run automated test suite (18 tests / 42 assertions) |
 | `./tests/test_calibration.sh /dev/ttyACM0 imu` | Run single test |
 
 ---

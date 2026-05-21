@@ -7,8 +7,13 @@
 
 #include "uno_balance_app.h"
 #include "balance_constants.h"
+#include "tune_storage.h"   // EEPROM boot-precedence — host-safe, platform-guarded
 
 #include <math.h>      // isnan, fabs
+
+#if defined(ARDUINO)
+  #include <Arduino.h>   // Serial, F()
+#endif
 
 // ATOMIC_BLOCK guards multi-byte (float / int16_t) reads/writes shared between
 // loop() and the MsTimer2 5 ms ISR. On 8-bit AVR a 4-byte float load can be
@@ -38,10 +43,31 @@ UnoBalanceApp::UnoBalanceApp(OrientationSensor& imu,
       pitch_valid_(false),
       last_pwm_(0),
       armed_(true),
-      tipped_(false) {}
+      tipped_(false),
+      cur_kp_(BALANCE_KP),
+      cur_ki_(BALANCE_KI),
+      cur_kd_(BALANCE_KD) {}
 
 void UnoBalanceApp::begin() {
-  pid_.set_tunings(BALANCE_KP, BALANCE_KI, BALANCE_KD);
+  // Boot precedence: a valid EEPROM tune block wins over the
+  // balance_constants.h seed. tune_storage is platform-guarded (host-safe).
+  TuneBlock blk;
+  if (tune_storage::load_tuning(blk)) {
+    cur_kp_ = blk.kp;
+    cur_ki_ = blk.ki;
+    cur_kd_ = blk.kd;
+#if defined(ARDUINO)
+    Serial.println(F("gains=EEPROM"));
+#endif
+  } else {
+    cur_kp_ = BALANCE_KP;
+    cur_ki_ = BALANCE_KI;
+    cur_kd_ = BALANCE_KD;
+#if defined(ARDUINO)
+    Serial.println(F("gains=seed"));
+#endif
+  }
+  pid_.set_tunings(cur_kp_, cur_ki_, cur_kd_);
   pid_.set_sample_time(PID_SAMPLE_MS);
   pid_.set_output_limits(static_cast<float>(PWM_MIN),
                          static_cast<float>(PWM_MAX));
@@ -140,6 +166,26 @@ void UnoBalanceApp::abort() {
   motors_.stop();
   pid_.reset();
   last_pwm_ = 0;
+}
+
+void UnoBalanceApp::apply_gains(float kp, float ki, float kd) {
+  // Defensive clamp: negative PID gains invert the control law and would
+  // drive the bot away from upright. The guided-tuning state machine already
+  // clamps its work gains >= 0, but apply_gains() is public API — guard here
+  // too so a future caller or test harness cannot inject negative gains.
+  if (kp < 0.0f) kp = 0.0f;
+  if (ki < 0.0f) ki = 0.0f;
+  if (kd < 0.0f) kd = 0.0f;
+  cur_kp_ = kp;
+  cur_ki_ = ki;
+  cur_kd_ = kd;
+  pid_.set_tunings(kp, ki, kd);
+}
+
+void UnoBalanceApp::get_work_gains(float& kp, float& ki, float& kd) const {
+  kp = cur_kp_;
+  ki = cur_ki_;
+  kd = cur_kd_;
 }
 
 void UnoBalanceApp::arm() {

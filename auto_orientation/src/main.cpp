@@ -59,6 +59,9 @@
 #include "applications/balancing_robot/safety.h"
 #include "storage/persistent_storage.h"
 #include "config/calibration_storage.h"
+#ifdef USE_WHEEL_ENCODERS
+#include "sensors/wheel_encoder.h"   // Phase 4M.10 — quadrature wheel encoders
+#endif
 #include <MsTimer2.h>   // Item 3: 5 ms hardware-timer PID ISR (200 Hz)
 
 // ---- Pin assignments (Uno and Mega use the same numeric pins for L298N; the
@@ -130,6 +133,15 @@ static PlantIdentifier       plant_id;
 static BalanceApp app(imu, motors, balance_pid, tuner,
                       mounting, online_est, safety, plant_id);
 
+#ifdef USE_WHEEL_ENCODERS
+// Phase 4M.10/4M.11 — quadrature wheel encoders. Pins per RWE §2:
+// left  A/B = Mega 18/19 (INT5/INT4); right A/B = 2/3 (INT0/INT1).
+// Pins 20/21 are I²C → BNO055 and MUST NOT be repurposed. begin() attaches
+// the ISRs via the PJRC Encoder backend. Mega-only (Uno has 2 INT pins).
+static WheelEncoder enc_left(/*pin_a=*/18, /*pin_b=*/19);
+static WheelEncoder enc_right(/*pin_a=*/2,  /*pin_b=*/3);
+#endif
+
 // ---- EEPROM persistence for mounting offset ---------------------------------
 // Per project design (2026-05-12): only HARDWARE / PHYSICAL properties get
 // persisted across reboots. The BNO055 sensor cal (~22 B) lives in slot 0x000
@@ -141,18 +153,31 @@ static BalanceApp app(imu, motors, balance_pid, tuner,
 static const uint16_t EE_MOUNT_ADDR = 0x200;
 static const uint16_t EE_MOUNT_LEN  = 8;
 static const uint8_t  EE_MOUNT_MAGIC = 0xAB;
-static const uint8_t  EE_MOUNT_VER   = 0x01;
+static const uint8_t  EE_MOUNT_VER   = 0x02;   // 0x02: CRC-8-CCITT (was XOR-sum)
 
 // Phase 2 — actuator characterisation record (stiction floor + future fields).
-// Layout: [magic 0xAC][ver 0x01][stiction_pwm][reserved][crc] (8 bytes).
+// Layout: [magic 0xAC][ver 0x02][stiction_pwm][reserved][crc] (8 bytes).
 static const uint16_t EE_ACT_ADDR  = 0x210;
 static const uint16_t EE_ACT_LEN   = 8;
 static const uint8_t  EE_ACT_MAGIC = 0xAC;
-static const uint8_t  EE_ACT_VER   = 0x01;
+static const uint8_t  EE_ACT_VER   = 0x02;   // 0x02: CRC-8-CCITT (was XOR-sum)
 
 #ifdef USE_WHEEL_ENCODERS
+// Phase 4M.11 — wheel-encoder calibration record (RWE §5). Slot 0x220, 16 B:
+//   [magic 0xAD][ver 0x01][cpm_left f32 LE][cpm_right f32 LE]
+//   [radius_m f32 LE][reserved 1 B][crc8]
+// cpm_* = encoder counts per metre of wheel-tread travel (measured by the
+// `e` command's roll-a-known-distance procedure). radius_m = derived wheel
+// radius. CRC-8-CCITT over bytes 0..14 (project standard, see
+// calibration_storage.cpp::calculateCRC8). Mega-only. 0x220 sits between the
+// actuator slot (0x210) and the PWM-discovery slot (0x230) — no overlap.
+static const uint16_t EE_ENC_ADDR  = 0x220;
+static const uint16_t EE_ENC_LEN   = 16;
+static const uint8_t  EE_ENC_MAGIC = 0xAD;
+static const uint8_t  EE_ENC_VER   = 0x01;
+
 // Phase 4M.12 — PWM range auto-discovery record. Layout:
-//   [magic 0xAD][ver 0x01][min_lo][min_hi][max_lo][max_hi][reserved][crc] (8 B).
+//   [magic 0xAD][ver 0x02][min_lo][min_hi][max_lo][max_hi][reserved][crc] (8 B).
 // Mega-only. 0x220 is reserved by the sibling encoder-cal agent (CPR + radius);
 // we land at 0x230 so the two slots don't collide. Calibration blob headroom:
 // the cal blob runs 0x000..0x100 (256 B reserved), mount lives at 0x200,
@@ -161,19 +186,21 @@ static const uint8_t  EE_ACT_VER   = 0x01;
 static const uint16_t EE_PWMDISC_ADDR  = 0x230;
 static const uint16_t EE_PWMDISC_LEN   = 8;
 static const uint8_t  EE_PWMDISC_MAGIC = 0xAD;
-static const uint8_t  EE_PWMDISC_VER   = 0x01;
+static const uint8_t  EE_PWMDISC_VER   = 0x02;   // 0x02: CRC-8-CCITT (was XOR-sum)
 #endif
 
-static uint8_t xor_crc8_(const uint8_t* d, uint16_t n) {
-    uint8_t c = 0; for (uint16_t i = 0; i < n; ++i) c ^= d[i]; return c;
-}
-
+// EEPROM slot integrity uses CRC-8-CCITT (calculateCRC8 from
+// calibration_storage.h) project-wide. The mount/actuator/PWM-discovery slots
+// were upgraded from a weak XOR-sum to CRC-8-CCITT on 2026-05-20 (security
+// finding NEW-P1-001): two compensating bit-flips could pass the XOR-sum. Each
+// upgraded slot's version byte was bumped 0x01 -> 0x02 so pre-upgrade records
+// are rejected by the load path and the operator is forced to re-calibrate.
 static bool save_mount_offset_(float deg) {
     uint8_t buf[EE_MOUNT_LEN] = {0};
     buf[0] = EE_MOUNT_MAGIC;
     buf[1] = EE_MOUNT_VER;
     memcpy(buf + 2, &deg, 4);          // bytes 2..5 = float LE
-    buf[7] = xor_crc8_(buf, 7);
+    buf[7] = calculateCRC8(buf, 7);
     if (!ps::write(EE_MOUNT_ADDR, buf, EE_MOUNT_LEN)) return false;
     return ps::commit();
 }
@@ -182,7 +209,7 @@ static bool load_mount_offset_(float& deg) {
     uint8_t buf[EE_MOUNT_LEN];
     if (!ps::read(EE_MOUNT_ADDR, buf, EE_MOUNT_LEN)) return false;
     if (buf[0] != EE_MOUNT_MAGIC || buf[1] != EE_MOUNT_VER) return false;
-    if (xor_crc8_(buf, 7) != buf[7]) return false;
+    if (calculateCRC8(buf, 7) != buf[7]) return false;
     memcpy(&deg, buf + 2, 4);
     return true;
 }
@@ -190,7 +217,7 @@ static bool load_mount_offset_(float& deg) {
 static bool save_actuator_(uint8_t stiction) {
     uint8_t buf[EE_ACT_LEN] = {0};
     buf[0] = EE_ACT_MAGIC; buf[1] = EE_ACT_VER; buf[2] = stiction;
-    buf[7] = xor_crc8_(buf, 7);
+    buf[7] = calculateCRC8(buf, 7);
     if (!ps::write(EE_ACT_ADDR, buf, EE_ACT_LEN)) return false;
     return ps::commit();
 }
@@ -199,12 +226,39 @@ static bool load_actuator_(uint8_t& stiction) {
     uint8_t buf[EE_ACT_LEN];
     if (!ps::read(EE_ACT_ADDR, buf, EE_ACT_LEN)) return false;
     if (buf[0] != EE_ACT_MAGIC || buf[1] != EE_ACT_VER) return false;
-    if (xor_crc8_(buf, 7) != buf[7]) return false;
+    if (calculateCRC8(buf, 7) != buf[7]) return false;
     stiction = buf[2];
     return true;
 }
 
 #ifdef USE_WHEEL_ENCODERS
+// Phase 4M.11 — persist wheel-encoder calibration (CPM L/R + wheel radius) to
+// EEPROM slot 0x220. CRC-8-CCITT over the first 15 bytes (project standard).
+static bool save_encoder_cal_(float cpm_left, float cpm_right, float radius_m) {
+    uint8_t buf[EE_ENC_LEN] = {0};
+    buf[0] = EE_ENC_MAGIC;
+    buf[1] = EE_ENC_VER;
+    memcpy(buf + 2,  &cpm_left,  4);   // bytes 2..5
+    memcpy(buf + 6,  &cpm_right, 4);   // bytes 6..9
+    memcpy(buf + 10, &radius_m,  4);   // bytes 10..13
+    // byte 14 reserved (zero)
+    buf[15] = calculateCRC8(buf, 15);
+    if (!ps::write(EE_ENC_ADDR, buf, EE_ENC_LEN)) return false;
+    return ps::commit();
+}
+
+static bool load_encoder_cal_(float& cpm_left, float& cpm_right,
+                              float& radius_m) {
+    uint8_t buf[EE_ENC_LEN];
+    if (!ps::read(EE_ENC_ADDR, buf, EE_ENC_LEN)) return false;
+    if (buf[0] != EE_ENC_MAGIC || buf[1] != EE_ENC_VER) return false;
+    if (calculateCRC8(buf, 15) != buf[15]) return false;
+    memcpy(&cpm_left,  buf + 2,  4);
+    memcpy(&cpm_right, buf + 6,  4);
+    memcpy(&radius_m,  buf + 10, 4);
+    return true;
+}
+
 static bool save_pwm_discovery_(uint16_t min_pwm, uint16_t max_pwm) {
     uint8_t buf[EE_PWMDISC_LEN] = {0};
     buf[0] = EE_PWMDISC_MAGIC;
@@ -213,7 +267,7 @@ static bool save_pwm_discovery_(uint16_t min_pwm, uint16_t max_pwm) {
     buf[3] = (uint8_t)((min_pwm >> 8) & 0xFF);
     buf[4] = (uint8_t)(max_pwm & 0xFF);
     buf[5] = (uint8_t)((max_pwm >> 8) & 0xFF);
-    buf[7] = xor_crc8_(buf, 7);
+    buf[7] = calculateCRC8(buf, 7);
     if (!ps::write(EE_PWMDISC_ADDR, buf, EE_PWMDISC_LEN)) return false;
     return ps::commit();
 }
@@ -222,7 +276,7 @@ static bool load_pwm_discovery_(uint16_t& min_pwm, uint16_t& max_pwm) {
     uint8_t buf[EE_PWMDISC_LEN];
     if (!ps::read(EE_PWMDISC_ADDR, buf, EE_PWMDISC_LEN)) return false;
     if (buf[0] != EE_PWMDISC_MAGIC || buf[1] != EE_PWMDISC_VER) return false;
-    if (xor_crc8_(buf, 7) != buf[7]) return false;
+    if (calculateCRC8(buf, 7) != buf[7]) return false;
     min_pwm = (uint16_t)buf[2] | ((uint16_t)buf[3] << 8);
     max_pwm = (uint16_t)buf[4] | ((uint16_t)buf[5] << 8);
     return true;
@@ -307,6 +361,94 @@ static void run_bno_cal_wizard_(BNO055& bno) {
     }
 }
 
+#ifdef USE_WHEEL_ENCODERS
+// Phase 4M.11 — wheel-encoder calibration wizard (RWE §5).
+//
+// Operator workflow:
+//   1. Send `e`. Firmware zeroes both encoders and prints a prompt.
+//   2. Operator picks the bot up, sets it on a marked start line, and rolls
+//      it manually exactly ENC_CAL_DISTANCE_M (1.000 m) along a tape measure.
+//      Live `L_ticks R_ticks` stream once per second lets the operator verify
+//      both wheels are counting and counting the right sign.
+//   3. Operator presses the button. Firmware reads final ticks, computes
+//      counts-per-metre (CPM) per wheel and a derived wheel radius, applies
+//      the values to the live encoder objects, and saves them to EEPROM 0x220.
+//
+// Blocking by design — manual rolling is a one-time bench setup step, and the
+// MsTimer2 PID ISR is not running yet at the only other call site (it is
+// loop-side here, but the bot sits in IDLE during cal so motors are stopped).
+//
+// CPM→radius: one wheel revolution is cpr_ counts and covers 2π·r metres, so
+//   r = cpr / (CPM · 2π).  Averages the two wheels' CPM for a single radius.
+static const float ENC_CAL_DISTANCE_M = 1.000f;
+
+static void run_encoder_cal_(void) {
+    enc_left.reset_ticks();
+    enc_right.reset_ticks();
+    Serial.println(F("enc_cal: roll bot 1.000 m, press btn"));
+
+    uint32_t last_print = 0;
+    while (true) {
+        uint32_t now = millis();
+        if (now - last_print >= 1000) {
+            Serial.print(F("L_ticks="));
+            Serial.print(enc_left.read_ticks());
+            Serial.print(F(" R_ticks="));
+            Serial.println(enc_right.read_ticks());
+            last_print = now;
+        }
+        // Escape hatch: `a` aborts the cal without writing EEPROM.
+        if (Serial.available()) {
+            if (Serial.read() == 'a') {
+                Serial.println(F("enc_cal: abort"));
+                return;
+            }
+        }
+        if (digitalRead(PIN_BTN) == LOW) {
+            delay(40);
+            if (digitalRead(PIN_BTN) == LOW) {
+                while (digitalRead(PIN_BTN) == LOW) { delay(10); }
+                break;
+            }
+        }
+        delay(20);
+    }
+
+    const int32_t tl = enc_left.read_ticks();
+    const int32_t tr = enc_right.read_ticks();
+    // CPM uses |ticks| so a swapped-A/B wheel still calibrates; direction sign
+    // is a wiring concern surfaced by the live stream above.
+    const int32_t al = tl < 0 ? -tl : tl;
+    const int32_t ar = tr < 0 ? -tr : tr;
+    if (al == 0 || ar == 0) {
+        Serial.println(F("enc_cal: no ticks - not saved"));
+        return;
+    }
+    const float cpm_left  = (float)al / ENC_CAL_DISTANCE_M;
+    const float cpm_right = (float)ar / ENC_CAL_DISTANCE_M;
+    // Derived wheel radius from the averaged CPM (RWE §5).
+    const float cpm_avg   = 0.5f * (cpm_left + cpm_right);
+    const float radius_m  =
+        (float)enc_left.counts_per_rev() / (cpm_avg * 2.0f * 3.14159265f);
+
+    enc_left.set_counts_per_rev(enc_left.counts_per_rev());
+    enc_left.set_wheel_radius_m(radius_m);
+    enc_right.set_wheel_radius_m(radius_m);
+
+    Serial.print(F("enc_cal: L="));
+    Serial.print(cpm_left, 1);
+    Serial.print(F(" R="));
+    Serial.print(cpm_right, 1);
+    Serial.print(F(" r="));
+    Serial.print(radius_m, 4);
+    if (save_encoder_cal_(cpm_left, cpm_right, radius_m)) {
+        Serial.println(F(" saved"));
+    } else {
+        Serial.println(F(" SAVE FAIL"));
+    }
+}
+#endif  // USE_WHEEL_ENCODERS
+
 // ---- 5 ms PID hardware-timer ISR (Item 3) ----
 // MsTimer2 on Timer2: doesn't conflict with the L298N PWM pins (ENA=5 on T0,
 // ENB=10 on T1). Pin 3 and 11 lose analogWrite — neither is used here.
@@ -364,6 +506,28 @@ void setup() {
     }
 
 #ifdef USE_WHEEL_ENCODERS
+    // Phase 4M.10/4M.11 — bring up the quadrature encoders and restore the
+    // wheel-encoder calibration (CPM L/R + radius) from EEPROM slot 0x220.
+    // If no valid record exists the encoders keep their kDefault* values and
+    // the operator should run the `e` command to calibrate this bot.
+    enc_left.begin();
+    enc_right.begin();
+    {
+        float cpm_l = 0.0f, cpm_r = 0.0f, radius = 0.0f;
+        if (load_encoder_cal_(cpm_l, cpm_r, radius) &&
+            cpm_l > 0.0f && cpm_r > 0.0f &&
+            radius > 0.0f && radius < 1.0f) {
+            enc_left.set_wheel_radius_m(radius);
+            enc_right.set_wheel_radius_m(radius);
+            Serial.print(F("ld enc L="));
+            Serial.print(cpm_l, 1);
+            Serial.print(F(" R="));
+            Serial.print(cpm_r, 1);
+            Serial.print(F(" r="));
+            Serial.println(radius, 4);
+        }
+    }
+
     // Phase 4M.12 — apply saved PWM-discovery bounds if present. The
     // discovered MIN_PWM is the encoder-confirmed stiction floor and is
     // strictly more trustworthy than the CHARACTERISE (`k`) gyro-based
@@ -507,6 +671,14 @@ void loop() {
             app.enter_characterise_actuator(now);
         }
 #ifdef USE_WHEEL_ENCODERS
+        else if (c == 'e') {
+            // Phase 4M.11 — wheel-encoder calibration. Blocking wizard: zeroes
+            // both encoders, operator rolls the bot 1.000 m by hand, presses
+            // the button; firmware computes counts-per-metre + wheel radius
+            // and persists them to EEPROM slot 0x220. `a` during the wizard
+            // aborts without writing. Safe to run only in IDLE (motors off).
+            run_encoder_cal_();
+        }
         else if (c == 'p') {
             // Phase 4M.12 — PWM range auto-discovery. Operator must lift the
             // bot off the ground before issuing; firmware ramps PWM 0→255 and

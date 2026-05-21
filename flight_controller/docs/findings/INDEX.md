@@ -10,6 +10,13 @@ Research notes, audits, recon reports, and design documents for the flight_contr
 | [test_infrastructure_v2_2026-05-20.md](./test_infrastructure_v2_2026-05-20.md) | Test harness modularization design — `test_calibration.sh` split into `lib/harness.sh` + `suites/test_calibration.sh`; 18 tests / 42 assertions preserved. |
 | [future_session_scaffolding_2026-05-20.md](./future_session_scaffolding_2026-05-20.md) | 3-session forward agenda + 5 operator open questions. |
 | [wiring_guide_audit_2026-05-20.md](./wiring_guide_audit_2026-05-20.md) | Fidelity audit of 5 wiring docs vs pin_definitions headers — 2 hard fixes, 3 ESP32 GPIO `[VERIFY]` flags. |
+| [esp32_gpio_conflict_resolution_2026-05-20.md](./esp32_gpio_conflict_resolution_2026-05-20.md) | Resolution spec for ESP32 GPIO conflicts A/B/C — servo pins moved off receiver pins; compile-time `#error` guards. |
+| [barometer_integration_spec_2026-05-20.md](./barometer_integration_spec_2026-05-20.md) | `USE_BAROMETER` Core-1 telemetry-only integration spec (scaffolding spec — no code). |
+| [gps_passthrough_spec_2026-05-20.md](./gps_passthrough_spec_2026-05-20.md) | `USE_GPS` passthrough-only spec — GPS bytes relayed to the flight computer, no onboard navigation (scaffolding spec — no code). |
+| [swarm_api_contract_2026-05-20.md](./swarm_api_contract_2026-05-20.md) | WiFi/HTTP/WebSocket wire contract between FC firmware and the swarm_api server; SHA-stamped. |
+| [fc_docs_audit_2026-05-20.md](./fc_docs_audit_2026-05-20.md) | Meta-audit of the FC documentation set — drift findings, broken links, and prioritized cleanup recommendations. |
+| [session3_readiness_2026-05-20.md](./session3_readiness_2026-05-20.md) | Session-3 readiness gate — collapses the 5 Session-2 specs into one executable plan and flags inter-spec contradictions. |
+| [fc_core1_budget_2026-05-20.md](./fc_core1_budget_2026-05-20.md) | ESP32 Core-1 scheduling budget analysis for `USE_BAROMETER` + `USE_GPS` — placement guidance for the W2/W5 coding agents. |
 
 ## Standing reference research
 

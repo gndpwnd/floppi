@@ -51,10 +51,24 @@ class UnoBalanceApp {
                 PIDController& pid);
 
   /**
-   * Initialize the PID with the constants from balance_constants.h.
+   * Initialize the PID gains. Boot precedence: a valid EEPROM tune block
+   * (via tune_storage::load_tuning) wins; otherwise the balance_constants.h
+   * seed (BALANCE_KP/KI/KD) is used. Prints which source won.
    * Call once from setup(), AFTER the IMU and motor driver have begun().
    */
   void begin();
+
+  /**
+   * Push live PID gains at runtime. Used by the guided-tuning session
+   * (UT-C) to apply gains during a tuning stage. Also updates the cached
+   * work-gains returned by get_work_gains().
+   */
+  void apply_gains(float kp, float ki, float kd);
+
+  /**
+   * Read back the currently-applied PID gains (for telemetry / status).
+   */
+  void get_work_gains(float& kp, float& ki, float& kd) const;
 
   /**
    * Refresh the cached pitch from the IMU. Call from loop() — does an
@@ -114,6 +128,12 @@ class UnoBalanceApp {
   // Armed / tipped state (no sticky FALLEN — when un-tipped, balancing resumes).
   volatile bool armed_;
   volatile bool tipped_;
+
+  // Currently-applied PID gains. Set by begin() (EEPROM or seed) and updated
+  // by apply_gains(); read back via get_work_gains() for telemetry/status.
+  float cur_kp_;
+  float cur_ki_;
+  float cur_kd_;
 };
 
 #endif  // UNO_BALANCE_APP_H

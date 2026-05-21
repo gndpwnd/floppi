@@ -97,6 +97,112 @@
 //#define USE_BNO085                // BNO085 9DOF (SH-2 protocol, hardware-fused)
 
 //=============================================================================
+// BAROMETER (optional, telemetry-only — ESP32 Core 1)
+//=============================================================================
+// Telemetry-only barometric pressure / temperature / relative-altitude sensor.
+// It is polled by a DEDICATED Core-1 FreeRTOS task and exposed via the swarm
+// API. It NEVER feeds the Core-0 flight loop — altitude logic belongs on the
+// external flight computer (see scope.md and
+// docs/findings/barometer_integration_spec_2026-05-20.md). There is, by design,
+// no altitude-hold / vertical-rate path: USE_BAROMETER is telemetry, period.
+//
+// Default OFF. When undefined, the barometer module + task + telemetry field
+// compile to zero bytes (#ifdef-gated everywhere, like other optional features).
+//
+//#define USE_BAROMETER
+
+#ifdef USE_BAROMETER
+    // Select ONE sensor type. BMP280 is the implemented default — cheapest,
+    // most common, adequate for a telemetry-grade vertical readout. BMP388 /
+    // MS5611 are accepted by the config but currently fall back to a graceful
+    // no-op driver (telemetry reports not-ok) until their drivers land.
+    #define BAROMETER_BMP280       // default — cheapest, most common
+    //#define BAROMETER_BMP388     // lower noise, FIFO (driver: follow-up)
+    //#define BAROMETER_MS5611     // best resolution (driver: follow-up)
+
+    // I2C address — most BMP280 breakouts default to 0x76 (SDO=GND);
+    // 0x77 if SDO is pulled high. The barometer shares the primary `Wire`
+    // bus with the IMU (MPU6050 @ 0x68) — no address clash, they coexist.
+    // Using `Wire` (GPIO 21/22) avoids contradiction C-1: it touches NO motor
+    // pin (unlike Wire1's GPIO 25/26 = MOTOR_PIN_1/2). See the W2 landing report.
+    #ifndef BARO_I2C_ADDRESS
+        #define BARO_I2C_ADDRESS 0x76
+    #endif
+
+    // Sea-level reference pressure (Pa) for the relative-altitude calculation.
+    // ISA standard placeholder; replace with the value printed by the 'b'
+    // calibration routine for an accurate AGL readout.
+    #ifndef BARO_SEA_LEVEL_PA
+        #define BARO_SEA_LEVEL_PA 101325.0f   // ISA standard — placeholder
+    #endif
+
+    // Core-1 task poll rate (Hz). Telemetry-grade; 10-25 Hz is plenty.
+    #ifndef BARO_SAMPLE_RATE_HZ
+        #define BARO_SAMPLE_RATE_HZ 20
+    #endif
+
+    // Output PT1 low-pass coefficient (0.0-1.0), same convention as B_ACCEL /
+    // B_GYRO. Lower = smoother (slower) altitude readout.
+    #ifndef BARO_LPF
+        #define BARO_LPF 0.20f
+    #endif
+#endif
+
+//=============================================================================
+// GPS PASSTHROUGH (optional, telemetry-only — ESP32 Core 1, RX-only UART)
+//=============================================================================
+// PASSTHROUGH ONLY. Raw NMEA bytes are read on a DEDICATED Core-1 FreeRTOS task
+// and the most-recent complete sentence is exposed verbatim via the swarm API
+// as a `gps` field. The FC parses NOTHING — no fix decoding, no fusion, no
+// waypoints, no return-to-home, no geo-fence, no navigation. The Core-0 1 kHz
+// flight loop NEVER reads GPS data; GPS is bytes for an external flight
+// computer (see scope.md "GPS … flight computer territory" and
+// docs/findings/gps_passthrough_spec_2026-05-20.md — Flavour A).
+//
+// SECURITY NOTE: raw NMEA contains absolute latitude/longitude. The swarm API
+// is unauthenticated — on an open network this `gps` field is a location leak.
+// Run the FC on an isolated SSID only (session3_readiness_2026-05-20.md §6).
+//
+// ESP32 / ESP32-S3 only — passthrough exists to serve the WiFi telemetry
+// surface, which Teensy lacks.
+//
+// Default OFF. When undefined, the GPS module + task + telemetry field compile
+// to zero bytes (#ifdef-gated everywhere, like other optional features).
+//
+//#define USE_GPS
+
+#ifdef USE_GPS
+    // UART selection (1 or 2). UART1 is the default — UART0 is the USB debug
+    // console and UART2 is reserved for SBUS in the default receiver build.
+    // Do NOT enable USE_GPS together with USE_IBUS_RECEIVER / USE_DSM_RECEIVER /
+    // USE_SERIAL_COMMANDS — they share UART1; a compile-time #error in gps.h
+    // enforces this.
+    #ifndef GPS_UART_NUM
+        #define GPS_UART_NUM 1
+    #endif
+
+    // GPS module baud rate. NEO-6M factory default: 9600. NEO-M8N / NEO-M9N
+    // factory default once configured: 38400. The driver is sensor-agnostic —
+    // it just reads NMEA.
+    #ifndef GPS_UART_BAUD
+        #define GPS_UART_BAUD 9600
+    #endif
+
+    // Per-poll byte budget drained from the UART RX FIFO. One NMEA sentence is
+    // ~82 bytes max; 256 covers a few queued sentences plus one in-progress
+    // framing without letting a byte-storm monopolise the Core-1 task.
+    #ifndef GPS_BUFFER_BYTES
+        #define GPS_BUFFER_BYTES 256
+    #endif
+
+    // Liveness window. If no complete sentence arrives in this many ms, the
+    // telemetry `gps.ok` field reads false (GPS missing / unpowered / no link).
+    #ifndef GPS_STALE_TIMEOUT_MS
+        #define GPS_STALE_TIMEOUT_MS 2000
+    #endif
+#endif
+
+//=============================================================================
 // RECEIVER / COMMAND SOURCE SELECTION
 //=============================================================================
 // Uncomment ONE RC receiver protocol for manual flying:
@@ -493,6 +599,22 @@
 //#define SERVO_PIN_3 8
 //#define SERVO_PIN_4 9
 //
+// ESP32 GPIO conflict resolution (2026-05-20, Option A — see
+// docs/findings/esp32_gpio_conflict_resolution_2026-05-20.md):
+//   SERVO_PIN_3/4/5 ESP32 defaults are now GPIO 13/5/18 — moved OFF the
+//   receiver pins (was 4/16/17) so ANY RC protocol (SBUS, iBUS, DSM) and a
+//   1-5 servo count are supported without a GPIO double-claim. The W1 #error
+//   guards in pin_definitions_esp32.h stay as a regression net.
+//   GPIO 13 is MOTOR_PIN_6's default — the new SERVO_PIN_3 is only safe on a
+//   4-motor (or fewer) airframe. If you populate motor 6, override SERVO_PIN_3
+//   (and/or MOTOR_PIN_6) below to a different free GPIO before building.
+//   SERVO_PIN_6/7 mirror SERVO_PIN_4/5 (no free GPIO remains); they are
+//   unused on a 1-5 servo airframe. If you need 6-7 servos, assign distinct
+//   free pins here.
+//#define SERVO_PIN_3 13   // ESP32 default (off GPIO 4 — IBUS/DSM/SERIAL_CMD_RX)
+//#define SERVO_PIN_4 5    // ESP32 default (off GPIO 16 — SBUS_RX)
+//#define SERVO_PIN_5 18   // ESP32 default (off GPIO 17 — SBUS_TX)
+//
 // IMU I2C pins:
 //#define IMU_SDA_PIN 18
 //#define IMU_SCL_PIN 19
@@ -513,6 +635,30 @@
 //
 // Status LED:
 //#define LED_PIN 13
+
+//=============================================================================
+// GPS PASSTHROUGH PINS (USE_GPS — ESP32 UART1, RX-only)
+//=============================================================================
+// GPS_PIN_RX is the UART1 RX GPIO the GPS module's TX wire connects to.
+// Defaults below: GPIO 4 on standard ESP32 (the UART1-RX default), GPIO 16 on
+// ESP32-S3. GPIO 4 was historically SERVO_PIN_3 too, but the 2026-05-20
+// GPIO-conflict fix moved SERVO_PIN_3 to GPIO 13 — so GPIO 4 is conflict-free
+// for GPS on a current build. The receiver-vs-GPS UART1 contention is caught
+// by the #error guard in gps.h. Passthrough is RX-only: GPS_PIN_TX is -1
+// (Arduino "unused" sentinel) so no TX GPIO is claimed.
+// See docs/findings/gps_passthrough_spec_2026-05-20.md §3.
+#ifdef USE_GPS
+    #ifndef GPS_PIN_RX
+        #ifdef USE_ESP32S3
+            #define GPS_PIN_RX 16   // ESP32-S3 UART1 RX
+        #else
+            #define GPS_PIN_RX 4    // ESP32 UART1 RX
+        #endif
+    #endif
+    #ifndef GPS_PIN_TX
+        #define GPS_PIN_TX -1       // unused — passthrough is RX-only
+    #endif
+#endif
 
 //=============================================================================
 // Debug Options

@@ -1,6 +1,6 @@
 # Flight Controller Firmware - Scope
 
-> Last updated: 2026-03-30
+> Last updated: 2026-05-20
 > Status: Active
 
 ---
@@ -235,12 +235,17 @@ This is a separate project. The FC firmware just exposes the WiFi API endpoints.
 
 - Physical drone design, frame construction, component selection (→ engineering360)
 - SD card logging or runtime configuration files in live firmware
-- GPS, barometer, magnetometer — flight computer territory
+- GPS, barometer, magnetometer — flight computer territory [^baro-gps]
+
+[^baro-gps]: Telemetry-only barometer and passthrough-only GPS are now in scope as Core-1 modular sensors — they add data, not flight logic. See [findings/barometer_integration_spec_2026-05-20.md](findings/barometer_integration_spec_2026-05-20.md) (telemetry-only baro) and [findings/gps_passthrough_spec_2026-05-20.md](findings/gps_passthrough_spec_2026-05-20.md) (passthrough-only GPS — bytes relayed to the flight computer). GPS-guided/autonomous flight remains OUT of scope.
 - Ground control station software
 - Professional/commercial-grade features
 - Custom PCB design (uses off-the-shelf boards)
 - Autonomous navigation or waypoint following — flight computer territory
 - Multi-drone coordination or swarm features — flight computer territory
+- swarm-API authentication / TLS — intentionally NOT implemented in the current development phase [^api-auth]
+
+[^api-auth]: The ESP32 swarm-API (HTTP + WebSocket command/telemetry, plus OTA) has no authentication and no transport encryption. This is a deliberate development-phase decision (2026-05-20): the flight controller is assumed to run on a closed, trusted lab LAN. Anyone with LAN access can send flight commands, trigger an OTA flash, or read telemetry — including GPS location once `USE_GPS` is enabled. **Do NOT connect the FC to a shared or untrusted network in this state.** A shared-secret header or TLS is deferred, not refused; see [findings/swarm_api_contract_2026-05-20.md](findings/swarm_api_contract_2026-05-20.md) for the options. Revisit before any non-lab deployment.
 - In-flight mode switching — flight computer sends commands, FC executes
 - Dynamic gyro filtering (FFT, RPM filters) — Betaflight-level complexity, not needed
 - In-flight PID tuning — calibration mode + fc_tool covers this
@@ -315,6 +320,7 @@ This sub-project is the primary research workspace for all flight dynamics topic
 | 2026-02-09 | Calibration coverage table: all items marked Done. Added RadioComm universal command layer design (all command sources → RadioComm → FC). Added configurable pin definitions as technical decision. | LLM + User |
 | 2026-02-10 | Added hardware architecture vision (modular base system, progression path, external controller app). Added iBUS receiver support. Updated RadioComm to include iBUS. Wiring diagrams reorganized into dedicated folder with specific build guides. | LLM + User |
 | 2026-02-10 | All RadioComm command sources implemented (serial, I2C, WiFi API). I2C slave on Wire1. Arbitration design doc written. External controller app (swarm_api) marked as built. | LLM + User |
+| 2026-05-20 | Bumped "Last updated" header to match content. Added carve-out footnote on the baro/GPS/magnetometer exclusion: telemetry-only barometer and passthrough-only GPS are now in scope as Core-1 modular sensors (see barometer/GPS specs); GPS-guided flight remains out of scope. | LLM + User |
 
 ---
 

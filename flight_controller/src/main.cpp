@@ -44,6 +44,12 @@
 #if defined(USE_ESP32) && defined(USE_OTA)
 #include "ota.h"
 #endif
+#if defined(USE_ESP32) && defined(USE_BAROMETER)
+#include "barometer.h"
+#endif
+#if defined(USE_ESP32) && defined(USE_GPS)
+#include "gps.h"
+#endif
 
 // ESP32 FreeRTOS for dual-core support
 #ifdef USE_ESP32
@@ -366,6 +372,27 @@ void setup() {
     #endif
     #ifdef USE_OTA
     setupOTA();
+    #endif
+
+    // Optional telemetry-only barometer — dedicated Core-1 FreeRTOS task
+    // (priority 1, 3072 B stack). Spawned after the WiFi stack so its tasks
+    // exist first; the task does its own begin() so a slow/absent sensor
+    // never delays setup(). It NEVER touches the Core-0 flight loop.
+    // See docs/findings/phase_w2_barometer_landed_2026-05-20.md.
+    #ifdef USE_BAROMETER
+    startBarometerTask();
+    Serial.println(F("[ESP32] Barometer telemetry task on Core 1"));
+    #endif
+
+    // Optional GPS passthrough — dedicated Core-1 FreeRTOS task (priority 1,
+    // 3072 B stack). Reads raw NMEA on UART1 RX-only and publishes the latest
+    // sentence to a spinlock-guarded snapshot for the swarm API. PASSTHROUGH
+    // ONLY: the FC parses nothing and the Core-0 flight loop never reads GPS.
+    // The task does its own non-blocking begin() so a slow/absent module never
+    // delays setup(). See docs/findings/phase_w5_gps_landed_2026-05-20.md.
+    #ifdef USE_GPS
+    startGpsTask();
+    Serial.println(F("[ESP32] GPS passthrough task on Core 1"));
     #endif
 
     #ifdef USE_OLED_DISPLAY

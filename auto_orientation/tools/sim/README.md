@@ -1,5 +1,7 @@
 # tools/sim — Balance-bot simulator + offline tuner
 
+> **Demoted 2026-05-20:** `brute_tune.py` is now an **optional cold-start seed generator**, not the operational tuning loop. The Uno's PID gains are tuned via an on-device guided P→I→D session persisted to EEPROM — see [`../../docs/findings/uno_guided_tuning_design_2026-05-20.md`](../../docs/findings/uno_guided_tuning_design_2026-05-20.md). Use this directory only to seed a brand-new chassis.
+
 Python harness for **offline** tuning of the Uno-minimal balancing program. The Uno does not auto-tune itself; this directory produces the fixed PID + PWM constants it ships with.
 
 The Mega-universal balancer does its own on-MCU tuning (BOOTSTRAP + RLS) and does **not** consume the output of this directory — see [`../../docs/MEGA_UNIVERSAL_PLAN.md`](../../docs/MEGA_UNIVERSAL_PLAN.md). Use this directory only for the Uno path.

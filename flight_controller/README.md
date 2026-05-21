@@ -214,6 +214,8 @@ This is the main configuration file. Everything lives here:
 // Select your IMU
 #define USE_MPU6050          // Most common
 //#define USE_MPU9250        // 9-axis with magnetometer
+//#define USE_BNO055         // Phase A: detect-only scaffolding (not yet flight-ready)
+//#define USE_BNO085         // Phase A: detect-only scaffolding (not yet flight-ready)
 
 // Select your receiver protocol
 #define USE_SBUS_RECEIVER    // FlySky, FrSky
@@ -281,7 +283,7 @@ flight_controller/
 │   ├── calibration_reset.py  # Reset config.h to factory defaults
 │   └── complexity_calculator.py  # CPU/memory analysis
 ├── tests/
-│   └── test_calibration.sh   # Automated test suite (19 tests)
+│   └── test_calibration.sh   # Automated test suite (18 tests / 42 assertions)
 ├── platformio.ini            # Build configuration
 └── docs/                     # Documentation
 ```
@@ -293,9 +295,14 @@ flight_controller/
 | Document | Description |
 |----------|-------------|
 | [docs/0_quickstart.md](docs/0_quickstart.md) | 60-minute setup guide |
+| [docs/1_hardware_setup.md](docs/1_hardware_setup.md) | Complete wiring guide with diagrams and BOM |
 | [docs/2_calibration_guide.md](docs/2_calibration_guide.md) | Detailed calibration procedures |
+| [docs/3_troubleshooting.md](docs/3_troubleshooting.md) | Problem-solving reference |
+| [docs/diagnose_decision_tree.md](docs/diagnose_decision_tree.md) | Decision-tree symptom flow |
+| [docs/pid-tuning-guide.md](docs/pid-tuning-guide.md) | `g`-command PID tuning workflow |
 | [docs/teensy_wiring.md](docs/teensy_wiring.md) | Teensy wiring diagrams |
 | [docs/esp32_wiring.md](docs/esp32_wiring.md) | ESP32 wiring diagrams |
+| [docs/esp32_wifi_onboarding.md](docs/esp32_wifi_onboarding.md) | First-time ESP32 WiFi credentials setup |
 | [docs/scope.md](docs/scope.md) | Project scope and boundaries |
 | [docs/roadmap.md](docs/roadmap.md) | Feature roadmap |
 
@@ -308,7 +315,7 @@ flight_controller/
 | [tools/flash_and_run.sh](tools/flash_and_run.sh) | Build, flash, and launch serial monitor |
 | [tools/calibration_reset.py](tools/calibration_reset.py) | Reset config.h calibration values to defaults |
 | [tools/complexity_calculator.py](tools/complexity_calculator.py) | CPU timing, memory usage, and source complexity analysis |
-| [tests/test_calibration.sh](tests/test_calibration.sh) | Automated calibration command test suite (19 tests) |
+| [tests/test_calibration.sh](tests/test_calibration.sh) | Automated calibration command test suite (18 tests / 42 assertions) |
 
 ---
 

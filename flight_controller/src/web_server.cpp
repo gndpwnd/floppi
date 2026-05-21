@@ -25,6 +25,20 @@
 #include <ESPAsyncWebServer.h>
 #include <ArduinoJson.h>
 
+// Optional barometer telemetry — read directly from the baro module's
+// spinlock-guarded snapshot. Self-contained per contradiction C-3: this adds
+// no field to DisplayData_t, so the schema struct is untouched.
+#ifdef USE_BAROMETER
+#include "barometer.h"
+#endif
+
+// Optional GPS passthrough telemetry — read directly from the GPS module's
+// spinlock-guarded snapshot. Self-contained per contradiction C-3: this adds
+// no field to DisplayData_t, so the schema struct is untouched.
+#ifdef USE_GPS
+#include "gps.h"
+#endif
+
 // Server and WebSocket instances
 static AsyncWebServer server(80);
 static AsyncWebSocket ws("/ws");
@@ -81,6 +95,39 @@ static void serializeDisplayData(JsonObject& root, const DisplayData_t* data) {
     net["ip"] = data->ip_address;
     net["rssi"] = data->wifi_rssi;
     net["connected"] = data->wifi_connected;
+
+#ifdef USE_BAROMETER
+    // Barometer telemetry (telemetry-only — Core-1 task snapshot).
+    // Schema change: adds a "baro" object to /api/status and /ws. Per the
+    // swarm-API contract (swarm_api_contract_2026-05-20.md §7), any schema
+    // change should re-stamp that doc's "Verified" block — flagged for the
+    // merged telemetry workstream, not silently relied upon here.
+    JsonObject baro = root["baro"].to<JsonObject>();
+    baro["ok"] = baroTelemetryOk();
+    baro["pressure_pa"] = serialized(String(baroTelemetryPressurePa(), 1));
+    baro["altitude_m"]  = serialized(String(baroTelemetryAltitudeM(), 2));
+    baro["temp_c"]      = serialized(String(baroTelemetryTemperatureC(), 2));
+#endif
+
+#ifdef USE_GPS
+    // GPS passthrough telemetry (raw NMEA — Core-1 task snapshot, Flavour A).
+    // PASSTHROUGH ONLY: gps.nmea is the most-recent complete sentence verbatim;
+    // the FC parses nothing. gps.ok is a liveness bit (a sentence arrived
+    // within GPS_STALE_TIMEOUT_MS), NOT a fix-quality bit — fix status lives
+    // inside the NMEA text for the consumer to parse. gps.age_ms is the age of
+    // that sentence. Schema change: adds a "gps" object to /api/status and /ws.
+    // Per the swarm-API contract (swarm_api_contract_2026-05-20.md §7), any
+    // schema change should re-stamp that doc's "Verified" block — flagged for
+    // the merged telemetry workstream, not silently relied upon here.
+    {
+        char gps_nmea[GPS_NMEA_MAX];
+        uint32_t gps_age = gpsTelemetryNMEA(gps_nmea, sizeof(gps_nmea));
+        JsonObject gps = root["gps"].to<JsonObject>();
+        gps["nmea"]   = gps_nmea;
+        gps["age_ms"] = gps_age;
+        gps["ok"]     = gpsTelemetryOk();
+    }
+#endif
 
     // System info
     root["heap"] = ESP.getFreeHeap();

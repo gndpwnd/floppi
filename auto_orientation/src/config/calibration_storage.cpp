@@ -13,6 +13,7 @@
 
 #include "calibration_storage.h"
 #include "../storage/persistent_storage.h"
+#include "../util/crc8.h"
 #include <string.h>
 
 // ============================================================================
@@ -21,42 +22,21 @@
 
 uint8_t calculateCRC8(const uint8_t* data, uint16_t length) {
   /*
-   * CRC-8-CCITT polynomial CRC. Parameters:
-   *   polynomial  = 0x07 (x^8 + x^2 + x + 1)
-   *   init        = 0x00
-   *   reflect_in  = false
-   *   reflect_out = false
-   *   xor_out     = 0x00
-   *
-   * Algorithm: standard bitwise polynomial-division CRC. Each input byte is
-   * XOR-ed into the CRC register, then the register is shifted left 8 times,
-   * XOR-ing the polynomial whenever the high bit was set before the shift.
-   *
-   * Replaces the prior single-byte XOR sum (per audit P1-015 in
-   * docs/findings/audit_security_2026-05-20.md), which silently missed any
+   * CRC-8-CCITT polynomial CRC (polynomial 0x07, init 0x00, no reflection,
+   * no final XOR). Replaces the prior single-byte XOR sum (per audit P1-015
+   * in docs/findings/audit_security_2026-05-20.md), which silently missed any
    * even-count bitflip in a single column. CRC-8-CCITT detects all single-
    * and two-bit errors within an 8-byte window and most burst errors.
    *
-   * Implementation is bitwise (no 256-byte table) to keep flash use low on
-   * AVR builds — ~120 bytes of code vs. 256 bytes of .rodata. The hot path
-   * runs once per EEPROM save/restore, so the per-byte 8-shift cost is
-   * irrelevant.
+   * The algorithm now lives in src/util/crc8.h as util::crc8_ccitt() — one
+   * shared leaf replacing what used to be a byte-identical private copy here
+   * and in balancing_robot_uno/tune_storage.cpp (tech-debt finding R1,
+   * docs/findings/ao_uno_techdebt_2026-05-20.md §D1). calculateCRC8 is kept
+   * as the public name so callers in main.cpp and the balance code are
+   * unaffected; it is a thin delegating wrapper. The byte output is identical
+   * to the previous inline implementation.
    */
-
-  if (!data || length == 0) return 0;
-
-  uint8_t crc = 0x00;
-  for (uint16_t i = 0; i < length; i++) {
-    crc ^= data[i];
-    for (uint8_t bit = 0; bit < 8; bit++) {
-      if (crc & 0x80) {
-        crc = (uint8_t)((crc << 1) ^ 0x07);
-      } else {
-        crc = (uint8_t)(crc << 1);
-      }
-    }
-  }
-  return crc;
+  return util::crc8_ccitt(data, length);
 }
 
 // ============================================================================

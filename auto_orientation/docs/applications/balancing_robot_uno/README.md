@@ -1,7 +1,7 @@
 # Balancing Robot — Uno Minimal
 
-**Status**: Phase 4U landed 2026-05-19 (scaffold) / 2026-05-20 (Workstream UNO-C docs).
-**Build env**: `arduino_uno_minimal`.
+**Status**: Phase 4U landed 2026-05-19 (scaffold) / 2026-05-20 (guided-tuning pivot — Workstream UT-D docs).
+**Build envs**: `arduino_uno_minimal` (lean flight build) + `arduino_uno_tuning` (guided P→I→D tuning build).
 **Sibling**: [../balancing_robot/INDEX.md](../balancing_robot/INDEX.md) — the Mega-universal reference application.
 **Index**: [INDEX.md](INDEX.md).
 
@@ -19,7 +19,7 @@ else                          -> PWM = PID(pitch); motors.write(PWM)
 
 No adaptive layer. No BOOTSTRAP, no RLS, no OnlineMountingEstimator, no collision detection, no position containment. Those live on the Mega-universal sibling. If you need any of them, you are not looking at the right application — see [../balancing_robot/INDEX.md](../balancing_robot/INDEX.md).
 
-Gains (`Kp`, `Ki`, `Kd`, `PITCH_OFFSET_DEG`, `PWM_MAX`) are **hardcoded constants** baked in at compile time from `balance_constants.h`. That file is generated offline by the Python brute-force tuner (`tools/sim/brute_tune.py`). When the bot stops balancing well — new battery, new wheels, new surface, new payload — you re-run the tuner, regenerate `balance_constants.h`, and reflash. There is no on-MCU adaptation, ever.
+Gains (`Kp`, `Ki`, `Kd`, `PITCH_OFFSET_DEG`, `PWM_MAX`) are tuned through an **on-device guided P→I→D tuning session** — a serial-driven interactive walkthrough hosted by the `arduino_uno_tuning` build env. The tuned gains are persisted to **EEPROM**; the flight build (`arduino_uno_minimal`) reads them at boot. `balance_constants.h` is a hand-editable **cold-start seed** used only when EEPROM holds no tune. There is no on-MCU *adaptation* (no RLS, no BOOTSTRAP) — tuning is a deliberate operator-driven session, not continuous learning. See [§4](#4-the-guided-tuning-workflow) for the workflow and [`findings/uno_guided_tuning_design_2026-05-20.md`](../../findings/uno_guided_tuning_design_2026-05-20.md) for the design.
 
 ---
 
@@ -72,13 +72,13 @@ If `s` returns NaN pitch on day one, the BNO055 cal blob is missing — calibrat
 
 ---
 
-## 4. The re-tune workflow
+## 4. The guided tuning workflow
 
-**This is the operational loop you care about.** Re-tune whenever the bot stops balancing well.
+**This is the operational loop you care about.** The Uno balance build is primarily a *guided, interactive, on-device P→I→D tuning experience*: you flash the tuning firmware, open a serial terminal, and the firmware walks you through tuning each PID term one at a time while the bot balances live. The tuned result is saved to EEPROM; you then reboot into the lean flight build to fly. The design is documented in [`findings/uno_guided_tuning_design_2026-05-20.md`](../../findings/uno_guided_tuning_design_2026-05-20.md).
 
 ### When to re-tune
 
-Re-run the tuner and reflash when any of these change:
+Re-run a guided session when the bot stops balancing well — typically after any of:
 
 - **Battery**: voltage shifts more than ~15 %, chemistry swap (NiMH → LiPo), or noticeable sag.
 - **Wheels / tyres**: different diameter, different rubber, different grip surface.
@@ -86,72 +86,63 @@ Re-run the tuner and reflash when any of these change:
 - **Motors / gearbox**: noticeable wear or replacement.
 - **Operating surface**: carpet → hardwood, etc.
 
-If you find yourself re-tuning more than once per session, you have outgrown the Uno path — switch to the Mega-universal sibling (which adapts on-MCU).
+A re-tune is a guided serial session — no recompile, no host tooling. The previous tune lives in EEPROM until you overwrite it.
 
-### Step 1 — Run the tuner
+### Step 1 — Flash the guided-tuning firmware
 
 From `auto_orientation/`:
 
 ```bash
-python3 tools/sim/brute_tune.py \
-    --mode evolutionary \
-    --budget 5000 \
-    --plant uno_small \
-    --output src/applications/balancing_robot_uno/balance_constants.h
+pio run -e arduino_uno_tuning -t upload
 ```
 
-Arguments:
+`arduino_uno_tuning` is the `arduino_uno_minimal` program **plus** a `TuningSession` state machine and the serial command set below. (The flight build omits all of it to stay lean — see [§5](#5-what-lives-where).)
 
-- `--mode {grid, random, evolutionary}` — search strategy. `evolutionary` (hand-rolled GA, pop=30, ~50 generations) is the recommended default for production tunes. `random` is fine for quick exploration. `grid` is coarse-grid + refinement; use only when you want determinism over speed.
-- `--budget N` — total simulated balance trials. **5000 is the production target** for `evolutionary`. Drop to `1000` for a smoke test (~30 s), bump to `10000` if the GA appears to plateau early. Each trial = 8 s of simulated balance × 2 init signs.
-- `--plant {reference, uno_small, stress}` — plant preset baked into `tools/sim/brute_tune.py:PLANT_PRESETS`. **Use `uno_small` for the Uno bench bot** (smaller chassis, weaker motors, more friction, more sensor noise than the reference Mega bot). `reference` mirrors `SelfBallancingRobot3.ino`. `stress` is a harder plant used for robustness sweeps.
-- `--output PATH` — where to write the generated header. The path above drops it directly into the source tree so the next `pio run` picks it up. Relative paths resolve against `auto_orientation/`.
+### Step 2 — Open serial and start the session
 
-Optional knobs (default-good — leave alone unless you know why):
+Open a serial terminal at **115200 baud**. The bot boots balancing on its current EEPROM (or seed) gains in the `IDLE` stage. Type `t` to begin tuning → the firmware enters **STAGE_P**.
 
-- `--seed N` — RNG seed (default 42; the search is deterministic given seed).
-- `--duration N` — trial duration in seconds (default 8).
-- `--init-perturbation N` — initial tilt in degrees (default 8.0).
-- `--disturbance N` — periodic impulse magnitude in deg/s² (default 500).
-- `--no-write` — dry run; print best gains without touching the header.
-- `--quiet` — suppress progress output.
+The bot stays **live and balancing throughout** every stage; the 25° tip-cutoff still catches falls and `a` is always available as an emergency stop.
 
-Full flag list: `python3 tools/sim/brute_tune.py --help`. Recipe summary: [tools/sim/README.md](../../../tools/sim/README.md).
+### Step 3 — Walk P → I → D
 
-The tuner prints progress every 5 % of the budget and finishes with:
+Each stage tunes one term with the other two masked per the classic manual PID procedure:
 
-```
-Winning gains:
-  Kp = ...
-  Ki = ...
-  Kd = ...
-  PITCH_OFFSET_DEG = ...
-  PWM_MAX = ...
-```
+- **Stage P** — `Ki` and `Kd` forced to 0. Tap `+` to raise `Kp` until the bot is crisp but visibly oscillating, then back off ~20–30 % with `-`. Press `n` to lock `Kp` and advance.
+- **Stage I** — `Kp` locked, `Kd` still 0. Watch for steady drift; raise `Ki` until the drift is removed, back off if a slow (<1 Hz) wobble appears. `n` advances; `b` returns to Stage P.
+- **Stage D** — `Kp` and `Ki` locked. Raise `Kd` to damp overshoot ringing; back off if the motors get buzzy. `n` advances to **REVIEW**.
+- **REVIEW** — the firmware prints the final `Kp/Ki/Kd`. `w` saves; `q` discards; `b` re-enters Stage D.
 
-### Step 2 — Sanity-check the result
+### Step 4 — The serial command set
 
-Open the generated `src/applications/balancing_robot_uno/balance_constants.h` and compare against the reference (hand-tuned working bot, `archive/balancing_robot_reference/SelfBallancingRobot3.ino`):
+Available in the `arduino_uno_tuning` build (see design doc §2.2):
 
-| Constant | Reference | Sanity range |
+| Cmd | Meaning | Valid in |
 |---|---|---|
-| `Kp` | 65 | 20 – 200 |
-| `Ki` | 12 | 0 – 50 |
-| `Kd` | 38 | 5 – 100 |
-| `PITCH_OFFSET_DEG` | −8.6 | −15 – +15 |
-| `PWM_MAX` | 255 | 150 – 255 |
+| `t` | Start tuning session → Stage P | IDLE |
+| `+` | Increase the current stage's gain one step | Stage P/I/D |
+| `-` | Decrease the current stage's gain one step | Stage P/I/D |
+| `*` | Coarse-mode toggle (×5 ↔ ×1 step size) | Stage P/I/D |
+| `n` | Lock the current term, advance to next stage | Stage P/I/D |
+| `b` | Back one stage | Stage I/D, REVIEW |
+| `r` | Reset the current term to its stage-entry value | Stage P/I/D |
+| `w` | Save tuned gains to EEPROM | REVIEW |
+| `q` | Quit without saving → IDLE | any tuning stage |
+| `a` | Emergency stop (latched) | any |
+| `s` | One-line status (stage + working gains) | any |
+| `p` | Periodic telemetry toggle | any |
 
-If anything is wildly outside that range (e.g. Kp=480 or Kd=0.5), the tuner has converged on a degenerate corner. Re-run with a different `--seed` or fall back to `--mode random --budget 2000`.
+### Step 5 — Save and fly
 
-Also check the header preamble — the tuner records mode, budget, seed, plant preset, achieved fitness, and tip time so the run is reproducible.
-
-### Step 3 — Rebuild and flash
+In **REVIEW**, press `w`. The firmware writes the tune to EEPROM and prints `SAVED. Reboot to fly.` Then flash and boot the lean flight build:
 
 ```bash
 pio run -e arduino_uno_minimal -t upload
 ```
 
-### Step 4 — Bench validation
+`arduino_uno_minimal` reads the EEPROM tune at boot (falling back to the `balance_constants.h` seed if EEPROM is empty) and prints which source it used. It carries no tuning UX and no prompt strings.
+
+### Step 6 — Bench validation
 
 1. Place the bot upright on a flat indoor surface (hardwood or low-pile carpet).
 2. Release. Hands off.
@@ -160,6 +151,18 @@ pio run -e arduino_uno_minimal -t upload
 **Success criterion** (roadmap §Phase 4U.5): **≥ 30 s balance** on a flat indoor surface, no operator intervention.
 
 If the bot tips immediately, see Troubleshooting §6.
+
+### Generating a fresh seed (optional)
+
+For a **brand-new chassis** with no working gains at all, the cold-start seed in `balance_constants.h` may be too far off for the bot to balance well enough to start Stage P. The offline Python tuner can regenerate that seed:
+
+```bash
+python3 tools/sim/brute_tune.py \
+    --mode evolutionary --budget 5000 --plant uno_small \
+    --output src/applications/balancing_robot_uno/balance_constants.h
+```
+
+This is now an **optional one-shot seed generator**, not the operational tuning loop — you still finish with a guided on-device session. `balance_constants.h` may also simply be hand-edited. Full flag list: `python3 tools/sim/brute_tune.py --help`; recipe summary: [tools/sim/README.md](../../../tools/sim/README.md).
 
 ---
 
@@ -170,14 +173,20 @@ src/applications/balancing_robot_uno/
 ├── main.cpp              # Arduino setup() + loop() + MsTimer2 200 Hz ISR + serial CLI
 ├── uno_balance_app.h     # UnoBalanceApp class — IMU read, PID step, motor write
 ├── uno_balance_app.cpp   # implementation (~150 LOC)
-└── balance_constants.h   # REGENERATED BY THE TUNER — do not hand-edit (see §7)
+├── balance_constants.h   # hand-editable COLD-START SEED (see §7)
+├── tune_storage.h        # EEPROM tune-block API — saveTuning/loadTuning/hasTuning
+├── tune_storage.cpp      # EEPROM persistence (region base 0x200, CRC8)
+├── tuning_session.h      # TuningSession state machine — guided P/I/D walkthrough
+└── tuning_session.cpp    # implementation; gated on UNO_GUIDED_TUNING (tuning build only)
 
 tools/sim/
-├── brute_tune.py                       # the tuner
-├── balance_bot_sim.py                  # plant + IMU + PID simulator the tuner drives
-├── balance_constants_template.h.in     # template the tuner fills in
-└── README.md                           # tuner recipe summary
+├── brute_tune.py                       # optional cold-start seed generator
+├── balance_bot_sim.py                  # plant + IMU + PID simulator brute_tune.py drives
+├── balance_constants_template.h.in     # template brute_tune.py fills in
+└── README.md                           # seed-generator recipe summary
 ```
+
+`tune_storage.{h,cpp}` and `tuning_session.{h,cpp}` land this session (Workstreams UT-A / UT-C of the [guided-tuning design](../../findings/uno_guided_tuning_design_2026-05-20.md)). Both the `arduino_uno_minimal` (flight) and `arduino_uno_tuning` (guided-tuning) envs compile `tune_storage.cpp`; only `arduino_uno_tuning` defines `UNO_GUIDED_TUNING`, so the flight build compiles out all `TuningSession` code and prompt strings.
 
 Reused framework modules (no Uno-specific code added):
 
@@ -229,13 +238,13 @@ Reused framework modules (no Uno-specific code added):
 
 - **DO NOT add adaptive code** (RLS, BOOTSTRAP, OnlineMountingEstimator, collision detection, position containment, K cross-check, velocity outer loop) to the Uno program. That is the Mega-universal application's job, per [scope.md §Platform bifurcation](../../scope.md#platform-bifurcation-2026-05-19--mega-universal-vs-uno-minimal). The Uno's design is to be small enough that the flash-erase-write cycle IS the tuning loop.
 
-- **DO NOT hand-tune `balance_constants.h`** for production. The Python tuner is the source of truth. The header is regenerated wholesale on every tuner run; any hand-edits will be overwritten. Emergency exception: tweaking `PITCH_OFFSET_DEG` by ≤ 2° to recover from a barely-tipping bot when the operator cannot run the tuner is acceptable, but flag the file as dirty in git so the next tuner run is intentional.
+- **`balance_constants.h` is a hand-editable cold-start seed — that is intentional.** It is no longer auto-generated, and editing it (or regenerating it via `brute_tune.py`) is fine. The *live* tuned gains come from EEPROM, set via the guided session, and supersede the seed at boot. Do not re-add "DO NOT HAND-EDIT" language — see §7 note below and the [guided-tuning design](../../findings/uno_guided_tuning_design_2026-05-20.md).
 
-- **DO NOT edit `tools/sim/balance_constants_template.h.in`** unless you are extending the tuner itself (adding a new constant to the contract). The template is the schema the on-MCU consumer (`uno_balance_app.cpp`, `main.cpp`) is wired against — break the schema and the build breaks.
+- **DO NOT edit `tools/sim/balance_constants_template.h.in`** unless you are extending the seed generator itself (adding a new constant to the contract). The template is the schema the on-MCU consumer (`uno_balance_app.cpp`, `main.cpp`) is wired against — break the schema and the build breaks.
 
-- **DO NOT add serial commands for runtime gain editing.** The whole point of the Uno path is that constants are compile-time. If runtime tunability matters, you want the Mega.
+- **Serial gain-tuning commands ARE the intended design** (as of 2026-05-20). An earlier revision of this README said "DO NOT add serial commands for runtime gain editing" — that is **superseded** by the operator's clarification that the Uno balance build is primarily a guided on-device P→I→D tuning experience. The `t/+/-/*/n/b/r/w/q` command set lives in the `arduino_uno_tuning` build by design; see [`findings/uno_guided_tuning_design_2026-05-20.md`](../../findings/uno_guided_tuning_design_2026-05-20.md) §2.2. Note this is *guided manual tuning*, not on-MCU adaptation — RLS / BOOTSTRAP / OnlineMountingEstimator remain off-limits on the Uno (first bullet).
 
-- **DO NOT introduce a new build env.** `arduino_uno_minimal` is the only Uno env. The legacy `uno_balance` env exists but is the old universal-stack-on-Uno path that motivated the 2026-05-19 pivot — do not extend it.
+- **The `arduino_uno_tuning` build env IS the intended design** (as of 2026-05-20). An earlier revision said "DO NOT introduce a new build env" — that is **superseded**. The flash budget makes the split mandatory: `arduino_uno_tuning` hosts the guided-tuning firmware (state machine + ~3–5 KB of prompt strings); `arduino_uno_minimal` stays the lean flight build. The legacy `uno_balance` env (old universal-stack-on-Uno path) is still dead — do not extend *that* one.
 
 ---
 
@@ -253,4 +262,4 @@ Reused framework modules (no Uno-specific code added):
 
 ---
 
-*Last updated: 2026-05-20 (Workstream UNO-C — re-tune workflow doc).*
+*Last updated: 2026-05-20 (Workstream UT-D — guided-tuning pivot: §4 walkthrough, §7 constraints rewrite).*

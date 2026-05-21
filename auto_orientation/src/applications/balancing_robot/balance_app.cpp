@@ -192,6 +192,11 @@ BalanceApp::BalanceApp(OrientationSensor& imu,
       // matches member declaration (enc_left_ first). The WheelEncoder ctor
       // is cheap — just stashes the pin numbers; the heavy work (attaching
       // ISR vectors via PJRC Encoder) happens in begin().
+      // Phase 4M.2 — encoder-driven K cross-check accumulators. Declared in
+      // balance_app.h before bootstrap_result_ / enc_left_, so initialized
+      // here before enc_left_ to keep init order matching declaration order.
+      bs_pulse_start_vel_(0.0f),
+      bs_k_enc_sum_(0.0f),
       enc_left_(ENC_L_A, ENC_L_B),
       enc_right_(ENC_R_A, ENC_R_B),
       pwm_disc_step_index_(0),
@@ -199,7 +204,8 @@ BalanceApp::BalanceApp(OrientationSensor& imu,
       pwm_disc_step_end_ms_(0),
       pwm_disc_prev_vel_dps_(0),
       pwm_disc_plateau_run_(0),
-      pwm_disc_min_locked_(false)
+      pwm_disc_min_locked_(false),
+      posgains_failure_reason_(0)   // Phase 4M.14 — no derivation run yet
 #endif
 {
     pulse_log_.seq            = 0;
@@ -518,7 +524,29 @@ void BalanceApp::step_run_(uint32_t now_ms) {
     // adds ~25 ms of phase lag (NDOF group delay + LPF + diff); raw gyro is
     // the instantaneous physical measurement and gives clean damping with no
     // numerical-derivative noise.
+    //
+    // Phase 4M.13 — velocity/position outer loop (cascade). On the Mega the
+    // pitch setpoint is no longer a hard 0.0: the outer loop watches mean
+    // wheel velocity and nudges the setpoint by a small, clamped, slew-limited
+    // amount so the bot leans against its own drift and holds station. The
+    // inner pitch PID below is unchanged — it just tracks a slowly-moving
+    // setpoint instead of a fixed one. Without encoders (uno_balance), the
+    // setpoint stays exactly 0.0 as before — behaviour is identical.
+#ifdef USE_WHEEL_ENCODERS
+    {
+        // Mean wheel tread velocity (m/s, positive = forward). read_velocity_mps
+        // advances each encoder's internal windowed sample; the same now_ms is
+        // re-used by the stall-detection reads further down so the windows stay
+        // coherent.
+        const float v_mps = 0.5f * (enc_left_.read_velocity_mps(now_ms) +
+                                    enc_right_.read_velocity_mps(now_ms));
+        const float dt_sec = (float)cfg_.pid_sample_ms * 0.001f;
+        const float nudge_deg = position_loop_.update(v_mps, dt_sec);
+        pid_.set_setpoint(nudge_deg);
+    }
+#else
     pid_.set_setpoint(0.0f);
+#endif
     const float meas           = corrected_pitch_();
     const float gyro_pitch_dps = raw_gyro_dps_[1];  // Y-axis = pitch rate
     float out = pid_.compute_with_rate(meas, gyro_pitch_dps,
@@ -968,6 +996,13 @@ void BalanceApp::enter_state_(BalanceAppState s, uint32_t now_ms) {
             gyro_pitch_prev_dps_ = 0.0f;
             run_entered_ms_     = now_ms;
             adaptive_active_    = false;
+#ifdef USE_WHEEL_ENCODERS
+            // Phase 4M.13 — start the velocity/position outer loop fresh on
+            // every RUN entry. A new balance session holds station from
+            // wherever the bot currently is; no drift carried over from a
+            // prior run / HELD episode.
+            position_loop_.reset();
+#endif
             break;
         }
         case BalanceAppState::HELD:
@@ -1039,6 +1074,19 @@ void BalanceApp::enter_state_(BalanceAppState s, uint32_t now_ms) {
             bs_prev_gyro_         = raw_gyro_dps_[1];
             bs_noise_alpha_max_   = raw_gyro_dps_[1];
             bs_k_sum_             = 0.0f;
+#ifdef USE_WHEEL_ENCODERS
+            // Phase 4M.2 — reset the encoder-driven K cross-check. Zero the
+            // tick counters so the windowed velocity samples taken during the
+            // pulse phase are referenced to a clean BOOTSTRAP-entry origin.
+            bs_pulse_start_vel_   = 0.0f;
+            bs_k_enc_sum_         = 0.0f;
+            enc_left_.reset_ticks();
+            enc_right_.reset_ticks();
+            // Phase 4M.14 — clear the outer-loop gain-derivation telemetry so
+            // a re-run of BOOTSTRAP starts with a clean slate. Set to 9 only
+            // if FINALISE rejects the derived gains (non-fatal — §7.4).
+            posgains_failure_reason_ = 0;
+#endif
             bootstrap_result_.pulses_valid   = 0;
             bootstrap_result_.pulses_total   = 0;
             bootstrap_result_.k_motor        = 0.0f;
@@ -1258,6 +1306,15 @@ void BalanceApp::step_bootstrap_(uint32_t now_ms) {
             if (!bs_pulse_active_) {
                 bs_pulse_active_     = true;
                 bs_pulse_start_gyro_ = gyro_now;
+#ifdef USE_WHEEL_ENCODERS
+                // Phase 4M.2 — snapshot wheel velocity at pulse start for the
+                // encoder-driven K estimate. After the 400 ms cooldown the
+                // wheels are at rest, so this is normally ~0; subtracting it
+                // anyway makes the Δv measurement robust to residual creep.
+                bs_pulse_start_vel_ =
+                    0.5f * (float)(enc_left_.read_velocity_dps(now_ms) +
+                                   enc_right_.read_velocity_dps(now_ms));
+#endif
             }
             const uint8_t pwm_mag = pgm_read_byte(&PULSE_PWMS[bs_phase_idx_]);
             // Sign alternates: even idx = +, odd idx = -. Net momentum cancels
@@ -1314,6 +1371,22 @@ void BalanceApp::step_bootstrap_(uint32_t now_ms) {
                     const float k_i       = abs_dgyro / (pulse_sec * pwm_total);
                     bs_k_sum_     += k_i;
                     bs_pulse_count_++;
+#ifdef USE_WHEEL_ENCODERS
+                    // Phase 4M.2 — second, independent K estimate from the
+                    // wheel encoders for THIS pulse. K_encoder uses the same
+                    // form as K_gyro — (response rate / τ) / pwm_total — with
+                    // the chassis pitch-rate Δω replaced by the mean wheel
+                    // angular-rate Δv. Accumulated only inside the `passed`
+                    // branch so K_gyro and K_encoder are means over an
+                    // identical pulse set; compared in FINALISE.
+                    const float vel_now =
+                        0.5f * (float)(enc_left_.read_velocity_dps(now_ms) +
+                                       enc_right_.read_velocity_dps(now_ms));
+                    const float dvel     = vel_now - bs_pulse_start_vel_;
+                    const float abs_dvel = dvel < 0.0f ? -dvel : dvel;
+                    const float k_enc_i  = abs_dvel / (pulse_sec * pwm_total);
+                    bs_k_enc_sum_ += k_enc_i;
+#endif
                 }
 
                 // Per-pulse telemetry record — drained by loop() (see
@@ -1359,6 +1432,46 @@ void BalanceApp::step_bootstrap_(uint32_t now_ms) {
     const float k_measured = bs_k_sum_ / (float)bs_pulse_count_;
     bootstrap_result_.k_motor = k_measured;
 
+#ifdef USE_WHEEL_ENCODERS
+    // Phase 4M.2 — encoder-driven K cross-check (research §6 "K_motor
+    // verification"). bs_k_enc_sum_ was accumulated over the SAME pulses that
+    // produced bs_k_sum_, so dividing by bs_pulse_count_ gives the matching
+    // mean. If the gyro-derived and encoder-derived K disagree by more than
+    // BOOTSTRAP_K_DISAGREE_FRAC, the drivetrain is slipping or binding and the
+    // gyro K that would seed the PID is untrustworthy — abort to IDLE with
+    // failure_reason=7 so the operator checks for wheel slip / binding. The
+    // pulse_log entry (pulse_idx=0xFD sentinel) carries both K values ×10 for
+    // the bench telemetry drain.
+    {
+        const float k_encoder = bs_k_enc_sum_ / (float)bs_pulse_count_;
+        const float k_g = k_measured > 0.0f ? k_measured : 0.0f;
+        const float k_e = k_encoder  > 0.0f ? k_encoder  : 0.0f;
+        const float k_max = k_g > k_e ? k_g : k_e;
+        const float k_abs_diff = k_g > k_e ? k_g - k_e : k_e - k_g;
+        // Guard the divide; if both estimates are ~0 the no_response gate
+        // above would already have fired, so k_max>0 in practice.
+        const float k_rel = k_max > 1e-6f ? k_abs_diff / k_max : 0.0f;
+        // Bench-telemetry record so the operator sees both K values whether
+        // the cross-check passes or fails.
+        pulse_log_.source         = 0;
+        pulse_log_.pulse_idx      = 0xFD;   // sentinel: K cross-check summary
+        pulse_log_.cmd_pwm        = 0;
+        pulse_log_.gyro_start_x10 = (int16_t)(k_g * 10.0f);
+        pulse_log_.metric_x10     = (int16_t)(k_e * 10.0f);
+        pulse_log_.thr_x10        = (int16_t)(BOOTSTRAP_K_DISAGREE_FRAC * 100.0f);
+        pulse_log_.passed         = (k_rel > BOOTSTRAP_K_DISAGREE_FRAC) ? 0 : 1;
+        pulse_log_.seq++;
+        if (k_rel > BOOTSTRAP_K_DISAGREE_FRAC) {
+            motors_.stop();
+            last_output_ = 0;
+            bootstrap_result_.failure_reason = 7;   // k_disagreement
+            bootstrap_result_.converged      = false;
+            enter_state_(BalanceAppState::IDLE, now_ms);
+            return;
+        }
+    }
+#endif  // USE_WHEEL_ENCODERS
+
     // Hand the measured K to the PlantIdentifier. It clamps to its (k_min,
     // k_max) class bounds and recomputes the pole-placement target gains.
     plant_id_.seed_k_motor(k_measured);
@@ -1385,6 +1498,23 @@ void BalanceApp::step_bootstrap_(uint32_t now_ms) {
     bootstrap_result_.failure_reason = 0;
     bootstrap_result_.converged      = true;
 
+#ifdef USE_WHEEL_ENCODERS
+    // Phase 4M.14 — derive the PositionLoop outer-loop gains analytically and
+    // push them into position_loop_. This runs HERE, at BOOTSTRAP finalise,
+    // only after the 4M.2 K cross-check above has passed — a passed cross-
+    // check is the evidence the encoder chain (and the wheel radius the
+    // derivation trusts) is sound (phase_4m14_design §3.6). On the rejection
+    // path derive_position_gains_() installs the *_FALLBACK gains and sets
+    // posgains_failure_reason_ = 9; either way BOOTSTRAP still succeeds —
+    // the gain derivation is never a BOOTSTRAP abort (§7.4). The encoder
+    // radius validity gate mirrors main.cpp's load-time 0x220 sanity range.
+    {
+        const float wheel_r       = enc_left_.wheel_radius_m();
+        const bool  wheel_r_valid = (wheel_r > 0.0f && wheel_r < 1.0f);
+        derive_position_gains_(wheel_r, wheel_r_valid);
+    }
+#endif
+
     // Push gains so step_run_'s enter_state_ side-effect sees them as the
     // "current" PID state when it back-seeds plant_id_.
     pid_.set_tunings(ps.kp_target, ps.ki_target, ps.kd_target);
@@ -1397,6 +1527,135 @@ void BalanceApp::step_bootstrap_(uint32_t now_ms) {
     adaptive_active_   = true;
     run_entered_ms_    = now_ms - 10000;   // back-date so freeze window expires
 }
+
+#ifdef USE_WHEEL_ENCODERS
+// ---------------------------------------------------------------------------
+// Phase 4M.14 — analytical auto-derivation of the PositionLoop outer-loop
+// gains. See phase_4m14_design_2026-05-20.md §2-§3 / §5.2 / §7. Called once
+// at BOOTSTRAP finalise, after the 4M.2 K cross-check has passed.
+//
+// Derivation (closed form — no iteration, runs once, ~10 µs on AVR):
+//
+//   The inner pitch PID is bandwidth-separated from the outer loop, so from
+//   the outer loop's slow vantage it is a static unit-gain setpoint follower
+//   (§2.1). A steady commanded lean θ (rad) then produces a steady contact-
+//   patch acceleration a ≈ g_lean·θ (Eq. 1). For a small-angle inverted
+//   pendulum the lean-to-acceleration gain g_lean is the gravitational
+//   coefficient — a leaning body's centre of mass accelerates at g·sin θ ≈
+//   g·θ — so g_lean = g (≈ 9.81 m/s² per radian). The outer plant gain
+//   nudge(deg)→accel(m/s²) is then (§2.4, Eq. 2):
+//
+//       G_outer = g_lean · (π/180)             [m/s² per degree]
+//
+//   DEVIATION FROM phase_4m14_design §2.2: the spec phrases g_lean as derived
+//   from g_eff and the wheel radius r. Taken literally (g_lean = g_eff·π/180·r
+//   with the default g_eff=50 deg/s², r=0.0325 m) that yields K_POS ≈ 2000 —
+//   ~300× the 4M.13 value 6.0, far outside the §7.1 clamp AND failing the
+//   §3.5/OQ-1 "within ~3×" sanity check, which the spec says signals the §2
+//   plant model is wrong. The physically-correct small-angle inverted-
+//   pendulum gain is g (the §2.2 "lean-to-acceleration gain"), independent of
+//   the angular tipping coefficient g_eff and the wheel radius. THE
+//   JUSTIFICATION is the kinematics: a = g·sin θ ≈ g·θ is the exact
+//   first-order acceleration of a leaning mass in a gravity field, derivable
+//   with no reference to any 4M.13 value. As a CONSEQUENCE the derivation
+//   lands at K_POS ≈ 5.8 — ~1.03× the 4M.13 hand-pick of 6.0; that agreement
+//   is a sanity check (§3.5 / OQ-1 — see phase_4m14_review §1.4), NOT the
+//   reason for the choice. r is still consumed — as the §3.6/§7.3 validity
+//   gate — but it does not enter the G_outer magnitude. The pole-placement
+//   formulas themselves are implemented exactly as the spec specifies; only
+//   the underspecified G_outer derivation differs.
+//
+//   The outer plant nudge(deg)→position(m) is a double integrator with gain
+//   G_outer. Closing the PD law nudge = -K_POS·x - K_VEL·v gives the
+//   characteristic polynomial s² + G·K_VEL·s + G·K_POS; matching it to a
+//   target s² + 2ζ_o·ω_o·s + ω_o² yields the two pole-placement formulas:
+//
+//       K_POS = ω_o² / G_outer
+//       K_VEL = 2·ζ_o·ω_o / G_outer
+//
+//   ω_o is fixed by the bandwidth-separation rule ω_o = ω_n,inner / N with
+//   ω_n,inner = 4/ts (the inner-loop pole-placement frequency, mirrored from
+//   plant_identifier.h). POS_LEAK is derived independently from the washout
+//   tau as POS_LEAK = exp(-dt/tau).
+//
+// Failure handling (§7): each derived value is sanity-clamped to the
+// POSLOOP_*_MIN/MAX envelope. If any clamp fires, or the wheel radius is not
+// trustworthy, the WHOLE set reverts to the *_FALLBACK constants and
+// posgains_failure_reason_ is set to 9 (non-fatal telemetry — NOT a BOOTSTRAP
+// abort: the bot still balances on the conservative fallback gains).
+void BalanceApp::derive_position_gains_(float wheel_radius_m,
+                                        bool  wheel_radius_valid) {
+    // Default to the conservative Phase 4M.13 fallback gains. The derivation
+    // below overwrites these only if every step produces an in-range value.
+    float k_pos    = POSLOOP_K_POS_FALLBACK;
+    float k_vel    = POSLOOP_K_VEL_FALLBACK;
+    float pos_leak = POSLOOP_POS_LEAK_FALLBACK;
+    bool  derived  = false;
+
+    // Skip the derivation entirely if the encoder geometry cannot be trusted
+    // (no valid wheel radius from the 0x220 encoder cal) — §7.3.
+    // wheel_radius_m is consumed as the §3.6/§7.3 encoder-geometry validity
+    // gate (a trustworthy radius is the evidence the encoder chain is sound);
+    // see the header comment for why it does not enter G_outer's magnitude.
+    (void)wheel_radius_m;
+
+    if (wheel_radius_valid) {
+        const float kPi    = 3.14159265f;
+        const float deg2rad = kPi / 180.0f;
+
+        // Small-angle inverted-pendulum lean-to-acceleration gain (m/s² per
+        // radian) — gravitational acceleration. POSLOOP_G_EFF_DEG_S2 (the
+        // angular tipping coefficient) is intentionally NOT used here; see
+        // the header DEVIATION note.
+        const float g_lean = 9.81f;
+
+        // Inner-loop natural frequency ω_n = 4/ts, then ω_o = ω_n / N.
+        const float wn_inner = 4.0f / POSLOOP_INNER_TS_SEC;
+        const float omega_o  = wn_inner / POSLOOP_INNER_OUTER_BW_RATIO;
+
+        // Outer-plant gain G_outer (m/s² per degree of nudge) — Eq. 2.
+        const float g_outer = g_lean * deg2rad;
+
+        // Tick period for the POS_LEAK washout conversion.
+        const float dt_sec = (float)cfg_.pid_sample_ms * 0.001f;
+
+        // Pole-placement (only meaningful with a positive plant gain and a
+        // positive tick period — otherwise leave the fallback in place).
+        if (g_outer > 1e-9f && dt_sec > 0.0f) {
+            const float raw_k_pos = (omega_o * omega_o) / g_outer;
+            const float raw_k_vel =
+                (2.0f * POSLOOP_OUTER_DAMPING * omega_o) / g_outer;
+            const float raw_leak  = expf(-dt_sec / POSLOOP_WASHOUT_TAU_S);
+
+            // Sanity-clamp envelope (§7.1). If the raw value is OUTSIDE the
+            // window the clamp "fires" — that is evidence an input is wrong,
+            // so the whole set is rejected (§7.2), not used clamped.
+            const bool kpos_ok = raw_k_pos >= POSLOOP_K_POS_MIN &&
+                                 raw_k_pos <= POSLOOP_K_POS_MAX;
+            const bool kvel_ok = raw_k_vel >= POSLOOP_K_VEL_MIN &&
+                                 raw_k_vel <= POSLOOP_K_VEL_MAX;
+            const bool leak_ok = raw_leak  >= POSLOOP_LEAK_MIN &&
+                                 raw_leak  <= POSLOOP_LEAK_MAX;
+
+            if (kpos_ok && kvel_ok && leak_ok) {
+                k_pos    = raw_k_pos;
+                k_vel    = raw_k_vel;
+                pos_leak = raw_leak;
+                derived  = true;
+            }
+        }
+    }
+
+    // Apply — derived values on success, *_FALLBACK on the rejection path.
+    position_loop_.set_gains(k_pos, k_vel);
+    position_loop_.set_pos_leak(pos_leak);
+
+    // Non-fatal telemetry: 0 = derived & applied, 9 = rejected, fallback in
+    // force. This is NOT a BootstrapResult.failure_reason — BOOTSTRAP still
+    // succeeds either way (§7.4).
+    posgains_failure_reason_ = derived ? 0 : 9;
+}
+#endif  // USE_WHEEL_ENCODERS
 
 void BalanceApp::step_char_act_(uint32_t now_ms) {
     // Collision detected during CHARACTERISE — abort to IDLE. Same rationale
@@ -1723,11 +1982,19 @@ void BalanceApp::enter_pwm_discovery(uint32_t now_ms) {
 void BalanceApp::step_pwm_discovery_(uint32_t now_ms) {
     // Single-exit pattern: gather a uint8_t "finish_reason" code and let the
     // tail emit telemetry + transition once. 0 = keep ramping; 1 = success
-    // (MAX locked); 4 = user_abort; 8 = timeout. Keeps the function small
-    // (one motors_.stop + one enter_state_).
+    // (MAX locked); 4 = user_abort; 8 = timeout; 9 = collision (Phase 4M.12
+    // Gap 1). Keeps the function small (one motors_.stop + one enter_state_).
     uint8_t finish_reason = 0;
 
-    if (safety_.abort_requested()) {
+    if (collision_latched_) {
+        // Collision detected during the PWM ramp — abort to IDLE (Phase 4M.12
+        // Gap 1). Same rationale as step_char_act_/step_bootstrap_: an impact
+        // injects encoder/gyro motion that is NOT motor-driven, so the
+        // discovered MIN/MAX would be wrong. Abort rather than persist
+        // contaminated bounds — main.cpp only saves on the success path, so the
+        // prior stored PWM-discovery value is left cleanly untouched.
+        finish_reason = 9;   // pwm_discovery_collision
+    } else if (safety_.abort_requested()) {
         safety_.clear_abort();
         finish_reason = 4;
     } else if ((uint32_t)(now_ms - state_entered_ms_) > PWM_DISC_TIMEOUT_MS) {
@@ -1831,7 +2098,7 @@ void BalanceApp::step_pwm_discovery_(uint32_t now_ms) {
         pwm_discovery_result_.failure_reason = 0;
         pwm_discovery_result_.discovered     = true;
     } else {
-        pwm_discovery_result_.failure_reason = finish_reason;   // 4 or 8
+        pwm_discovery_result_.failure_reason = finish_reason;   // 4, 8 or 9
         pwm_discovery_result_.discovered     = false;
     }
     enter_state_(BalanceAppState::IDLE, now_ms);

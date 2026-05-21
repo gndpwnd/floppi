@@ -47,7 +47,7 @@ See [0_quickstart.md](0_quickstart.md) for the full guide.
 | [serial_monitor.py](../tools/serial_monitor.py) | Raw serial monitor (scripting backend) |
 | [flash_and_run.sh](../tools/flash_and_run.sh) | Build + flash + serial monitor |
 | [calibration_reset.py](../tools/calibration_reset.py) | Reset config.h to factory defaults |
-| [test_calibration.sh](../tests/test_calibration.sh) | Automated test suite (19 tests) |
+| [test_calibration.sh](../tests/test_calibration.sh) | Automated test suite (18 tests / 42 assertions) |
 
 ## Related Projects
 
