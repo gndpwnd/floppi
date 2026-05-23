@@ -485,5 +485,3 @@ TEST_F(RotationMatrixTest, MatrixAndEulerConsistent) {
     }
   }
 }
-
-#endif  // TEST_BNO085_EXTENSIONS_H

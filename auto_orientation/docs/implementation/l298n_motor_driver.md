@@ -10,26 +10,24 @@ Hardware-agnostic dual-motor actuator abstraction (`DualMotorDriver` base) and a
 
 ## Data flow
 
-```
-   PID output (float, clamped to ±255 by PIDController)
-        │  cast to int16_t
-        ▼
-   DualMotorDriver::set_speeds(left, right)              (abstract)
-        │
-        ▼
-   L298NMotorDriver::set_speeds(left, right)
-        ├─ clamp_speed  (±255 hard rails)
-        ├─ apply_stiction  (snap |v|<min_pwm up to min_pwm, preserve sign)
-        ├─ drive_channel_(left,  ena, in1, in2)
-        │     ├─ sign>0 → in1=HIGH, in2=LOW
-        │     ├─ sign<0 → in1=LOW,  in2=HIGH
-        │     └─ sign=0 → in1=LOW,  in2=LOW   (free coast)
-        │     analogWrite(ena, abs(speed))
-        ├─ drive_channel_(right, enb, in3, in4)   (same pattern)
-        └─ cache last_left_, last_right_
-        │
-        ▼
-   L298N IC → motor terminals
+```mermaid
+flowchart TD
+    PID["PID output (float, clamped to ±255 by PIDController)<br/>cast to int16_t"] --> ABS["DualMotorDriver::set_speeds(left, right) — abstract"]
+    ABS --> IMPL["L298NMotorDriver::set_speeds(left, right)"]
+    IMPL --> CLAMP["clamp_speed (±255 hard rails)"]
+    CLAMP --> STICTION["apply_stiction (snap |v| < min_pwm up to min_pwm, preserve sign)"]
+    STICTION --> DCL["drive_channel_(left, ena, in1, in2)"]
+    STICTION --> DCR["drive_channel_(right, enb, in3, in4) — same pattern"]
+    DCL --> SIGN{"sign of speed"}
+    SIGN -->|"sign > 0"| FWD["in1=HIGH, in2=LOW"]
+    SIGN -->|"sign < 0"| REV["in1=LOW, in2=HIGH"]
+    SIGN -->|"sign = 0"| COAST["in1=LOW, in2=LOW (free coast)"]
+    FWD --> AW["analogWrite(ena, abs(speed))"]
+    REV --> AW
+    COAST --> AW
+    AW --> CACHE["cache last_left_, last_right_"]
+    DCR --> CACHE
+    CACHE --> OUT["L298N IC → motor terminals"]
 ```
 
 ## Core algorithm

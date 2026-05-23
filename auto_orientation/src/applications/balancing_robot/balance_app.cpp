@@ -288,6 +288,12 @@ void BalanceApp::begin(const BalanceAppConfig& cfg, uint32_t now_ms) {
     enc_right_.begin();
 #endif
 
+    // Baseline noise-floor capture (re)starts fresh each begin() so a board
+    // reset re-measures the floor during the next quiet window. PURE
+    // observation — see noise_floor_estimator.h.
+    gyro_noise_.reset();
+    accel_noise_.reset();
+
     // Enter IDLE
     enter_state_(BalanceAppState::IDLE, now_ms);
 
@@ -567,6 +573,19 @@ void BalanceApp::step_run_(uint32_t now_ms) {
     constexpr float SOFT_ZONE_DEG = 1.0f;
     if (abs_pitch_for_sched < SOFT_ZONE_DEG) {
         out *= (abs_pitch_for_sched / SOFT_ZONE_DEG);
+    }
+    // Audit P2-001: clamp the float to the configured PWM range BEFORE the
+    // int16_t cast. The PID already clamps `out`, so on the nominal path this
+    // is a no-op; but the driver's own clamp lives on the wrong side of the
+    // cast — if `out` ever arrives out of range (NaN/Inf or a bypassed PID
+    // clamp), casting a >32767 float to int16_t wraps to a garbage PWM before
+    // the driver clamp can act. NaN/Inf collapse to 0 (motors neutral).
+    if (isnan(out) || isinf(out)) {
+        out = 0.0f;
+    } else if (out < cfg_.output_min) {
+        out = cfg_.output_min;
+    } else if (out > cfg_.output_max) {
+        out = cfg_.output_max;
     }
     const int16_t pwm = (int16_t)out;
 
@@ -1782,6 +1801,18 @@ void BalanceApp::read_imu_(uint32_t /*now_ms*/) {
     const OrientationData& od = imu_.getOrientation();
     const float new_pitch = od.pitch_deg;
 
+    // Audit P1-001: reject a non-finite pitch (transient BNO055 I2C glitch /
+    // fusion error). A NaN pitch is doubly dangerous: it makes the ±20°
+    // kill-switch NaN-blind (all comparisons false) AND freezes the PID at its
+    // last (possibly saturated) output. Treat it as a fault — hold the last
+    // known-good pitch_deg_ (do NOT publish the NaN), and request an abort so
+    // the loop drops to a safe state (motors off / IDLE) rather than running
+    // on a stale/garbage angle. Mirrors the Uno app's isnan(raw) guard.
+    if (isnan(new_pitch) || isinf(new_pitch)) {
+        safety_.request_abort();
+        return;   // keep prior pitch_deg_ and motion filters untouched
+    }
+
     // Motion signals for HELD/FALLEN distinction. Lateral gyro = sqrt(gx²+gz²)
     // (NOT |gyro| — pitch-axis motion is intrinsic to balancing and would
     // false-trigger HELD during a recovery). See balance_held_fallen_state_
@@ -1859,6 +1890,32 @@ void BalanceApp::read_imu_(uint32_t /*now_ms*/) {
     // motion filters at last known good. The HELD entry gate degrades to
     // pitch-only, which is acceptable — no false negatives, just no false-
     // positive suppression.
+
+    // ------------------------------------------------------------------
+    // Baseline noise-floor capture (PURE OBSERVATION — noise_floor_estimator.h,
+    // triage mega_scope_violation_triage_2026-05-22.md). Feed the gyro
+    // pitch-rate magnitude and accel-magnitude deviation into the Welford
+    // estimators ONLY when the bot is judged quiet:
+    //   - we have a fresh raw read (have_g && have_a), and
+    //   - no BOOTSTRAP/CHARACTERISE pulse is driving the motors this tick, and
+    //   - the just-computed lateral-gyro magnitude is below the quiet gate.
+    // A non-quiet tick during an unsettled window throws away the partial
+    // accumulation (abort_window) so the captured floor reflects genuine
+    // stillness. This block reads/writes only the estimator members; it does
+    // NOT touch motors, PID, thresholds, or state. Once each estimator latches
+    // settled() it ignores further pushes, so post-boot motion can't corrupt it.
+    if (have_g && have_a) {
+        const float gyro_pitch_mag = (g[1] < 0.0f) ? -g[1] : g[1];
+        const bool  quiet_for_noise = !bs_pulse_active_ &&
+                                      (g_lat_new < NOISE_FLOOR_QUIET_GYRO_DPS);
+        if (quiet_for_noise) {
+            gyro_noise_.push(gyro_pitch_mag);
+            accel_noise_.push(a_dev_abs_new);
+        } else {
+            gyro_noise_.abort_window();
+            accel_noise_.abort_window();
+        }
+    }
 
     // ------------------------------------------------------------------
     // Collision detection — three-gate detector

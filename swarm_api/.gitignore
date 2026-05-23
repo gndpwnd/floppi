@@ -29,3 +29,14 @@ tests/outputs/
 # Runtime
 *.log
 .swarm_api.pid
+
+# config.json — DELIBERATELY TRACKED (it is the drone registry: MAC/name/
+# group/tags/mDNS). It is NOT gitignored so the fleet definition is versioned.
+# SECRET-HANDLING RISK (F-09): config.json can also hold secrets —
+# network.command_token / per-drone command_token (firmware command auth) and
+# server.auth_token (client->server auth). DO NOT commit real secret values.
+# Keep tokens null in the tracked file and supply real values out-of-band
+# (a local-only override, environment, or an untracked deployment copy).
+# save_config() chmod 0600s the file on write to limit on-disk exposure.
+# config.local.json   # use for local-only secrets if you adopt an override file
+config.local.json

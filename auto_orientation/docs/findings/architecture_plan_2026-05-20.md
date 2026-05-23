@@ -203,20 +203,26 @@ Convention: **OWNS** = exclusive write. **READS** = read-only. Other workstreams
 
 ## 3. Dependency graph
 
-```
-INFRA-A ── INFRA-B
-   │
-   ├── A (4M.0 collision) ────► B (4M.k audit follow-up) ──┐
-   │       │                                                │
-   │       └─► (main.cpp conflict with D)                   │
-   │                                                        ▼
-   │   C (4M.1 encoder driver) ────► D (4M.11 e cmd) ──► E (4M.12 PWM range)
-   │          │                              │                  │
-   │          └──────────────────────────────┼──────────────────┼──► F (4M.2 + 4M.13)
-   │                                         │                  │
-   ├── UNO-A (tuner run) ── UNO-B (sweep) ── UNO-C (workflow doc)
-   │
-   └── DOC-A (reconcile docs) — lands LAST
+```mermaid
+flowchart TD
+    INFRA_A["INFRA-A"] --> INFRA_B["INFRA-B"]
+    INFRA_B --> A["A (4M.0 collision)"]
+    INFRA_B --> C["C (4M.1 encoder driver)"]
+    INFRA_B --> UNO_A["UNO-A (tuner run)"]
+    INFRA_B --> DOC_A["DOC-A (reconcile docs) — lands LAST"]
+
+    A --> B["B (4M.k audit follow-up)"]
+    A -.->|main.cpp conflict| D["D (4M.11 e cmd)"]
+    B --> E["E (4M.12 PWM range)"]
+
+    C --> D
+    D --> E
+    C --> F["F (4M.2 + 4M.13)"]
+    D --> F
+    E --> F
+
+    UNO_A --> UNO_B["UNO-B (sweep)"]
+    UNO_B --> UNO_C["UNO-C (workflow doc)"]
 ```
 
 ---

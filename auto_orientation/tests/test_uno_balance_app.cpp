@@ -254,6 +254,38 @@ static void test_read_imu_fails_motors_stop() {
               "motors halted after read failure");
 }
 
+// 7b. read_fail_count() tracks consecutive failures and clears on a good read.
+//     P1 from audit §4: surface sensor-health telemetry so a dying BNO055 link
+//     doesn't present as "bot just tips for no reason".
+static void test_read_fail_count_tracks_and_clears() {
+  printf("\n[test_read_fail_count_tracks_and_clears]\n");
+  MockIMU imu;
+  MockMotors motors;
+  PIDController pid(BALANCE_KP, BALANCE_KI, BALANCE_KD, PWM_MIN, PWM_MAX);
+  UnoBalanceApp app(imu, motors, pid);
+  app.begin();
+
+  TEST_ASSERT(app.read_fail_count() == 0, "counter starts at 0");
+
+  // Three consecutive I2C failures.
+  imu.set_readable(false);
+  app.read_imu();
+  app.read_imu();
+  app.read_imu();
+  TEST_ASSERT(app.read_fail_count() == 3, "counter increments per failed read");
+
+  // An out-of-range (non-I2C) failure also counts.
+  imu.set_readable(true);
+  imu.set_pitch(120.0f);  // > PITCH_SANITY_DEG
+  app.read_imu();
+  TEST_ASSERT(app.read_fail_count() == 4, "out-of-range read also counts as failure");
+
+  // A good read clears the counter.
+  imu.set_pitch(-3.6f);  // valid corrected ≈ +5°
+  TEST_ASSERT(app.read_imu(), "good read succeeds");
+  TEST_ASSERT(app.read_fail_count() == 0, "good read clears the failure counter");
+}
+
 // 8. After a tip cutoff trips and the bot is righted, step() should resume
 //    balancing with NO stale integrator wind-up. The PID is reset on the tick
 //    that detects the tip, so the next post-righting step() should produce
@@ -382,6 +414,7 @@ int main() {
   test_step_pwm_sign_and_range();
   test_step_drives_both_wheels_symmetric();
   test_read_imu_fails_motors_stop();
+  test_read_fail_count_tracks_and_clears();
   test_tip_recovery_clears_integral();
   test_arm_recovers_after_abort();
   test_abort_latches();

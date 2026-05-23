@@ -1,13 +1,19 @@
 /*
  * WiFi Certificates (Enterprise)
- * Only included when WIFI_USE_CERTS is defined in wifi_credentials.h.
+ * Only included when USE_WIFI_CERTS is defined in config.h
+ * (legacy alias WIFI_USE_CERTS also accepted).
  *
  * Replace the placeholder strings with your actual PEM certificates.
  * Get these from your IT department or network admin.
  *
- * Not all fields are required for every auth method:
- *   PEAP with CA:  CA cert only (verifies server identity)
- *   TLS:           CA cert + client cert + client key (mutual auth)
+ * Which fields each EAP method needs:
+ *   WIFI_EAP_METHOD_PEAP:  CA cert only (validates RADIUS server; optional)
+ *   WIFI_EAP_METHOD_TTLS:  CA cert only (validates RADIUS server; optional)
+ *   WIFI_EAP_METHOD_TLS:   CA cert + client cert + client key (mutual auth)
+ *
+ * This file is also the reserved home for a CA blob that future HTTPS / OTA-
+ * over-TLS work can hand to WiFiClientSecure::setCACert() — see
+ * docs/features/wifi-configuration.md.
  */
 
 #ifndef WIFI_CERTS_H

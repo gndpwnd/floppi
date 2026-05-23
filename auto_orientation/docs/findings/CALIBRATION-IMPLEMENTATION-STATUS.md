@@ -145,43 +145,19 @@ Offset | Size | Content
 
 ## Architecture Overview
 
-```
-┌─────────────────────────────────────────────────┐
-│         User Code / Main Application            │
-└────────────────┬────────────────────────────────┘
-                 │
-                 ├─────────────────────────────────┐
-                 │                                  │
-        ┌────────▼──────────────┐      ┌───────────▼──────────┐
-        │  BNO085 Driver        │      │  Serial Commands     │
-        │  (bno085.cpp)         │      │  (CAL_SAVE, etc.)    │
-        └────────┬──────────────┘      └──────────────────────┘
-                 │
-    ┌────────────┴────────────┐
-    │                         │
-┌───▼──────────────────┐  ┌──▼─────────────────────────┐
-│ BNO085 Calibration   │  │ Calibration Storage        │
-│ (bno085_calibration) │  │ (calibration_storage)      │
-│                      │  │                            │
-│ • readCalProfile     │  │ • saveToEEPROM             │
-│ • writeCalProfile    │  │ • restoreFromEEPROM        │
-│ • validateData       │  │ • hasCalibration           │
-│ • getError           │  │ • clearCalibration         │
-└───┬──────────────────┘  │ • calculateCRC8            │
-    │                     └──┬──────────────────────────┘
-    │                        │
-┌───▼────────────────────────▼──┐
-│     SH-2 Protocol Layer        │
-│  (via Adafruit_BNO08x wrapper) │
-│                                │
-│  • sh2_getFrs()  [BLOCKED]     │
-│  • sh2_setFrs()  [BLOCKED]     │
-└───┬────────────────────────────┘
-    │
-┌───▼────────────────────┐    ┌──────────────────────┐
-│ BNO085 Sensor          │    │ Arduino EEPROM       │
-│ (via UART/I2C)         │    │ (built-in library)   │
-└────────────────────────┘    └──────────────────────┘
+```mermaid
+flowchart TD
+    APP["User Code / Main Application"]
+    APP --> DRV["BNO085 Driver<br/>(bno085.cpp)"]
+    APP --> SER["Serial Commands<br/>(CAL_SAVE, etc.)"]
+
+    DRV --> CAL["BNO085 Calibration (bno085_calibration)<br/>• readCalProfile • writeCalProfile<br/>• validateData • getError"]
+    DRV --> STORE["Calibration Storage (calibration_storage)<br/>• saveToEEPROM • restoreFromEEPROM<br/>• hasCalibration • clearCalibration<br/>• calculateCRC8"]
+
+    CAL --> SH2["SH-2 Protocol Layer<br/>(via Adafruit_BNO08x wrapper)<br/>• sh2_getFrs() [BLOCKED]<br/>• sh2_setFrs() [BLOCKED]"]
+    STORE --> SH2
+    SH2 --> SENSOR["BNO085 Sensor<br/>(via UART/I2C)"]
+    STORE --> EEPROM["Arduino EEPROM<br/>(built-in library)"]
 ```
 
 ---

@@ -336,20 +336,17 @@ Pin 5  →  ESC 6 (Optional)
 
 ### ESC Power Distribution
 
-```
-Battery (7.4V - 14.8V)
-    │
-    ├─► Power Distribution Board (PDB)
-    │       │
-    │       ├─► ESC 1 → Motor 1
-    │       ├─► ESC 2 → Motor 2
-    │       ├─► ESC 3 → Motor 3
-    │       └─► ESC 4 → Motor 4
-    │
-    └─► 5V BEC (Step-down regulator)
-            │
-            ├─► Teensy VIN (5V)
-            └─► FS-iA6B +5V
+```mermaid
+flowchart TB
+    BAT["Battery (7.4V - 14.8V)"]
+    BAT --> PDB["Power Distribution Board (PDB)"]
+    PDB --> ESC1["ESC 1 → Motor 1"]
+    PDB --> ESC2["ESC 2 → Motor 2"]
+    PDB --> ESC3["ESC 3 → Motor 3"]
+    PDB --> ESC4["ESC 4 → Motor 4"]
+    BAT --> BEC["5V BEC (Step-down regulator)"]
+    BEC --> TEENSY["Teensy VIN (5V)"]
+    BEC --> RX["FS-iA6B +5V"]
 ```
 
 **Common grounds:**
@@ -364,23 +361,16 @@ Battery (7.4V - 14.8V)
 
 ### Power Architecture
 
-```
-┌────────────────────────────────────────┐
-│  Main Battery (LiPo 3S-4S)             │
-│  11.1V - 14.8V                         │
-└───────────┬────────────────────────────┘
-            │
-            ├─► High Current Path
-            │   └─► ESCs → Motors
-            │
-            └─► Low Current Path
-                └─► 5V BEC (3A-5A)
-                    │
-                    ├─► Teensy VIN (5V, ~200mA)
-                    │
-                    ├─► FS-iA6B (5V, ~70mA)
-                    │
-                    └─► Spare capacity for future peripherals
+```mermaid
+flowchart TB
+    BAT["Main Battery (LiPo 3S-4S)<br/>11.1V - 14.8V"]
+    BAT --> HC["High Current Path"]
+    HC --> ESC["ESCs → Motors"]
+    BAT --> LC["Low Current Path"]
+    LC --> BEC["5V BEC (3A-5A)"]
+    BEC --> TEENSY["Teensy VIN (5V, ~200mA)"]
+    BEC --> RX["FS-iA6B (5V, ~70mA)"]
+    BEC --> SPARE["Spare capacity for future peripherals"]
 ```
 
 ### Current Budget
@@ -575,49 +565,23 @@ VCC (5V)       →  Teensy 5V (via transistor/MOSFET)
 
 ## 📐 Final Wiring Diagram
 
-```
-                    COMPLETE SYSTEM WIRING
-                                                                
-         ┌─────────────────────────────────────────────┐
-         │         LiPo Battery (3S-4S)                │
-         │         11.1V - 14.8V                       │
-         └────┬──────────────────────────┬─────────────┘
-              │                          │
-              │                          │ 5V BEC
-              │                          │ (3A-5A)
-              │                          │
-         ┌────▼──────┐               ┌───▼────────────────┐
-         │    PDB    │               │    Teensy 4.0     │
-         │           │               │                    │
-         │  ESC 1 ───────► Motor 1   │  Pin 0 ──► ESC 1   │
-         │  ESC 2 ───────► Motor 2   │  Pin 1 ──► ESC 2   │
-         │  ESC 3 ───────► Motor 3   │  Pin 2 ──► ESC 3   │
-         │  ESC 4 ───────► Motor 4   │  Pin 3 ──► ESC 4   │
-         │           │               │                    │
-         └───────────┘               │  Pin 18 ─┐         │
-                                     │  Pin 19 ─┤         │
-                                     │  3.3V ───┤         │
-                                     │  GND ────┤         │
-                                     │          │         │
-                                     │  Pin 21 ─┤         │
-                                     │  VIN ────┤         │
-                                     │  GND ────┤         │
-                                     └──────────┼─────────┘
-                                                │
-                    ┌───────────────────────────┼──────────┐
-                    │                           │          │
-              ┌─────▼─────┐            ┌────────▼───────┐ │
-              │  MPU6050  │            │   FS-iA6B      │ │
-              │           │            │   Receiver     │ │
-              │  SDA ─────┘            │                │ │
-              │  SCL                   │  SBUS ─────────┘ │
-              │  VCC                   │  +5V             │
-              │  GND                   │  GND             │
-              └───────────┘            └──────────────────┘
+**Complete system wiring** — solid arrows are power connections, dotted arrows are signal connections.
 
-Legend:
-─── Power connection
-──► Signal connection
+```mermaid
+flowchart TB
+    BAT["LiPo Battery (3S-4S)<br/>11.1V - 14.8V"]
+    BAT -->|power| PDB["PDB"]
+    BAT -->|"5V BEC (3A-5A)"| TEENSY["Teensy 4.0<br/>Pin 0/1/2/3 → ESC 1/2/3/4<br/>Pin 18 (SDA), Pin 19 (SCL), 3.3V, GND<br/>Pin 21 (SBUS RX), VIN, GND"]
+    PDB --> ESC1["ESC 1 → Motor 1"]
+    PDB --> ESC2["ESC 2 → Motor 2"]
+    PDB --> ESC3["ESC 3 → Motor 3"]
+    PDB --> ESC4["ESC 4 → Motor 4"]
+    TEENSY -.->|Pin 0-3 signal| ESC1
+    TEENSY -.->|signal| ESC2
+    TEENSY -.->|signal| ESC3
+    TEENSY -.->|signal| ESC4
+    TEENSY -.->|I2C SDA/SCL + 3.3V/GND| MPU["MPU6050<br/>SDA, SCL, VCC, GND"]
+    TEENSY -.->|SBUS Pin 21 + 5V/GND| RX["FS-iA6B Receiver<br/>SBUS, +5V, GND"]
 ```
 
 ---

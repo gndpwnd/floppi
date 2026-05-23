@@ -10,25 +10,19 @@ Concrete `OrientationSensor` implementation backed by the Adafruit_BNO055 librar
 
 ## Data flow
 
-```
-I2C bus (0x28 default, ADR=GND)
-        │
-        ▼
-   Adafruit_BNO055 library (lib_deps; .cpp-only include)
-        │  getQuat()  → imu::Quaternion(w,x,y,z)
-        │  getCalibration(&sys,&gyro,&accel,&mag)
-        ▼
-   BNO055::read()
-        ├─ store w,x,y,z into OrientationData.quaternion
-        ├─ quaternion_to_euler_degrees() → roll/pitch/yaw_deg
-        ├─ copy four 0-3 accuracies into OrientationData
-        └─ stamp last_read_ms_; set new_data_ = true
-        │
-        ▼
-   OrientationData (via getOrientation())
-        │
-        ▼
-   consumer: SensorOutputManager / EKF / balance-loop
+```mermaid
+flowchart TD
+    I2C["I2C bus (0x28 default, ADR=GND)"] --> LIB["Adafruit_BNO055 library (lib_deps; .cpp-only include)<br/>getQuat() → imu::Quaternion(w,x,y,z)<br/>getCalibration(&sys,&gyro,&accel,&mag)"]
+    LIB --> READ["BNO055::read()"]
+    READ --> S1["store w,x,y,z into OrientationData.quaternion"]
+    READ --> S2["quaternion_to_euler_degrees() → roll/pitch/yaw_deg"]
+    READ --> S3["copy four 0-3 accuracies into OrientationData"]
+    READ --> S4["stamp last_read_ms_; set new_data_ = true"]
+    S1 --> OD["OrientationData (via getOrientation())"]
+    S2 --> OD
+    S3 --> OD
+    S4 --> OD
+    OD --> CONS["consumer: SensorOutputManager / EKF / balance-loop"]
 ```
 
 ## Core algorithm

@@ -1,6 +1,6 @@
 # Swarm API - Roadmap
 
-> Last updated: 2026-02-10
+> Last updated: 2026-05-22
 
 ## Overview
 
@@ -96,6 +96,24 @@ Full swarm control platform: coordinate multiple drones simultaneously, define g
 - [x] PUT /api/system/config/network — update network settings ✓
 - [x] GET /health — enhanced with fleet summary ✓
 
+### Security & Hardening (2026-05-22)
+
+- [x] Security audit of swarm_api's own attack surface (12 findings, 2 P0) ✓
+  See: docs/findings/security_audit_2026-05-22.md
+- [x] Opt-in server auth layer — Bearer / X-Auth-Token, constant-time compare, fails-closed-when-set, backward-compatible-when-unset ✓
+  See: docs/archive/session_records/2026-05-22_security_hardening.md (§3)
+- [x] WS Origin + token handshake on /ws/dashboard (closes WS hijack) ✓
+- [x] Input validators (mac/name/group/tags/mdns) closing stored-XSS / SSRF ✓
+- [x] Secret redaction + config.json chmod 0600 + .gitignore ✓
+- [x] Dashboard auth wiring (token UI, localStorage, 401/1008 handling) ✓
+  See: docs/archive/session_records/2026-05-22_security_hardening.md (§4)
+- [x] Telemetry-XSS fix (F-10: textContent + server-side ipaddress validation) ✓
+- [x] Independent adversarial QA: GO; 27 security tests pass ✓
+  See: docs/findings/auth_qa_review_2026-05-22.md
+- [ ] TLS / HTTPS in front of the server (deferred — traffic still plaintext)
+- [ ] Rate limiting at the reverse proxy + WS client cap (F-08, deferred)
+- [ ] Decide whether auth should default ON (operator policy)
+
 ### Web Dashboard
 
 - [x] FastAPI serves static HTML/JS dashboard at / ✓
@@ -121,7 +139,7 @@ Full swarm control platform: coordinate multiple drones simultaneously, define g
 - [ ] Swarm coordination algorithms (formation, follow-leader)
 - [ ] Internet relay for remote control
 - [ ] Video feed integration
-- [ ] Authentication and access control
+- [x] Authentication and access control — opt-in server auth landed 2026-05-22 (see Security & Hardening above)
 - [ ] Mission planning / waypoint editor
 - [ ] Telemetry database (time-series storage)
 

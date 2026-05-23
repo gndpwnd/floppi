@@ -221,6 +221,22 @@ build_test "test_balance_app_soft_cutoff" \
     "${SRC_BAL_FULL}" \
     "-fpermissive"
 
+# Baseline gyro/accel noise-floor estimator (noise_floor_estimator.h) — pure
+# measurement layer feeding the noise-floor-derived scope violations. Header-
+# only module, so no extra source file beyond the standard balance set.
+build_test "test_noise_floor_estimator" \
+    "-DUNIT_TEST" \
+    "${SRC_BAL_FULL}" \
+    "-fpermissive"
+
+# PID NaN/Inf safety test (audit P1-003, security_audit_2026-05-22.md). Plain
+# g++ (no Unity) so the safety-critical finiteness guards in set_tunings/clamp_
+# are always exercised by this script — the Unity test_pid_controller below is
+# skipped when unity.h is absent. Links only pid_controller.cpp.
+build_test "test_pid_nan_safety" \
+    "-DUNIT_TEST" \
+    "src/control/pid_controller.cpp"
+
 build_test "test_balance_app_encoder" \
     "-DUNIT_TEST -DNATIVE_TEST -DUSE_WHEEL_ENCODERS" \
     "${SRC_BAL_FULL} src/sensors/wheel_encoder.cpp src/control/position_loop.cpp"

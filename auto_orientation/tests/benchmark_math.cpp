@@ -401,5 +401,3 @@ class BenchmarkSummary : public ::testing::Test {
     std::cout << std::string(70, '=') << std::endl << std::endl;
   }
 };
-
-#endif  // BENCHMARK_MATH_H

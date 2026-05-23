@@ -21,7 +21,36 @@
 #include <ArduinoOTA.h>
 #include <WiFi.h>
 
+// SEC-02: OTA must be password-protected. The credential lives in
+// wifi_credentials.h (OTA_PASSWORD plaintext, or OTA_PASSWORD_HASH = MD5).
+#if __has_include("wifi_credentials.h")
+    #include "wifi_credentials.h"
+#endif
+
+// Enforce a non-empty OTA credential. Without this, an OTA-enabled image would
+// accept firmware from any LAN peer (remote code execution). A hard compile
+// error (not a silent default) forces the user to choose a password — this is
+// the safer ergonomic per the audit, because a "safe default" password is no
+// better than none once it is public in the repo.
+//
+// Presence is checked with the preprocessor (#error). Emptiness/length cannot
+// be inspected by the preprocessor on a string literal, so a non-empty value is
+// enforced with static_assert in the C++ body of setupOTA() below.
+#if !defined(OTA_PASSWORD) && !defined(OTA_PASSWORD_HASH)
+    #error "USE_OTA is enabled but no OTA credential is defined (SEC-02). Define OTA_PASSWORD (or OTA_PASSWORD_HASH) in wifi_credentials.h."
+#endif
+
 void setupOTA() {
+    // SEC-02: reject an empty/placeholder-length credential at compile time.
+    // sizeof("") == 1 (just the NUL); a real password is longer.
+#if defined(OTA_PASSWORD_HASH)
+    static_assert(sizeof(OTA_PASSWORD_HASH) == 33,
+        "OTA_PASSWORD_HASH must be a 32-char lowercase MD5 hash (set it in wifi_credentials.h, or use OTA_PASSWORD instead).");
+#else
+    static_assert(sizeof(OTA_PASSWORD) > 1,
+        "OTA_PASSWORD is empty. USE_OTA requires a non-empty password (SEC-02). Set OTA_PASSWORD (or OTA_PASSWORD_HASH) in wifi_credentials.h.");
+#endif
+
     // Use same hostname pattern as web server (floppi-XXXX)
     String hostname = "floppi";
     uint8_t mac[6];
@@ -31,6 +60,16 @@ void setupOTA() {
     hostname += suffix;
 
     ArduinoOTA.setHostname(hostname.c_str());
+
+    // SEC-02: require authentication for OTA. Prefer the MD5 hash form (keeps
+    // the plaintext password out of the firmware's flash strings); fall back to
+    // plaintext setPassword(). The compile-time guard above guarantees exactly
+    // one of these is defined and non-empty.
+#if defined(OTA_PASSWORD_HASH)
+    ArduinoOTA.setPasswordHash(OTA_PASSWORD_HASH);
+#else
+    ArduinoOTA.setPassword(OTA_PASSWORD);
+#endif
 
     ArduinoOTA.onStart([]() {
         String type = (ArduinoOTA.getCommand() == U_FLASH) ? "firmware" : "filesystem";

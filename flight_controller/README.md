@@ -294,6 +294,7 @@ flight_controller/
 
 | Document | Description |
 |----------|-------------|
+| [docs/architecture/INDEX.md](docs/architecture/INDEX.md) | Layered architecture diagrams (system overview → subsystems → component detail) |
 | [docs/0_quickstart.md](docs/0_quickstart.md) | 60-minute setup guide |
 | [docs/1_hardware_setup.md](docs/1_hardware_setup.md) | Complete wiring guide with diagrams and BOM |
 | [docs/2_calibration_guide.md](docs/2_calibration_guide.md) | Detailed calibration procedures |

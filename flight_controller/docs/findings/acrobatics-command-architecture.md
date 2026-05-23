@@ -36,20 +36,18 @@ The flight computer is responsible for:
 
 ### Command Flow
 
-```
-Flight Computer                    Flight Controller (Floppi)
-─────────────────                  ───────────────────────────
-Plan maneuver
-  ↓
-Generate rate setpoints
-  ↓
-Send channel commands ──────────→  RadioComm receives channels
-  (Serial/I2C/WiFi)                  ↓
-                                   PID computes motor outputs
-                                     ↓
-Read telemetry    ←──────────────  IMU rates + attitude stream
-  ↓                                  ↓
-Adjust commands                    Motor mixer → ESCs → Motors
+```mermaid
+sequenceDiagram
+    participant FCmp as Flight Computer
+    participant FC as Flight Controller (Floppi)
+    Note over FCmp: Plan maneuver
+    Note over FCmp: Generate rate setpoints
+    FCmp->>FC: Send channel commands (Serial/I2C/WiFi)
+    Note over FC: RadioComm receives channels
+    Note over FC: PID computes motor outputs
+    FC-->>FCmp: IMU rates + attitude stream (telemetry)
+    Note over FCmp: Adjust commands
+    Note over FC: Motor mixer → ESCs → Motors
 ```
 
 ## Specific Maneuver Examples

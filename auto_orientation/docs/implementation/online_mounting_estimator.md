@@ -6,37 +6,19 @@
 
 ## Purpose
 
-Complements the one-shot mounting capture (Phase 4.3 — see [`mounting_calibration.md`](mounting_calibration.md)) with a continuous, slowly-adaptive estimate of the *dynamic-equivalent* mounting offset. Tracks slow drift caused by cable-tether torque, battery sag, payload changes, and aging surfaces — phenomena that the one-shot capture cannot anticipate at boot. This file is the AVR-Mega path (decision D7): a slow LPF of the inner-loop PID integral term. The Teensy/ESP32 path (3-state Kalman extension of the balance Kalman) is reserved and not implemented here.
+Complements the one-shot mounting capture (Phase 4.3 — see [`mounting_calibration.md`](mounting_calibration.md)) with a continuous, slowly-adaptive estimate of the *dynamic-equivalent* mounting offset. Tracks slow drift caused by cable-tether torque, battery sag, payload changes, and aging surfaces — phenomena that the one-shot capture cannot anticipate at boot. This file is the AVR-Mega path (decision D7). The Teensy/ESP32 path (3-state Kalman extension of the balance Kalman) is reserved and not implemented here.
+
+> **AS-BUILT (2026-05-22, verified vs source).** Decision row D7 and the bootstrap protocol Stage 2 describe this estimator as *a slow LPF of the inner-loop PID integral term* (`mount_offset += alpha·(i_term·gain_to_angle)`). **The shipped code does not do that.** A 2026-05-18 PM bench finding showed the I-term path could only shift ±0.4° from reference (the I-term clamp is ±40 PWM) AND averaged to zero under oscillation, so it never converged. The implementation (`online_mounting_estimator.cpp:112-191`) now LPFs **mean pitch directly** — `target_deg = pitch_deg`. The `i_term` and `gain_to_angle_` parameters are retained for API stability but are dead `(void)`-cast no-ops (`online_mounting_estimator.cpp:127, 188`); `i_term` survives only as a health signal, not as the tracking input. The "Core algorithm" below reflects the as-built mean-pitch behaviour. The I-term-LPF description in D7 / bootstrap Stage 2 is **stale** — see the AS-BUILT note in [`../findings/bootstrap_protocol_unstable_plant.md`](../findings/bootstrap_protocol_unstable_plant.md) §11.
 
 ## Data flow
 
-```
-                ┌────────────────────────────────────────────┐
-                │  inner balance loop (PID, ~200 Hz)         │
-                │   i_term, pitch_deg, gyro_pitch_dps        │
-                │   tipover_active, windup_active            │
-                └─────────────┬──────────────────────────────┘
-                              │
-                              ▼
-              OnlineMountingEstimator::update(...)
-                              │
-        ┌───── freeze gates ──┴────── tipover / windup / user / |gyro|>60°/s
-        │
-        ▼
-   target_deg = i_term * gain_to_angle_
-   raw_drift  = (target - estimate) / lpf_tc_sec  * dt_s
-   rate-limit |raw_drift / dt_s| ≤ max_drift_rate_dps_
-   estimate  += clamped_drift
-   estimate   = clamp(estimate, reference ± max_deviation_deg_)
-                              │
-                              ▼
-                 MountingCalibrationStatus
-                   {estimate_deg, drift_rate_dps,
-                    confidence_0_to_1, frozen, freeze_reason}
-                              │
-                              ▼
-                 balance loop applies estimate_deg as live offset
-                 (host may periodically ps::write + mark_saved())
+```mermaid
+flowchart TD
+    INNER["inner balance loop (PID, ~200 Hz)<br/>i_term, pitch_deg, gyro_pitch_dps<br/>tipover_active, windup_active"] --> UPDATE["OnlineMountingEstimator::update(...)"]
+    UPDATE --> GATES{"freeze gates:<br/>tipover / windup / user / |gyro| > 60°/s"}
+    GATES -->|not frozen| CALC["target_deg = pitch_deg (AS-BUILT: mean-pitch, not i_term)<br/>raw_drift = (target − estimate) / lpf_tc_sec * dt_s<br/>rate-limit |raw_drift / dt_s| ≤ max_drift_rate_dps_<br/>estimate += clamped_drift<br/>estimate = clamp(estimate, reference ± max_deviation_deg_)"]
+    CALC --> STATUS["MountingCalibrationStatus<br/>{estimate_deg, drift_rate_dps,<br/>confidence_0_to_1, frozen, freeze_reason}"]
+    STATUS --> APPLY["balance loop applies estimate_deg as live offset<br/>(host may periodically ps::write + mark_saved())"]
 ```
 
 ## Core algorithm
@@ -59,7 +41,8 @@ update(i_term, pitch_deg, tipover, windup, gyro, now_ms):
         drift_rate_dps_ = 0
         return estimate_deg_
 
-    target = i_term * gain_to_angle_
+    target = pitch_deg            # AS-BUILT: mean-pitch tracking.
+                                  # i_term and gain_to_angle_ are (void)-cast no-ops.
     raw    = (target - estimate_deg_) / lpf_time_constant_sec_   # deg/s
     drift  = clamp(raw, ±max_drift_rate_dps_) * dt_s
     estimate_deg_ += drift
@@ -70,7 +53,9 @@ update(i_term, pitch_deg, tipover, windup, gyro, now_ms):
 confidence = 1 - |estimate - reference| / max_deviation     # 1.0 at ref → 0.0 at rail
 ```
 
-Defaults (per [`findings/online_adaptive_balance_tracking.md`](../findings/online_adaptive_balance_tracking.md)): `lpf_tc = 300 s` (5 min — 1° accumulation needs ~5 min of stable runtime), `max_deviation = 5°` (D8 hard bound), `max_drift_rate = 0.5°/s` (D8 rate limit), `gain_to_angle = 0.01` (plant-specific; balancing-robot app sets from measured Ki/Kp).
+Defaults (per [`findings/online_adaptive_balance_tracking.md`](../findings/online_adaptive_balance_tracking.md)): `lpf_tc = 300 s` (5 min — 1° accumulation needs ~5 min of stable runtime), `max_deviation = 5°` (D8 hard bound), `max_drift_rate = 0.5°/s` (D8 rate limit), `gain_to_angle = 0.01` (now a no-op — see AS-BUILT note above).
+
+> **AS-BUILT — applied time constant overrides the default.** The estimator's `DEFAULT_LPF_TC_SEC = 300.0f` (5 min) is **overridden at the call site** in `main.cpp:588` to **8 s** (`online_est.set_lpf_time_constant_sec(8.0f)`), and `max_drift_rate` is overridden to **2.0°/s** (`main.cpp:589`, vs the 0.5°/s D8 default). So the running system tracks far faster than either the 300 s code default or the 60 s figure quoted in the bootstrap protocol. The triage doc ([`../findings/mega_scope_violation_triage_2026-05-22.md`](../findings/mega_scope_violation_triage_2026-05-22.md) #13) flags 8 s as itself **questionable** for what is meant to be a *slow-drift* tracker — a fast LPF on live pitch risks chasing the balance oscillation rather than the slow geometric offset. Changing the value is bench-gated; the discrepancy is documented here so it is not mistaken for the 300 s default.
 
 ## Buffer / RAM costs
 

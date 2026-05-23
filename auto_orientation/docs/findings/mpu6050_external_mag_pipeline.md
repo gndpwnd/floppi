@@ -50,19 +50,30 @@ Both filters (Madgwick 2010 MSc thesis, Bristol; Mahony et al. 2008, *IEEE TAC* 
 
 Three new files, two new base classes; the existing `OrientationSensor` vtable is preserved end-to-end.
 
-```
-Sensor (base, from sensor_base.h)
-├── OrientationSensor          ← existing; BNO085 / BNO055 derive here
-│   └── FusedIMU                  ← NEW. Implements OrientationSensor by running
-│                                   Madgwick over a RawIMUSensor + Magnetometer.
-├── RawIMUSensor              ← NEW. Pure gyro+accel; float[3] each.
-│   └── MPU6050                   ← NEW. I2C @ 0x68/0x69.
-│   └── (future) MPU9250_raw
-└── Magnetometer              ← NEW. Pure 3-axis mag; float[3].
-    ├── HMC5883L                  ← I2C @ 0x1E
-    ├── QMC5883L                  ← I2C @ 0x0D
-    ├── LIS3MDL                   ← I2C @ 0x1C/0x1D
-    └── AK8963_AuxMaster          ← muxed through MPU9250 aux-master
+```mermaid
+classDiagram
+    class Sensor
+    class OrientationSensor
+    class FusedIMU
+    class RawIMUSensor
+    class MPU6050
+    class MPU9250_raw
+    class Magnetometer
+    class HMC5883L
+    class QMC5883L
+    class LIS3MDL
+    class AK8963_AuxMaster
+
+    Sensor <|-- OrientationSensor : existing (BNO085 / BNO055)
+    Sensor <|-- RawIMUSensor : NEW, pure gyro+accel float[3]
+    Sensor <|-- Magnetometer : NEW, pure 3-axis mag float[3]
+    OrientationSensor <|-- FusedIMU : NEW, Madgwick over RawIMU + Mag
+    RawIMUSensor <|-- MPU6050 : I2C 0x68/0x69
+    RawIMUSensor <|-- MPU9250_raw : future
+    Magnetometer <|-- HMC5883L : I2C 0x1E
+    Magnetometer <|-- QMC5883L : I2C 0x0D
+    Magnetometer <|-- LIS3MDL : I2C 0x1C/0x1D
+    Magnetometer <|-- AK8963_AuxMaster : via MPU9250 aux-master
 ```
 
 `RawIMUSensor` exposes `readGyro(float[3])` (rad/s, bias-corrected), `readAccel(float[3])`, and `setGyroBias/setAccelBias`. `Magnetometer` exposes `readField(float[3])` returning calibrated µT (hard+soft iron applied inside) and `setHardIron/setSoftIron`. `FusedIMU` takes pointers to one `RawIMUSensor` and (optionally) one `Magnetometer`; with both it runs 9-DOF Madgwick, with just the IMU it falls back to 6-DOF. **Composition, not aggregation** — sensors are owned by `main.cpp` and may be shared. Mounting quaternion and declination are applied inside `FusedIMU::read()`, so the published `OrientationData.yaw_deg` is already true-north.

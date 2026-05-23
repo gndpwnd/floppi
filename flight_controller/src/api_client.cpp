@@ -123,7 +123,14 @@ void handleApiClient(const DisplayData_t* data) {
         char gps_nmea[GPS_NMEA_MAX];
         uint32_t gps_age = gpsTelemetryNMEA(gps_nmea, sizeof(gps_nmea));
         JsonObject gps = doc["gps"].to<JsonObject>();
+#if GPS_TELEMETRY_INCLUDE_POSITION
+        // SEC-04: position included (default). Raw NMEA carries lat/lon/alt and
+        // fix/sat counts verbatim, POSTed to the swarm server.
         gps["nmea"]   = gps_nmea;
+#endif
+        // SEC-04: when GPS_TELEMETRY_INCLUDE_POSITION == 0 the raw `nmea` field
+        // (sole carrier of position on a passthrough FC) is omitted; only the
+        // non-identifying liveness fields below are sent.
         gps["age_ms"] = gps_age;
         gps["ok"]     = gpsTelemetryOk();
     }

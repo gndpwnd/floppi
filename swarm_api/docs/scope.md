@@ -94,7 +94,7 @@ Python FastAPI application for controlling ESP32-based drones over WiFi. Provide
 - **ESP32 firmware changes** — Python side only; firmware API contract is documented, not modified
 - **Mobile app** — web dashboard works on mobile browsers, no native app
 - **Internet connectivity** — local network only; internet relay is a future project
-- **Encryption/authentication** — trusted local network assumption (for now)
+- **Encryption/authentication** — trusted local network assumption (for now). Note (2026-05-22): an **opt-in** server auth layer was added (off by default, backward-compatible); TLS/encryption remains out of scope (front with a TLS proxy). See docs/archive/session_records/2026-05-22_security_hardening.md.
 - **Swarm algorithms** — coordinated multi-drone behavior is future scope; this is individual drone control with fleet management
 - **Drone simulation** — no simulated drones; requires real hardware
 
@@ -184,7 +184,7 @@ The ESP32 has a 500ms failsafe timeout. If no commands arrive within 500ms, chan
 - **Safety**: Never arm a drone from the dashboard without physical line-of-sight. Always have a physical RC receiver as backup during early testing.
 - **Latency**: WiFi command latency (~10-50ms) is acceptable for slow maneuvers but NOT for aggressive FPV flying. This is a development/testing tool.
 - **IP addresses change**: mDNS is the primary resolution method. Config.json IPs are fallback only and may go stale.
-- **No authentication**: Trusted local network. Anyone on the WiFi can control the drones. Be aware of this during testing.
+- **Authentication**: An **opt-in** server auth gate exists (`server.auth_token`); when unset (default), it is off and anyone on the WiFi can control the drones. Set a token for any non-isolated deployment. Traffic is plaintext unless fronted with TLS. See docs/findings/security_audit_2026-05-22.md.
 
 ---
 
@@ -194,6 +194,7 @@ The ESP32 has a 500ms failsafe timeout. If no commands arrive within 500ms, chan
 |------|---------|-----|
 | 2026-02-10 | Initial scope draft | LLM + User |
 | 2026-02-10 | Added fleet/scripting API, drone identity tracking, system API | LLM + User |
+| 2026-05-22 | Security-posture note: opt-in server auth layer added (TLS still out of scope) | LLM |
 
 ---
 

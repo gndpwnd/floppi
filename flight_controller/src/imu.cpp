@@ -266,16 +266,29 @@ void Madgwick6DOF(float gx, float gy, float gz, float ax, float ay, float az, fl
         s2 = 4.0f * q0q0 * q2 + _2q0 * ax + _4q2 * q3q3 - _2q3 * ay - _4q2 + _8q2 * q1q1 + _8q2 * q2q2 + _4q2 * az;
         s3 = 4.0f * q1q1 * q3 - _2q1 * ax + 4.0f * q2q2 * q3 - _2q2 * ay;
 
-        recipNorm = invSqrt(s0 * s0 + s1 * s1 + s2 * s2 + s3 * s3);
-        s0 *= recipNorm;
-        s1 *= recipNorm;
-        s2 *= recipNorm;
-        s3 *= recipNorm;
+        // M-1 (security/correctness audit 2026-05-22): epsilon-guard the gradient
+        // normalisation. When the accel vector is exactly the level gravity
+        // vector (or any state where the gradient collapses), s0..s3 are all
+        // zero and invSqrt(0) = +inf -> 0*inf = NaN, which then poisons the
+        // quaternion forever (unrecoverable). Skip the gradient-descent
+        // correction when the gradient norm is below epsilon — we are already at
+        // the cost-function minimum, so the correction is zero anyway and we fall
+        // back to pure gyro integration for this step. Nominal flight never trips
+        // this (a real IMU never delivers a bit-exact gravity vector); the guard
+        // only engages on the degenerate path.
+        float gradNormSq = s0 * s0 + s1 * s1 + s2 * s2 + s3 * s3;
+        if (gradNormSq > 1.0e-12f) {
+            recipNorm = invSqrt(gradNormSq);
+            s0 *= recipNorm;
+            s1 *= recipNorm;
+            s2 *= recipNorm;
+            s3 *= recipNorm;
 
-        qDot1 -= MADGWICK_BETA * s0;
-        qDot2 -= MADGWICK_BETA * s1;
-        qDot3 -= MADGWICK_BETA * s2;
-        qDot4 -= MADGWICK_BETA * s3;
+            qDot1 -= MADGWICK_BETA * s0;
+            qDot2 -= MADGWICK_BETA * s1;
+            qDot3 -= MADGWICK_BETA * s2;
+            qDot4 -= MADGWICK_BETA * s3;
+        }
     }
 
     q0 += qDot1 * invSampleFreq;
@@ -283,11 +296,21 @@ void Madgwick6DOF(float gx, float gy, float gz, float ax, float ay, float az, fl
     q2 += qDot3 * invSampleFreq;
     q3 += qDot4 * invSampleFreq;
 
-    recipNorm = invSqrt(q0 * q0 + q1 * q1 + q2 * q2 + q3 * q3);
-    q0 *= recipNorm;
-    q1 *= recipNorm;
-    q2 *= recipNorm;
-    q3 *= recipNorm;
+    // M-1: belt-and-suspenders recovery. If the quaternion ever becomes
+    // non-finite (NaN/inf) — from the path above, an upstream sensor glitch, or
+    // a degenerate state norm of zero — reset to identity (level) rather than
+    // propagate a dead attitude estimate forever. invSqrt(0) on a zero norm
+    // would also yield inf here, so guard the norm first.
+    float qNormSq = q0 * q0 + q1 * q1 + q2 * q2 + q3 * q3;
+    if (!(qNormSq > 1.0e-12f) || isnan(q0) || isnan(q1) || isnan(q2) || isnan(q3)) {
+        q0 = 1.0f; q1 = 0.0f; q2 = 0.0f; q3 = 0.0f;
+    } else {
+        recipNorm = invSqrt(qNormSq);
+        q0 *= recipNorm;
+        q1 *= recipNorm;
+        q2 *= recipNorm;
+        q3 *= recipNorm;
+    }
 
     roll_IMU = atan2(q0 * q1 + q2 * q3, 0.5f - q1 * q1 - q2 * q2) * 57.2957795;
     pitch_IMU = asin(-2.0f * (q1 * q3 - q0 * q2)) * 57.2957795;

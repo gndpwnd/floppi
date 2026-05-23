@@ -7,20 +7,22 @@ fleet status overview, group/tag filtering, emergency disarm.
 
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, Request
+from pydantic import BaseModel, Field
+
+from .auth import require_auth
 
 router = APIRouter(prefix="/api/fleet", tags=["fleet"])
 
 
 class BatchCommandPayload(BaseModel):
     """Send a command to multiple drones at once."""
-    ch1: int = 1500
-    ch2: int = 1500
-    ch3: int = 1000
-    ch4: int = 1500
-    ch5: int = 1000
-    ch6: int = 1000
+    ch1: int = Field(default=1500, ge=1000, le=2000)
+    ch2: int = Field(default=1500, ge=1000, le=2000)
+    ch3: int = Field(default=1000, ge=1000, le=2000)
+    ch4: int = Field(default=1500, ge=1000, le=2000)
+    ch5: int = Field(default=1000, ge=1000, le=2000)
+    ch6: int = Field(default=1000, ge=1000, le=2000)
     # Target selection (mutually exclusive, checked in order)
     macs: Optional[list[str]] = None  # Specific MAC addresses
     group: Optional[str] = None       # All drones in a group
@@ -53,7 +55,7 @@ async def fleet_drones(request: Request, group: Optional[str] = None,
     return [d.summary() for d in drones]
 
 
-@router.post("/command")
+@router.post("/command", dependencies=[Depends(require_auth)])
 async def batch_command(cmd: BatchCommandPayload, request: Request):
     """
     Send the same command to multiple drones.
@@ -88,7 +90,7 @@ async def batch_command(cmd: BatchCommandPayload, request: Request):
     return {"results": results, "sent": sent, "failed": failed}
 
 
-@router.post("/disarm")
+@router.post("/disarm", dependencies=[Depends(require_auth)])
 async def disarm_all(request: Request):
     """Emergency disarm all online drones. Sends ch3=1000 (throttle min) + ch5=1000 (disarm)."""
     manager = request.app.state.manager

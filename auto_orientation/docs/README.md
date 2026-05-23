@@ -170,7 +170,8 @@ See [Adding New Sensors](guides/ADDING_NEW_SENSORS.md)
   - Memory and binary size analysis
 
 ### Architecture & Planning
-- **[Architecture](getting_started/ARCHITECTURE.md)** — System design with 12 Mermaid diagrams (comprehensive overview)
+- **[Layered Architecture](architecture/INDEX.md)** — Drill-down architecture diagrams: Level 0 system overview → Level 1 subsystems (Mega adaptive stack, Uno minimal path, sensor/odometry pipeline, storage HAL) → Level 2 components (BOOTSTRAP, position cascade). Reflects the Mega-universal vs Uno-minimal split.
+- **[Architecture (sensor fusion)](getting_started/ARCHITECTURE.md)** — Original BNO085 + GPS system design with 12 Mermaid diagrams (comprehensive overview)
 - **[Scope](scope.md)** — Project boundaries, constraints, first-release definition
 - **[Roadmap](roadmap.md)** — Feature checklist and milestones
 - **[Phase 1 Master Plan](phases/PHASE_1_MASTER_IMPLEMENTATION_PLAN.md)** — Detailed implementation roadmap

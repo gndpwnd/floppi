@@ -349,16 +349,14 @@ Current implementation stores calibration data so it survives power cycles. This
 
 ### Current System Architecture
 
-```
-Arduino Mega
-│
-├─ Serial Port (USB 115200 baud)
-│  └─ Main output: JSON orientation data
-│
-├─ I2C Bus (pins 20/21, 100 kHz clock)
-│  └─ BNO085 IMU (0x4A address)
-│
-└─ [Future: UART/USB serial for GPS integration]
+```mermaid
+flowchart TD
+    MEGA["Arduino Mega"]
+    MEGA --> SERIAL["Serial Port (USB 115200 baud)"]
+    SERIAL --> JSON["Main output: JSON orientation data"]
+    MEGA --> I2C["I2C Bus (pins 20/21, 100 kHz clock)"]
+    I2C --> BNO["BNO085 IMU (0x4A address)"]
+    MEGA --> GPS["[Future: UART/USB serial for GPS integration]"]
 ```
 
 ### Code Quality Assessment

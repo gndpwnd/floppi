@@ -71,35 +71,21 @@ The two **bold** rows define the minimum tetherless scope; the rest is UX polish
 
 State machine:
 
-```text
-        +---------+ power on
-        |  BOOT   |---+
-        +---------+   |
-             | self-test pass
-             v
-   +--->+---------+ short press  +---------+
-   |    |  IDLE   |------------->| CAPTURE |--+
-   |    +---------+              +---------+  | gyro-still
-   |       ^   ^  long press         |        | + accel avg
-   |       |   |                     v        v
-   |       |   |              +--------------+
-   |       |   +--------------|  SAVE EEPROM |
-   |       |                  +--------------+
-   |       |  abort                  |
-   |       |  (button)                |
-   |       |   long press            v
-   |       |    +---------+    +---------+
-   |       +----|  TUNE   |--->| SAVE PID|
-   |            +---------+    +---------+
-   |   short press                      |
-   |    +---------+ <------------------+
-   +----|   RUN   |
-        +---------+
-             | low-batt / fault
-             v
-        +---------+
-        |  FAULT  |  motors off, buzzer wail, LED SOS
-        +---------+
+```mermaid
+stateDiagram-v2
+    [*] --> BOOT: power on
+    BOOT --> IDLE: self-test pass
+    IDLE --> CAPTURE: short press
+    CAPTURE --> SAVE_EEPROM: gyro-still + accel avg
+    SAVE_EEPROM --> IDLE
+    IDLE --> TUNE: long press
+    TUNE --> SAVE_PID
+    SAVE_PID --> RUN
+    RUN --> IDLE: abort (button) / long press
+    RUN --> FAULT: low-batt / fault
+    note right of FAULT
+        motors off, buzzer wail, LED SOS
+    end note
 ```
 
 Every transition takes a `Source_t` (`SOURCE_BUTTON | SOURCE_WIFI | SOURCE_BLE | SOURCE_SERIAL`) — a future BLE pendant or browser dashboard drives the same graph without forking the controller.

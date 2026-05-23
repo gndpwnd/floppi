@@ -1,6 +1,6 @@
 # Flight Controller Firmware - Todo
 
-> Last updated: 2026-05-21 (end-of-session reconciliation)
+> Last updated: 2026-05-22 (end-of-session reconciliation)
 
 ## In Progress
 
@@ -22,10 +22,12 @@ _The barometer/GPS/swarm-telemetry workstreams (W2/W4/W5/W6) all closed out 2026
 - [ ] **Confirm `'b'` barometer sea-level calibration + swarm telemetry baro/gps blocks end-to-end** against the `swarm_api` server; confirm the `api_version` field once the server adopts it. See [findings/swarm_api_contract_2026-05-20.md](findings/swarm_api_contract_2026-05-20.md).
 - [ ] **Motor / ESC test framework** — needs ESCs/motors/rig **and** an ESC-protocol decision. Spec only (unimplemented): `docs/plans/motor-test-framework-plan.md`.
 - [ ] General on-hardware testing — calibration phases below, once ESCs/motors return.
+- [ ] **Runtime-validate the WiFi auth modes against real APs** — associate against a real OPEN AP, a genuine WPA3-SAE AP, and an eduroam/RADIUS network (PEAP and, if used, EAP-TLS with real certs). Builds prove compile-correctness only; only a live AP proves association. **Operator step** (needs networks + an ESP32 on the bench). See [archive/session_records/2026-05-22_wifi_network_modes.md](archive/session_records/2026-05-22_wifi_network_modes.md).
+- [ ] **Security-hardening end-to-end bench validation** — arm-over-WiFi rejection with `USE_API_AUTH` on + a real token, OTA reject-on-bad-password round-trip, worst-case WS frame with GPS+baro, I2C checksum vs a real master. Hardware-gated. See [archive/session_records/2026-05-22_security_correctness_docs.md](archive/session_records/2026-05-22_security_correctness_docs.md) §7.
 
-### Known low-priority robustness item (not scheduled)
+### Known low-priority robustness item
 
-- [ ] `imu.cpp` `Madgwick6DOF()` returns NaN on a mathematically-exact zero-gradient accel input. Never occurs with real (noisy) sensor data, so not a flight risk. A future guard could clamp the gradient-normalisation denominator.
+- [x] `imu.cpp` `Madgwick6DOF()` NaN on a mathematically-exact zero-gradient accel input — **FIXED 2026-05-22** (gradient-normalization guarded + reset-to-identity backstop; nominal path bit-identical). See [archive/session_records/2026-05-22_security_correctness_docs.md](archive/session_records/2026-05-22_security_correctness_docs.md) §2 (M-1).
 
 ## Future Sessions Backlog
 
@@ -39,8 +41,10 @@ _Don't expand inline — see the planning docs._
 
 ## Awaiting Operator Input
 
-_5 open questions from [findings/future_session_scaffolding_2026-05-20.md](findings/future_session_scaffolding_2026-05-20.md) §7._
+_5 open questions from [findings/future_session_scaffolding_2026-05-20.md](findings/future_session_scaffolding_2026-05-20.md) §7, plus new decisions from the 2026-05-22 wave._
 
+- [ ] **Flip `USE_API_AUTH` default-ON?** — command-API token auth shipped opt-in / default-OFF (backward-compatible). Pending decision whether to make it the committed default (requires the swarm_api side to send the token first — see `docs/handoffs/api_auth_contract_2026-05-22.md`). Context: [archive/session_records/2026-05-22_security_correctness_docs.md](archive/session_records/2026-05-22_security_correctness_docs.md).
+- [ ] **Commit the 2026-05-22 wave?** — all security/correctness + WiFi-mode changes are in the working tree, QA gate is **GO**, operator decides when to commit.
 - [ ] **Default IMU for FC v2** — Stay on MPU6050/9250, or transition to BNO055/BNO085 once bno-cross-project research lands? Affects magnetometer roadmap (§3.3) and IMU calibration story.
 - [ ] **GPS scope clarification** — scope.md says GPS is flight-computer territory; auto_orientation has `GPS_QUICK_START.md`. Is the intent that FC is a passthrough for GPS data (Core 1 → API relay), or fully out? Affects §3.4.
 - [ ] **Hardware availability through Q2 2026** — When will ESCs/motors be on the bench? Gates ESP32 smoke test, motor-test framework execution, and Phase 1-7 hardware calibration below.
@@ -154,6 +158,15 @@ _Tasks waiting on something (include reason)_
 ## Recently Completed
 
 _For context; clear periodically_
+
+### Completed 2026-05-22
+
+_Full records: [archive/session_records/2026-05-22_security_correctness_docs.md](archive/session_records/2026-05-22_security_correctness_docs.md) (security/correctness/docs) + [archive/session_records/2026-05-22_wifi_network_modes.md](archive/session_records/2026-05-22_wifi_network_modes.md) (WiFi feature). All changes UNCOMMITTED._
+
+- [x] **Security / auth hardening (opt-in, default-OFF, backward-compatible)** — command-API token auth (`USE_API_AUTH` + `FLOPPI_CMD_TOKEN`), OTA password/hash + build guards, GPS position-privacy gate (`GPS_TELEMETRY_INCLUDE_POSITION`), I2C command XOR checksum. Audit (3 P0 / 2 P1) → fixes → QA **GO**. See [findings/security_audit_2026-05-22.md](findings/security_audit_2026-05-22.md), [findings/qa_review_2026-05-22.md](findings/qa_review_2026-05-22.md), [security_posture.md](security_posture.md), [network_security_setup.md](network_security_setup.md).
+- [x] **Correctness fixes** — Madgwick6DOF NaN guard (resolves the previously-tracked low-priority robustness item), dynamic WebSocket telemetry buffer (no truncation), latent `GPS_PIN_RX/TX` build-breaker fixed.
+- [x] **Mermaid + layered architecture docs** — ASCII→Mermaid conversion + new `docs/architecture/` Level 0/1/2 doc set ([architecture/INDEX.md](architecture/INDEX.md)).
+- [x] **ESP32 WiFi auth-mode selector** — compile-time `WIFI_AUTH_MODE_*` (PSK default / OPEN / WPA3-SAE / ENTERPRISE: PEAP/TTLS/TLS), `USE_WIFI_CERTS` / `USE_STATIC_IP` / `WIFI_HOSTNAME`, `#error` validation, liftable `wifi_connect` module. PSK byte-identical to legacy; Enterprise ~0 incremental flash (mbedTLS already linked); QA **GO**; hostname-ordering bug fixed. See [plans/wifi-network-modes-plan.md](plans/wifi-network-modes-plan.md), [features/wifi-configuration.md](features/wifi-configuration.md), [findings/wifi_modes_qa_2026-05-22.md](findings/wifi_modes_qa_2026-05-22.md).
 
 ### Completed 2026-05-21
 

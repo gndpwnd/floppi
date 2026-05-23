@@ -4,20 +4,25 @@ API routes for drone management and control.
 
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, Field, field_validator
+
+from ..config import (
+    MAC_RE, MDNS_RE, _validate_name, _validate_tags,
+)
+from .auth import require_auth
 
 router = APIRouter(prefix="/api", tags=["drones"])
 
 
 class CommandPayload(BaseModel):
     """Channel values to send to a drone. 1000-2000 microseconds."""
-    ch1: int = 1500  # Roll
-    ch2: int = 1500  # Pitch
-    ch3: int = 1000  # Throttle
-    ch4: int = 1500  # Yaw
-    ch5: int = 1000  # Aux1 (arm/disarm)
-    ch6: int = 1000  # Aux2 (mode)
+    ch1: int = Field(default=1500, ge=1000, le=2000)  # Roll
+    ch2: int = Field(default=1500, ge=1000, le=2000)  # Pitch
+    ch3: int = Field(default=1000, ge=1000, le=2000)  # Throttle
+    ch4: int = Field(default=1500, ge=1000, le=2000)  # Yaw
+    ch5: int = Field(default=1000, ge=1000, le=2000)  # Aux1 (arm/disarm)
+    ch6: int = Field(default=1000, ge=1000, le=2000)  # Aux2 (mode)
 
 
 class AddDronePayload(BaseModel):
@@ -27,11 +32,60 @@ class AddDronePayload(BaseModel):
     group: Optional[str] = None
     tags: list[str] = []
 
+    # F-07 / F-05: validate identity + metadata at the API boundary too, so
+    # malformed registrations are rejected before they reach the manager/config.
+    @field_validator("mac")
+    @classmethod
+    def _check_mac(cls, v: str) -> str:
+        if not MAC_RE.match(v):
+            raise ValueError("mac must be of the form AA:BB:CC:DD:EE:FF")
+        return v.upper()
+
+    @field_validator("name")
+    @classmethod
+    def _check_name(cls, v: str) -> str:
+        return _validate_name(v, "name")
+
+    @field_validator("group")
+    @classmethod
+    def _check_group(cls, v: Optional[str]) -> Optional[str]:
+        return _validate_name(v, "group")
+
+    @field_validator("mdns_hostname")
+    @classmethod
+    def _check_mdns(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        if not MDNS_RE.match(v):
+            raise ValueError(
+                "mdns_hostname must be a bare DNS label (no dots/scheme/port)")
+        return v
+
+    @field_validator("tags")
+    @classmethod
+    def _check_tags(cls, v: list[str]) -> list[str]:
+        return _validate_tags(v) or []
+
 
 class UpdateDronePayload(BaseModel):
     name: Optional[str] = None
     group: Optional[str] = None
     tags: Optional[list[str]] = None
+
+    @field_validator("name")
+    @classmethod
+    def _check_name(cls, v: Optional[str]) -> Optional[str]:
+        return _validate_name(v, "name")
+
+    @field_validator("group")
+    @classmethod
+    def _check_group(cls, v: Optional[str]) -> Optional[str]:
+        return _validate_name(v, "group")
+
+    @field_validator("tags")
+    @classmethod
+    def _check_tags(cls, v: Optional[list[str]]) -> Optional[list[str]]:
+        return _validate_tags(v)
 
 
 @router.get("/drones")
@@ -61,7 +115,7 @@ async def get_telemetry(mac: str, request: Request):
     return drone.state.last_telemetry or {"error": "no telemetry yet"}
 
 
-@router.post("/drones/{mac}/command")
+@router.post("/drones/{mac}/command", dependencies=[Depends(require_auth)])
 async def send_command(mac: str, cmd: CommandPayload, request: Request):
     """Send channel values to a specific drone."""
     manager = request.app.state.manager
@@ -77,7 +131,7 @@ async def send_command(mac: str, cmd: CommandPayload, request: Request):
     return {"ok": True}
 
 
-@router.put("/drones/{mac}")
+@router.put("/drones/{mac}", dependencies=[Depends(require_auth)])
 async def update_drone(mac: str, payload: UpdateDronePayload, request: Request):
     """Update drone metadata (name, group, tags). Only sends fields present in body."""
     manager = request.app.state.manager
@@ -93,7 +147,7 @@ async def update_drone(mac: str, payload: UpdateDronePayload, request: Request):
     return drone.summary()
 
 
-@router.post("/drones")
+@router.post("/drones", dependencies=[Depends(require_auth)])
 async def add_drone(payload: AddDronePayload, request: Request):
     """Register a new drone."""
     manager = request.app.state.manager
@@ -107,7 +161,7 @@ async def add_drone(payload: AddDronePayload, request: Request):
     return client.summary()
 
 
-@router.delete("/drones/{mac}")
+@router.delete("/drones/{mac}", dependencies=[Depends(require_auth)])
 async def remove_drone(mac: str, request: Request):
     """Remove a drone from the fleet."""
     manager = request.app.state.manager

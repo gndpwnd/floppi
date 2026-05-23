@@ -10,22 +10,18 @@ Sensor-agnostic, AVR-friendly PID controller used by every closed-loop applicati
 
 ## Data flow
 
-```
-   setpoint  measurement  dt_ms
-       │         │          │
-       ▼         ▼          ▼
-   error = setpoint - measurement
-       │
-       ├─► P term:  kp * error
-       ├─► I term:  ki * integral_                    (integral clamped)
-       └─► D term: -kd * Δmeasurement/dt (default)
-                    OR kd * Δerror/dt   (configurable)
-                              │
-                              ▼
-                  sum → clamp[output_min, output_max] → output
-                              │
-                              ▼
-                  cache p/i/d term + output for inspection accessors
+```mermaid
+flowchart TD
+    SP["setpoint"] --> ERR["error = setpoint - measurement"]
+    MEAS["measurement"] --> ERR
+    DT["dt_ms"] --> ERR
+    ERR --> P["P term: kp * error"]
+    ERR --> I["I term: ki * integral_ (integral clamped)"]
+    ERR --> D["D term: -kd * Δmeasurement/dt (default)<br/>OR kd * Δerror/dt (configurable)"]
+    P --> SUM["sum → clamp[output_min, output_max] → output"]
+    I --> SUM
+    D --> SUM
+    SUM --> CACHE["cache p/i/d term + output<br/>for inspection accessors"]
 ```
 
 ## Core algorithm

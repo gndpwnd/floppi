@@ -9,6 +9,7 @@ Handles:
 """
 
 import asyncio
+import ipaddress
 import json
 import logging
 import time
@@ -19,6 +20,23 @@ import httpx
 import websockets
 
 logger = logging.getLogger("swarm_api.drone")
+
+
+def _valid_ip(value: Any) -> Optional[str]:
+    """Return the value if it is a valid IPv4/IPv6 address, else None.
+
+    Defense-in-depth (audit F-10): telemetry is attacker-influenced — a spoofed
+    or compromised drone could otherwise inject arbitrary markup via net.ip
+    (reflected to the dashboard) or redirect future polls/commands. We only
+    adopt net.ip when it parses as a real IP; anything else is dropped.
+    """
+    if not isinstance(value, str):
+        return None
+    try:
+        ipaddress.ip_address(value)
+        return value
+    except ValueError:
+        return None
 
 
 @dataclass
@@ -37,7 +55,8 @@ class DroneClient:
 
     def __init__(self, mac: str, name: str, ip: Optional[str] = None,
                  mdns_hostname: Optional[str] = None, timeout_s: float = 2.0,
-                 group: Optional[str] = None, tags: Optional[list[str]] = None):
+                 group: Optional[str] = None, tags: Optional[list[str]] = None,
+                 command_token: Optional[str] = None):
         self.mac = mac
         self.name = name
         self.ip = ip
@@ -45,12 +64,19 @@ class DroneClient:
         self.timeout_s = timeout_s
         self.group = group
         self.tags = tags or []
+        # Shared token for the firmware command surface (USE_API_AUTH). When
+        # set, it is attached to every command via the X-Floppi-Token header
+        # (HTTP POST) and a "token" field (WebSocket). When None, commands go
+        # out unauthenticated — backward-compatible with auth-OFF firmware.
+        self.command_token = command_token
         self.state = DroneState(ip=ip)
 
         self._ws: Optional[websockets.WebSocketClientProtocol] = None
         self._ws_task: Optional[asyncio.Task] = None
         self._telemetry_callbacks: list[Callable] = []
         self._http = httpx.AsyncClient(timeout=timeout_s)
+        # Throttle repeated 401 logs so a misconfigured token doesn't spam.
+        self._auth_warned = False
 
     @property
     def base_url(self) -> Optional[str]:
@@ -92,17 +118,21 @@ class DroneClient:
                 self.state.last_telemetry = data
                 self.state.latency_ms = latency
 
-                # Update IP from telemetry if available
+                # Update IP from telemetry if available. Validate server-side
+                # before adopting it (audit F-10) — never trust a drone-reported
+                # address verbatim. Invalid values are simply not adopted.
                 net = data.get("net", {})
-                if net.get("ip"):
-                    self.ip = net["ip"]
-                    self.state.ip = net["ip"]
+                valid_ip = _valid_ip(net.get("ip"))
+                if valid_ip:
+                    self.ip = valid_ip
+                    self.state.ip = valid_ip
 
                 for cb in self._telemetry_callbacks:
                     cb(self.mac, data)
 
                 return data
-        except (httpx.RequestError, Exception) as e:
+        except (httpx.RequestError, json.JSONDecodeError, ValueError) as e:
+            # Network failure or a drone returning non-JSON / bad JSON.
             logger.debug("Poll failed for %s: %s", self.name, e)
             self.state.online = False
         return None
@@ -121,23 +151,45 @@ class DroneClient:
             val = channels.get(key, 1500 if key != "ch3" else 1000)
             payload[key] = max(1000, min(2000, val))
 
-        # Try WebSocket first (lower latency, no HTTP overhead)
+        # Try WebSocket first (lower latency, no HTTP overhead).
+        # WS frames have no HTTP headers, so the token (if any) rides in the
+        # JSON body as a "token" field, per the firmware auth contract.
         if self._ws and self.state.ws_connected:
+            ws_payload = payload
+            if self.command_token:
+                ws_payload = {"token": self.command_token, **payload}
             try:
-                await self._ws.send(json.dumps(payload))
+                await self._ws.send(json.dumps(ws_payload))
                 return True
-            except Exception:
+            except (websockets.WebSocketException, OSError) as e:
+                logger.debug("WS send failed for %s: %s", self.name, e)
                 self.state.ws_connected = False
 
-        # Fall back to POST
+        # Fall back to POST. Token (if any) goes in the X-Floppi-Token header
+        # (preferred per the firmware contract).
         url = self.base_url
         if not url:
             return False
 
+        headers = {}
+        if self.command_token:
+            headers["X-Floppi-Token"] = self.command_token
+
         try:
-            resp = await self._http.post(f"{url}/api/commands", json=payload)
+            resp = await self._http.post(f"{url}/api/commands", json=payload,
+                                         headers=headers)
+            if resp.status_code == 401:
+                if not self._auth_warned:
+                    logger.error(
+                        "Command rejected by %s: auth required/invalid token "
+                        "(HTTP 401). Check command_token in config.json matches "
+                        "the drone's FLOPPI_CMD_TOKEN.", self.name)
+                    self._auth_warned = True
+                return False
+            # Recovered (or never failed) — allow a future 401 to log again.
+            self._auth_warned = False
             return resp.status_code == 200
-        except (httpx.RequestError, Exception) as e:
+        except httpx.RequestError as e:
             logger.debug("Command send failed for %s: %s", self.name, e)
             return False
 
@@ -163,7 +215,7 @@ class DroneClient:
                 except json.JSONDecodeError:
                     pass
 
-        except Exception as e:
+        except (websockets.WebSocketException, OSError) as e:
             logger.debug("WebSocket error for %s: %s", self.name, e)
         finally:
             self.state.ws_connected = False

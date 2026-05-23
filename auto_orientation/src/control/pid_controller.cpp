@@ -77,9 +77,13 @@ void PIDController::set_output_limits(float min, float max) {
 void PIDController::set_tunings(float kp, float ki, float kd) {
     // Reject negative gains — they invert the loop sign and are almost
     // certainly a bug from the caller. Saturate at 0 instead of asserting.
-    kp_ = (kp < 0.0f) ? 0.0f : kp;
-    ki_ = (ki < 0.0f) ? 0.0f : ki;
-    kd_ = (kd < 0.0f) ? 0.0f : kd;
+    // Also reject non-finite (NaN/Inf) gains (audit P1-003): (NaN < 0.0f) is
+    // false, so without the isnan() guard a NaN gain would be stored and later
+    // produce a NaN output that defeats the output clamp (NaN comparisons are
+    // all false) and reaches the (int16_t) motor cast as undefined behaviour.
+    kp_ = (isnan(kp) || isinf(kp) || kp < 0.0f) ? 0.0f : kp;
+    ki_ = (isnan(ki) || isinf(ki) || ki < 0.0f) ? 0.0f : ki;
+    kd_ = (isnan(kd) || isinf(kd) || kd < 0.0f) ? 0.0f : kd;
     // ki changed -> re-bound the integral against the new effective limit.
     clamp_integral_();
 }
@@ -279,6 +283,15 @@ float PIDController::get_error() const      { return last_error_value_;}
 // ------------------------------------------------------------------------- //
 
 float PIDController::clamp_(float v, float lo, float hi) {
+    // Fail safe on non-finite input (audit P1-003 / P2-001): a NaN or Inf
+    // value fails BOTH (v < lo) and (v > hi) (all NaN comparisons are false;
+    // +Inf > hi catches Inf but NaN slips through the magnitude branches), so
+    // without this guard a NaN sum/gain would pass straight through and reach
+    // the (int16_t) motor cast — undefined behaviour, unpredictable PWM. Treat
+    // any non-finite value as 0 output (motors neutral). This single guard
+    // closes the NaN→motor class for EVERY output path that funnels through
+    // clamp_(), not just the gain path.
+    if (isnan(v) || isinf(v)) return 0.0f;
     if (v < lo) return lo;
     if (v > hi) return hi;
     return v;

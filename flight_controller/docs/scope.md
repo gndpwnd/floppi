@@ -1,6 +1,6 @@
 # Flight Controller Firmware - Scope
 
-> Last updated: 2026-05-20
+> Last updated: 2026-05-22
 > Status: Active
 
 ---
@@ -112,15 +112,18 @@ RadioComm is the **single entry point** for all command/control input to the fli
 
 **Architecture:**
 
-```text
-SBUS receiver ─────┐
-iBUS receiver ─────┤
-DSM receiver  ─────┤
-PPM receiver  ─────┤
-PWM receiver  ─────┼──→ RadioComm ──→ channel_X_pwm ──→ Flight Controller
-Serial commands ───┤     (unified)     (1000-2000us)
-I2C commands   ────┤
-WiFi API (ESP32) ──┘
+```mermaid
+flowchart LR
+    SBUS["SBUS receiver"] --> RC
+    IBUS["iBUS receiver"] --> RC
+    DSM["DSM receiver"] --> RC
+    PPM["PPM receiver"] --> RC
+    PWM["PWM receiver"] --> RC
+    SER["Serial commands"] --> RC
+    I2C["I2C commands"] --> RC
+    WIFI["WiFi API (ESP32)"] --> RC
+    RC["RadioComm (unified)"] --> CH["channel_X_pwm (1000-2000us)"]
+    CH --> FC["Flight Controller"]
 ```
 
 **Current state**: RadioComm handles 5 RC protocols (SBUS, iBUS, DSM, PPM, PWM) + 3 command sources (serial, I2C, WiFi API), compile-time selected. One source active per build. Outputs `channel_1_pwm` through `channel_6_pwm` (1000-2000us range).
@@ -148,23 +151,22 @@ WiFi API (ESP32) ──┘
 
 The flight controller is a **modular base system** where each component is configurable and swappable:
 
-```text
-┌─────────────────────────────────────────────────────┐
-│                  Base System (always)                │
-│                                                     │
-│  MCU (Teensy/ESP32)  +  IMU (MPU6050/MPU9250)      │
-│       +  Receiver (iBUS/SBUS/DSM/PPM/WiFi API)     │
-│       +  ESCs (PWM signal, up to 8 motors)           │
-│                                                     │
-├─────────────────────────────────────────────────────┤
-│           Optional (config.h flags)                  │
-│                                                     │
-│  OLED Display (USE_OLED_DISPLAY → select model)     │
-│  WiFi features (ESP32 only, auto with USE_WIFI)     │
-│  Optimization filters (USE_OPTIMIZATION)            │
-│  Racing features (USE_RACING)                       │
-│  OTA updates (USE_OTA)                              │
-└─────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph base["Base System (always)"]
+        MCU["MCU (Teensy/ESP32)"]
+        IMU["IMU (MPU6050/MPU9250)"]
+        RX["Receiver (iBUS/SBUS/DSM/PPM/WiFi API)"]
+        ESC["ESCs (PWM signal, up to 8 motors)"]
+    end
+    subgraph opt["Optional (config.h flags)"]
+        OLED["OLED Display (USE_OLED_DISPLAY → select model)"]
+        WIFI["WiFi features (ESP32 only, auto with USE_WIFI)"]
+        OPTF["Optimization filters (USE_OPTIMIZATION)"]
+        RACE["Racing features (USE_RACING)"]
+        OTA["OTA updates (USE_OTA)"]
+    end
+    base --> opt
 ```
 
 **Key principles:**
@@ -223,7 +225,7 @@ This is a separate project. The FC firmware just exposes the WiFi API endpoints.
 - Serial debug output and diagnostics
 - Integration with fc_tool for visual diagnostics during calibration
 - Safety systems (arming, failsafe, throttle cut)
-- ESP32: WiFi STA mode, web status server, API client for swarm coordination
+- ESP32: WiFi STA mode (compile-time auth-mode selector — OPEN / WPA2-PSK / WPA3-SAE / WPA2-Enterprise PEAP/TTLS/TLS; see [features/wifi-configuration.md](features/wifi-configuration.md)), web status server, API client for swarm coordination
 - ESP32: OLED display on Core 1 (non-real-time)
 - WiFi telemetry (JSON API, WebSocket streaming, mDNS)
 - RadioComm as universal command entry point — all command sources (SBUS, DSM, PPM, PWM, serial, I2C, WiFi API) flow through RadioComm to the flight controller
@@ -245,7 +247,7 @@ This is a separate project. The FC firmware just exposes the WiFi API endpoints.
 - Multi-drone coordination or swarm features — flight computer territory
 - swarm-API authentication / TLS — intentionally NOT implemented in the current development phase [^api-auth]
 
-[^api-auth]: The ESP32 swarm-API (HTTP + WebSocket command/telemetry, plus OTA) has no authentication and no transport encryption. This is a deliberate development-phase decision (2026-05-20): the flight controller is assumed to run on a closed, trusted lab LAN. Anyone with LAN access can send flight commands, trigger an OTA flash, or read telemetry — including GPS location once `USE_GPS` is enabled. **Do NOT connect the FC to a shared or untrusted network in this state.** A shared-secret header or TLS is deferred, not refused; see [findings/swarm_api_contract_2026-05-20.md](findings/swarm_api_contract_2026-05-20.md) for the options. Revisit before any non-lab deployment.
+[^api-auth]: The ESP32 swarm-API (HTTP + WebSocket command/telemetry, plus OTA) has no authentication and no transport encryption. This is a deliberate development-phase decision (2026-05-20): the flight controller is assumed to run on a closed, trusted lab LAN. Anyone with LAN access can send flight commands, trigger an OTA flash, or read telemetry — including GPS location once `USE_GPS` is enabled. **Do NOT connect the FC to a shared or untrusted network in this state.** A shared-secret header or TLS is deferred, not refused; see [findings/swarm_api_contract_2026-05-20.md](findings/swarm_api_contract_2026-05-20.md) for the options. Revisit before any non-lab deployment. **Update 2026-05-22:** an opt-in, default-OFF command-API token (`USE_API_AUTH` + `FLOPPI_CMD_TOKEN`) and OTA password are now available in firmware (telemetry stays open by design); the committed default is still unauthenticated, and transport encryption (TLS/HTTPS) remains deferred. See [security_posture.md](security_posture.md) + [network_security_setup.md](network_security_setup.md).
 - In-flight mode switching — flight computer sends commands, FC executes
 - Dynamic gyro filtering (FFT, RPM filters) — Betaflight-level complexity, not needed
 - In-flight PID tuning — calibration mode + fc_tool covers this
@@ -293,7 +295,7 @@ This is a separate project. The FC firmware just exposes the WiFi API endpoints.
 
 ## ResearchHub Integration
 
-This sub-project is the primary research workspace for all flight dynamics topics within floppi. ResearchHub is configured to auto-research: quaternions, PID/LQR/MPC control, IMU sensor fusion, acrobatics trajectory planning, rotational dynamics, coordinate transforms, and safety constraints. The existing 14 findings documents in `docs/findings/` will be ingested into a RAG knowledge base for retrieval-augmented research. PDFs are stored at `docs/findings/sources/pdfs/`. Different build configurations (`#ifdef`) handle different sensors and flight modes, making this the natural home for all flight dynamics R&D.
+This sub-project is the primary research workspace for all flight dynamics topics within floppi. ResearchHub is configured to auto-research: quaternions, PID/LQR/MPC control, IMU sensor fusion, acrobatics trajectory planning, rotational dynamics, coordinate transforms, and safety constraints. The findings documents in `docs/findings/` (see [`docs/findings/INDEX.md`](findings/INDEX.md) for the live list) will be ingested into a RAG knowledge base for retrieval-augmented research. PDFs are stored at `docs/findings/sources/pdfs/`. Different build configurations (`#ifdef`) handle different sensors and flight modes, making this the natural home for all flight dynamics R&D.
 
 ## Critical Notes
 
@@ -321,6 +323,7 @@ This sub-project is the primary research workspace for all flight dynamics topic
 | 2026-02-10 | Added hardware architecture vision (modular base system, progression path, external controller app). Added iBUS receiver support. Updated RadioComm to include iBUS. Wiring diagrams reorganized into dedicated folder with specific build guides. | LLM + User |
 | 2026-02-10 | All RadioComm command sources implemented (serial, I2C, WiFi API). I2C slave on Wire1. Arbitration design doc written. External controller app (swarm_api) marked as built. | LLM + User |
 | 2026-05-20 | Bumped "Last updated" header to match content. Added carve-out footnote on the baro/GPS/magnetometer exclusion: telemetry-only barometer and passthrough-only GPS are now in scope as Core-1 modular sensors (see barometer/GPS specs); GPS-guided flight remains out of scope. | LLM + User |
+| 2026-05-22 | Clarified the ESP32 WiFi In-Scope line with the compile-time auth-mode selector (OPEN/PSK/WPA3-SAE/Enterprise PEAP/TTLS/TLS). Updated the swarm-API-auth footnote to note the now-available opt-in `USE_API_AUTH` token + OTA password (committed default still unauthenticated; TLS still deferred). Telemetry-only / flight-stabilizer scope unchanged. | doc-writer (Orchestra) |
 
 ---
 

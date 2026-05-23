@@ -1,7 +1,18 @@
 """
 Swarm API - Ground station control for floppi ESP32 drones.
 
-Run with: python -m uvicorn src.main:app --host 0.0.0.0 --port 8080
+Run with the configured bind host/port (reads server.host / server.port from
+config.json):
+    python -m src.main
+
+Or pass an explicit bind (the config host/port are the defaults if you use
+uvicorn directly):
+    python -m uvicorn src.main:app --host 0.0.0.0 --port 8080
+
+Bind host (F-11): server.host defaults to "0.0.0.0" (reachable on every
+interface — preserves prior behaviour). Set it to "127.0.0.1" to restrict the
+unauthenticated-by-default control plane to localhost, or to a specific LAN
+interface IP for a single trusted network.
 """
 
 import logging
@@ -52,6 +63,19 @@ async def lifespan(app: FastAPI):
     await manager.start()
     logger.info("Swarm API started — %d drone(s)", len(config.drones))
 
+    # Security posture warning (F-01/F-11). When no server auth token is set the
+    # control plane is open to anyone who can reach the bind address.
+    if not config.server.auth_token:
+        logger.warning(
+            "SERVER AUTH DISABLED — every control endpoint (commands, "
+            "batch-command, disarm, config mutation, /ws/dashboard) is "
+            "UNAUTHENTICATED. Bound to %s:%d. Set server.auth_token in "
+            "config.json and run only on a trusted/isolated network.",
+            config.server.host, config.server.port,
+        )
+    else:
+        logger.info("Server auth ENABLED — control endpoints require a token.")
+
     yield
 
     await manager.stop()
@@ -97,3 +121,23 @@ async def health(request: Request):
         "drones_total": fleet["total"],
         "drones_online": fleet["online"],
     }
+
+
+def main() -> None:
+    """Launch uvicorn bound to the configured host/port (F-11).
+
+    server.host defaults to "0.0.0.0" for backward compatibility. Override it
+    in config.json (e.g. "127.0.0.1") to restrict the bind interface.
+    """
+    import uvicorn
+
+    config = load_config()
+    uvicorn.run(
+        "src.main:app",
+        host=config.server.host,
+        port=config.server.port,
+    )
+
+
+if __name__ == "__main__":
+    main()

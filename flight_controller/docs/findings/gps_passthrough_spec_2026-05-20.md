@@ -1,9 +1,27 @@
 # GPS Passthrough Integration Spec (`USE_GPS`)
 
-> Date: 2026-05-20
+> Date: 2026-05-20 (spec) · status updated 2026-05-21
 > Agent: fc-gps-passthrough-spec@flight_controller:1
-> Status: Scaffolding spec — NO CODE. Unblocks a future implementation session.
+> Status: **LANDED** — Flavour-A raw-NMEA passthrough shipped in firmware
+> (committed in `3f57a6c`). This spec is now a historical design record; the
+> as-built detail lives in `phase_w5_gps_landed_2026-05-20.md` and the
+> follow-up `phase_w5_gps_landed_2026-05-21.md` (missing-pin-default fix).
 > Scaffolding source: `future_session_scaffolding_2026-05-20.md` §3.4
+>
+> **As-built notes (do not regress when editing):**
+>
+> - `GPS_PIN_RX` / `GPS_PIN_TX` defaults live in **`include/config.h`** (not
+>   `pin_definitions_esp32.h` as §6 sketched): `GPS_PIN_RX` = GPIO 4 RX on the
+>   standard ESP32, GPIO 16 RX on the ESP32-S3; `GPS_PIN_TX` = -1 (RX-only —
+>   no TX GPIO claimed). Both are `#ifndef`-guarded so a build flag still wins.
+>   A latent missing-pin-default build issue was fixed in `config.h` on
+>   2026-05-21 (see `phase_w5_gps_landed_2026-05-21.md`).
+> - GPS runs on **UART1 / `Serial1`** (`GPS_UART_NUM` default 1), so it never
+>   collides with SBUS, which is on **UART2 / `Serial2`** in the default
+>   receiver build. The GPS + SBUS combination coexists with no override.
+> - A compile-time **`#error` guard in `gps.h`** prevents `USE_GPS` from sharing
+>   UART1 with the serial receivers — `USE_IBUS_RECEIVER` / `USE_DSM_RECEIVER` /
+>   `USE_SERIAL_COMMANDS` (and, for `GPS_UART_NUM 2`, `USE_SBUS_RECEIVER`).
 
 **Cross-references (do not duplicate):**
 - `future_session_scaffolding_2026-05-20.md` §3.4 — contract this spec fulfills.

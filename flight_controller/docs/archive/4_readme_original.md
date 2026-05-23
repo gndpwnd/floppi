@@ -1,4 +1,17 @@
-# 🚁 dRehmFlight VTOL - Flight Controller for Teensy 4.0/4.1
+# ⚠️ ARCHIVED — HISTORICAL COPY (links below are dead)
+
+> **DO NOT FOLLOW THE LINKS BELOW.**
+>
+> This is a snapshot of an older, Teensy-only README kept for historical
+> reference only. The project has since moved to lowercase, numbered docs
+> (`docs/0_quickstart.md`, `docs/1_hardware_setup.md`, `docs/2_calibration_guide.md`,
+> `docs/3_troubleshooting.md`, …). **Every `docs/UPPERCASE.md` link in this file is
+> dead** (those files no longer exist).
+>
+> For current documentation start at **[../../README.md](../../README.md)** (project
+> README) or **[../README.md](../README.md)** (docs index).
+
+## 🚁 dRehmFlight VTOL - Flight Controller for Teensy 4.0/4.1 (archived original)
 
 **Full-featured flight controller with automatic calibration for Teensy 4.0/4.1 + MPU6050 + FlySky FS-iA6B**
 

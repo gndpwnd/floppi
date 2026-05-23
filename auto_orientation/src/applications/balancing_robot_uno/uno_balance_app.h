@@ -106,7 +106,19 @@ class UnoBalanceApp {
   bool   is_armed()        const { return armed_; }
   bool   is_tipped()       const { return tipped_; }
   float  last_pitch_deg()  const { return last_pitch_deg_; }
-  int16_t last_pwm()       const { return last_pwm_; }
+  // last_pwm_ is written from the ISR; a 16-bit load tears on 8-bit AVR, so
+  // copy it under a critical section (out-of-line in the .cpp where the
+  // ATOMIC_BLOCK shim lives). Telemetry-only, but cheap to do right.
+  int16_t last_pwm()       const;
+
+  /**
+   * Consecutive read_imu() failures (NaN / out-of-range / I2C error). Cleared
+   * to 0 on the next good read. A slowly-dying BNO055 presents as the bot
+   * tipping with no obvious cause; surfacing this count in the 's' status line
+   * gives the operator a clue. Matches the reference .ino's consecutiveErrors.
+   * Saturates at 255 — we only care whether it's 0 vs. "lots".
+   */
+  uint8_t read_fail_count() const { return read_fail_count_; }
 
  private:
   OrientationSensor& imu_;
@@ -114,11 +126,11 @@ class UnoBalanceApp {
   PIDController&     pid_;
 
   // Latest IMU pitch (corrected for mounting offset). Written by read_imu()
-  // from loop(), consumed by step() in ISR context. Volatile + float read on
-  // 8-bit AVR is technically multi-byte and could tear — but at 200 Hz with
-  // a slow-changing physical quantity, a torn read is at worst one stale tick
-  // and the next sample corrects it. Avoiding noInterrupts() in the loop()
-  // path is worth that tradeoff for this minimal program.
+  // from loop(), consumed by step() in ISR context. A 4-byte float load on
+  // 8-bit AVR is multi-byte and can tear if the ISR fires mid-load — and a
+  // torn pitch multiplied by Kp slams the motors for one tick. read_imu()
+  // (writer) and step() (reader) therefore guard the publish/snapshot with
+  // ATOMIC_BLOCK(ATOMIC_RESTORESTATE); see uno_balance_app.cpp file-top notes.
   volatile float last_pitch_deg_;
   volatile bool  pitch_valid_;
 
@@ -134,6 +146,11 @@ class UnoBalanceApp {
   float cur_kp_;
   float cur_ki_;
   float cur_kd_;
+
+  // Consecutive read_imu() failures, saturating at 255. Written only from
+  // loop() (read_imu), read from loop() telemetry — no ISR involvement, so a
+  // plain uint8_t (atomic on AVR) suffices.
+  uint8_t read_fail_count_;
 };
 
 #endif  // UNO_BALANCE_APP_H

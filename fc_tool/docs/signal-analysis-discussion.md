@@ -170,10 +170,14 @@ See [findings/signal-period-detection-research.md](findings/signal-period-detect
 
 ### Data Flow
 
-```text
-Serial Data → Parser → Per-Plot Buffer → [Pattern Detector] → Chart Renderer
-                                              ↓
-                                     [Anomaly Tracker] → Overlay / Alerts
+```mermaid
+flowchart LR
+    SD[Serial Data] --> P[Parser]
+    P --> B[Per-Plot Buffer]
+    B --> PD[Pattern Detector]
+    PD --> CR[Chart Renderer]
+    B --> AT[Anomaly Tracker]
+    AT --> OA[Overlay / Alerts]
 ```
 
 ---

@@ -25,16 +25,12 @@ But the flight control code (Core 0 on ESP32, main loop on Teensy) shouldn't con
 
 ### The Solution: Producer-Consumer Pattern
 
-```
-┌─────────────────────┐     ┌──────────────────┐     ┌─────────────────────┐
-│  Flight Control     │     │  Display Data     │     │  Display Module     │
-│  (Core 0 / main)    │────▶│  (shared struct)  │────▶│  (Core 1 / timed)   │
-│                     │     │                   │     │                     │
-│  - IMU readings     │     │  - attitude       │     │  - U8g2 rendering   │
-│  - PID loop         │     │  - motor values   │     │  - Layout logic     │
-│  - Motor output     │     │  - cal progress   │     │  - Screen selection │
-│  - Calibration      │     │  - system state   │     │  - I2C communication│
-└─────────────────────┘     └──────────────────┘     └─────────────────────┘
+```mermaid
+flowchart LR
+    FC["Flight Control (Core 0 / main)<br/>- IMU readings<br/>- PID loop<br/>- Motor output<br/>- Calibration"]
+    DD["Display Data (shared struct)<br/>- attitude<br/>- motor values<br/>- cal progress<br/>- system state"]
+    DM["Display Module (Core 1 / timed)<br/>- U8g2 rendering<br/>- Layout logic<br/>- Screen selection<br/>- I2C communication"]
+    FC --> DD --> DM
 ```
 
 The flight control code writes to a shared data structure. The display module reads from it and renders. On ESP32, these run on different cores. On Teensy, the display update is rate-limited in the main loop.
@@ -210,27 +206,26 @@ typedef struct {
 
 On Teensy, the display update runs in the main loop, rate-limited to avoid impacting the flight control timing.
 
-```
-setup()
-├── setupIMU()          // Wire.begin() for IMU
-├── setupDisplay()      // Software I2C for OLED
-├── radioSetup()
-├── setupMotors()
-└── armMotors()
+```mermaid
+flowchart TB
+    setup["setup()"]
+    setup --> sIMU["setupIMU() // Wire.begin() for IMU"]
+    setup --> sDisp["setupDisplay() // Software I2C for OLED"]
+    setup --> sRadio["radioSetup()"]
+    setup --> sMot["setupMotors()"]
+    setup --> sArm["armMotors()"]
 
-loop() @ 1000Hz
-├── Flight control (every iteration)
-│   ├── getIMUdata()
-│   ├── Madgwick filter
-│   ├── PID loop
-│   └── commandMotors()
-│
-├── Update display data struct (every iteration, cheap)
-│   └── Copy attitude, motors, cal status to DisplayData_t
-│
-└── Display render (every 100ms = 10Hz)
-    └── if (current_time - display_counter > 100000)
-        └── renderDisplay(&displayData)
+    loop["loop() @ 1000Hz"]
+    loop --> flight["Flight control (every iteration)"]
+    flight --> imud["getIMUdata()"]
+    flight --> madg["Madgwick filter"]
+    flight --> pid["PID loop"]
+    flight --> cmot["commandMotors()"]
+    loop --> upd["Update display data struct (every iteration, cheap)"]
+    upd --> copy["Copy attitude, motors, cal status to DisplayData_t"]
+    loop --> rend["Display render (every 100ms = 10Hz)"]
+    rend --> guard["if (current_time - display_counter > 100000)"]
+    guard --> rdisp["renderDisplay(&displayData)"]
 ```
 
 **Timing budget**: At 1kHz loop, each iteration has 1000µs. Flight control uses ~500µs. A full 128x32 OLED buffer transfer via software I2C takes ~2-4ms. Since display only updates at 10Hz, the budget impact is 2-4ms every 100ms = 2-4% CPU overhead. Acceptable for calibration mode. For live mode, display can be reduced to 2-5Hz.
@@ -239,21 +234,19 @@ loop() @ 1000Hz
 
 On ESP32, the display runs on Core 1 via a FreeRTOS task, completely decoupled from flight control on Core 0.
 
-```
-Core 0: Flight Control Task (priority 3)
-├── getIMUdata() @ 1kHz
-├── Madgwick filter
-├── PID loop
-├── commandMotors()
-└── xQueueOverwrite(displayQueue, &data)  // Non-blocking push
-
-Core 1: Display + WiFi Task (priority 1)
-├── WiFi STA initialization (connect to existing network)
-└── Loop:
-    ├── xQueueReceive(displayQueue, &data)  // Block until new data
-    ├── populateNetworkData(&data)          // Add WiFi status
-    ├── renderDisplay(&data)                // OLED update
-    └── handleWiFi()                        // Reconnection management
+```mermaid
+flowchart TB
+    subgraph core0["Core 0: Flight Control Task (priority 3)"]
+        c0a["getIMUdata() @ 1kHz"] --> c0b["Madgwick filter"] --> c0c["PID loop"] --> c0d["commandMotors()"] --> c0e["xQueueOverwrite(displayQueue, &data) // Non-blocking push"]
+    end
+    subgraph core1["Core 1: Display + WiFi Task (priority 1)"]
+        c1a["WiFi STA initialization (connect to existing network)"] --> c1loop["Loop:"]
+        c1loop --> c1b["xQueueReceive(displayQueue, &data) // Block until new data"]
+        c1loop --> c1c["populateNetworkData(&data) // Add WiFi status"]
+        c1loop --> c1d["renderDisplay(&data) // OLED update"]
+        c1loop --> c1e["handleWiFi() // Reconnection management"]
+    end
+    c0e -.displayQueue.-> c1b
 ```
 
 **Queue-based data transfer** (recommended over mutex):
@@ -403,20 +396,19 @@ Calibration mode does NOT need dual-core processing:
 
 ### Architecture for Calibration Mode
 
-```
-Single Core (both Teensy and ESP32):
-├── Run calibration routine
-│   ├── Collect IMU samples
-│   ├── Compute offsets
-│   └── Update DisplayData_t with progress
-│
-├── Render display (rate-limited, in same loop)
-│   └── Show progress bar, step info, results
-│
-└── Output results
-    ├── Serial (for fc_tool / copy-paste to config.h)
-    ├── OLED (for field calibration without laptop)
-    └── Web server (ESP32 only, Core 1 serves cached results)
+```mermaid
+flowchart TB
+    root["Single Core (both Teensy and ESP32)"]
+    root --> cal["Run calibration routine"]
+    cal --> c1["Collect IMU samples"]
+    cal --> c2["Compute offsets"]
+    cal --> c3["Update DisplayData_t with progress"]
+    root --> rend["Render display (rate-limited, in same loop)"]
+    rend --> r1["Show progress bar, step info, results"]
+    root --> out["Output results"]
+    out --> o1["Serial (for fc_tool / copy-paste to config.h)"]
+    out --> o2["OLED (for field calibration without laptop)"]
+    out --> o3["Web server (ESP32 only, Core 1 serves cached results)"]
 ```
 
 On ESP32 in calibration mode, Core 1 can still run a simple web server that serves the last calibration results. But the calibration itself runs entirely on Core 0 with inline display updates, same as Teensy.

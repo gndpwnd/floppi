@@ -35,6 +35,8 @@ class DroneManager:
 
     def _add_drone(self, entry: DroneEntry) -> DroneClient:
         """Create a DroneClient from a config entry."""
+        # Per-drone token overrides the fleet-wide default; either may be None.
+        token = entry.command_token or self.config.network.command_token
         client = DroneClient(
             mac=entry.mac,
             name=entry.name,
@@ -43,6 +45,7 @@ class DroneManager:
             timeout_s=self.config.network.connection_timeout_ms / 1000.0,
             group=entry.group,
             tags=list(entry.tags),
+            command_token=token,
         )
         # Wire up telemetry forwarding to all listeners
         client.on_telemetry(self._on_drone_telemetry)

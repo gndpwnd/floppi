@@ -86,29 +86,68 @@ bool readSerialCmd(CommandBuffer& buf) {
 
 // I2C command buffer — written by ISR (onI2CReceive), read by readI2CCmd()
 // FC is I2C SLAVE at I2C_CMD_ADDRESS on Wire1 (separate from IMU on Wire).
-// Master (Raspberry Pi etc.) writes 12 bytes: 6x uint16_t LE, 1000-2000us.
+//
+// SEC-08: the frame now carries an integrity checksum. The master writes 13
+// bytes: 12 channel-data bytes (6x uint16_t LE, 1000-2000us) followed by one
+// XOR-of-the-12-data-bytes checksum — mirroring the Serial protocol (XOR over
+// the channel bytes). The ISR previously accepted ANY 12-byte write with no
+// validation, so bus noise or a spoofed/glitched master could inject arbitrary
+// channel values (incl. arm + throttle). Frames whose checksum does not match
+// are dropped in the ISR before they can reach the flight loop.
+//
+// Backward-compat: a 12-byte (checksum-less) write is still accepted but ONLY
+// when USE_I2C_CMD_CHECKSUM is left undefined. Define USE_I2C_CMD_CHECKSUM in
+// config.h to require the 13-byte checksummed frame and reject legacy writes.
+static const uint8_t I2C_CMD_DATA_LEN = 12;  // 6 channels x uint16 LE
 static volatile uint16_t i2cCmdChannels[6] = {1500, 1500, 1000, 1500, 1000, 1000};
 static volatile uint32_t i2cCmdTimestamp = 0;
 static volatile bool i2cCmdReady = false;
 
+// Apply 12 validated data bytes to the channel buffer (ISR context).
+static inline void i2cApplyData(const uint8_t* raw) {
+    i2cCmdChannels[0] = raw[0]  | (raw[1]  << 8);
+    i2cCmdChannels[1] = raw[2]  | (raw[3]  << 8);
+    i2cCmdChannels[2] = raw[4]  | (raw[5]  << 8);
+    i2cCmdChannels[3] = raw[6]  | (raw[7]  << 8);
+    i2cCmdChannels[4] = raw[8]  | (raw[9]  << 8);
+    i2cCmdChannels[5] = raw[10] | (raw[11] << 8);
+    i2cCmdTimestamp = millis();
+    i2cCmdReady = true;
+}
+
 // I2C receive callback — called from ISR context
 static void onI2CReceive(int numBytes) {
-    if (numBytes == 12) {
-        uint8_t raw[12];
-        for (int i = 0; i < 12; i++) {
+    // Preferred secure frame: 13 bytes = 12 data + 1 XOR checksum.
+    if (numBytes == I2C_CMD_DATA_LEN + 1) {
+        uint8_t raw[I2C_CMD_DATA_LEN];
+        uint8_t checksum = 0;
+        for (int i = 0; i < I2C_CMD_DATA_LEN; i++) {
+            raw[i] = Wire1.read();
+            checksum ^= raw[i];
+        }
+        uint8_t rxChecksum = Wire1.read();
+        if (checksum == rxChecksum) {
+            i2cApplyData(raw);
+        }
+        // else: corrupt/spoofed frame — drop silently, keep last good command
+        return;
+    }
+
+#ifndef USE_I2C_CMD_CHECKSUM
+    // Legacy unchecksummed frame: 12 data bytes only. Accepted unless the
+    // build opts into mandatory checksums via USE_I2C_CMD_CHECKSUM.
+    if (numBytes == I2C_CMD_DATA_LEN) {
+        uint8_t raw[I2C_CMD_DATA_LEN];
+        for (int i = 0; i < I2C_CMD_DATA_LEN; i++) {
             raw[i] = Wire1.read();
         }
-        i2cCmdChannels[0] = raw[0]  | (raw[1]  << 8);
-        i2cCmdChannels[1] = raw[2]  | (raw[3]  << 8);
-        i2cCmdChannels[2] = raw[4]  | (raw[5]  << 8);
-        i2cCmdChannels[3] = raw[6]  | (raw[7]  << 8);
-        i2cCmdChannels[4] = raw[8]  | (raw[9]  << 8);
-        i2cCmdChannels[5] = raw[10] | (raw[11] << 8);
-        i2cCmdTimestamp = millis();
-        i2cCmdReady = true;
-    } else {
-        while (Wire1.available()) Wire1.read();
+        i2cApplyData(raw);
+        return;
     }
+#endif
+
+    // Unexpected length — drain so the bus does not desync.
+    while (Wire1.available()) Wire1.read();
 }
 
 void i2cCmdSetup() {
@@ -120,7 +159,10 @@ void i2cCmdSetup() {
     Wire1.onReceive(onI2CReceive);
     Serial.println("I2C command source initialized");
     Serial.printf("  Address: 0x%02X on Wire1\n", I2C_CMD_ADDRESS);
-    Serial.println("  Protocol: 12 bytes (6x uint16 LE), 1000-2000us");
+    Serial.println("  Protocol: 13 bytes (6x uint16 LE + XOR checksum), 1000-2000us");
+#ifndef USE_I2C_CMD_CHECKSUM
+    Serial.println("  (legacy 12-byte unchecksummed frames also accepted — define USE_I2C_CMD_CHECKSUM to require checksum)");
+#endif
     Serial.println("  Failsafe timeout: 500ms");
 }
 

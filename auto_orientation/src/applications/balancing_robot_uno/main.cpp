@@ -99,7 +99,10 @@ static void print_status_line() {
   Serial.print(F(" tipped=")); Serial.print(app.is_tipped());
   // Pitch printed as decideg (e.g. -86 means -8.6°). Caller divides by 10.
   Serial.print(F(" pitch_dd=")); Serial.print((int16_t)(app.last_pitch_deg() * 10.0f));
-  Serial.print(F(" pwm="));   Serial.println(app.last_pwm());
+  Serial.print(F(" pwm="));   Serial.print(app.last_pwm());
+  // Consecutive IMU read failures (0 = healthy). A non-zero, growing value
+  // means the BNO055 link is glitching — the bot will appear to "just tip".
+  Serial.print(F(" rdfail=")); Serial.println(app.read_fail_count());
 }
 
 static void handle_serial() {

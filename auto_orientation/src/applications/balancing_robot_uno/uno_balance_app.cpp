@@ -46,7 +46,8 @@ UnoBalanceApp::UnoBalanceApp(OrientationSensor& imu,
       tipped_(false),
       cur_kp_(BALANCE_KP),
       cur_ki_(BALANCE_KI),
-      cur_kd_(BALANCE_KD) {}
+      cur_kd_(BALANCE_KD),
+      read_fail_count_(0) {}
 
 void UnoBalanceApp::begin() {
   // Boot precedence: a valid EEPROM tune block wins over the
@@ -74,10 +75,11 @@ void UnoBalanceApp::begin() {
   pid_.set_setpoint(0.0f);  // we balance around 0° corrected-pitch
   pid_.reset();
 
-  last_pitch_deg_ = 0.0f;
-  pitch_valid_    = false;
-  last_pwm_       = 0;
-  tipped_         = false;
+  last_pitch_deg_  = 0.0f;
+  pitch_valid_     = false;
+  last_pwm_        = 0;
+  tipped_          = false;
+  read_fail_count_ = 0;
   // armed_ retains its constructor value (true) — abort() is the only setter.
 }
 
@@ -86,6 +88,7 @@ bool UnoBalanceApp::read_imu() {
     ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
       pitch_valid_ = false;
     }
+    if (read_fail_count_ < 255) read_fail_count_++;
     return false;
   }
   const OrientationData& d = imu_.getOrientation();
@@ -98,6 +101,7 @@ bool UnoBalanceApp::read_imu() {
     ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
       pitch_valid_ = false;
     }
+    if (read_fail_count_ < 255) read_fail_count_++;
     return false;
   }
 
@@ -109,6 +113,7 @@ bool UnoBalanceApp::read_imu() {
     last_pitch_deg_ = corrected;
     pitch_valid_    = true;
   }
+  read_fail_count_ = 0;  // good read clears the rolling failure count
   return true;
 }
 
@@ -180,6 +185,15 @@ void UnoBalanceApp::apply_gains(float kp, float ki, float kd) {
   cur_ki_ = ki;
   cur_kd_ = kd;
   pid_.set_tunings(kp, ki, kd);
+}
+
+int16_t UnoBalanceApp::last_pwm() const {
+  // Atomic copy of the ISR-written 16-bit value (see header note).
+  int16_t pwm;
+  ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
+    pwm = last_pwm_;
+  }
+  return pwm;
 }
 
 void UnoBalanceApp::get_work_gains(float& kp, float& ki, float& kd) const {

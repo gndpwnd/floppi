@@ -234,6 +234,7 @@ Note: `cargo check` / `cargo build` require system deps installed (see Prerequis
 fc_tool/
 ├── docs/
 │   ├── README.md       # This file
+│   ├── architecture.md # Serial data path and source map (with diagrams)
 │   ├── scope.md        # Project scope and boundaries
 │   ├── roadmap.md      # Feature roadmap
 │   ├── todo.md         # Current tasks
@@ -284,6 +285,7 @@ fc_tool has two layers — see [scope.md](scope.md) for full details:
 
 ## Documentation
 
+- [architecture.md](architecture.md) - Serial data path and source map (with diagrams)
 - [scope.md](scope.md) - What this project is and isn't
 - [roadmap.md](roadmap.md) - Feature progress
 - [todo.md](todo.md) - Current tasks

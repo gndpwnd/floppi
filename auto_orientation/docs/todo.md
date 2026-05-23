@@ -1,20 +1,46 @@
 # Todo: Auto Orientation Framework
 
 **Current phase**: Phase 4 — bifurcated 2026-05-19 into Phase 4M (Mega-universal) and Phase 4U (Uno-minimal)
-**Last updated**: 2026-05-21 (Workstream G bench-tuning support + Phase 4M.14 test coverage + two P1 security fixes landed — see [archive/session_records/2026-05-21_multi_agent_workstream_g_security.md](archive/session_records/2026-05-21_multi_agent_workstream_g_security.md))
+**Last updated**: 2026-05-22 (safety/NaN failsafes + noise-floor layer + quaternion fix + docs/architecture + as-built reconciliation; Uno link regression FIXED — see [archive/session_records/2026-05-22_safety_correctness_docs.md](archive/session_records/2026-05-22_safety_correctness_docs.md))
 
 ### Next session — focus
 
-The Mega cascade is feature-complete through Phase 4M.14 and Workstream-G codeable items have landed. The remaining work is **bench-hardware-gated** — it cannot be advanced statically:
+As of 2026-05-22 **all static (no-hardware) work is done**: both focus builds compile clean (`arduino_uno_minimal` 54.1%, `mega_balance` 16.4%), native suite 22/22, the three P1 NaN-safety failsafes are in-tree, and the noise-floor measurement layer (`noise_floor_estimator.h`) exists. The remaining work is **bench-hardware-gated** — it cannot be advanced statically:
 
-1. **F-3 — `K_VEL` bench observation** — validate the 4M.14-derived velocity gain on the real plant.
-2. **Regression-baseline capture** — record a known-good `g`-telemetry run with `tools/plot_bench_run.py`.
-3. **Real-motor PWM-discovery validation** — verify the Gap-3 `stiction_min_pwm` wiring against real stiction.
-4. **Tuner bench validation** (Phase 4U) — 8 s sim → 30 s real-bot.
+1. **Bench-validate the balance loop** — the one property only hardware can confirm. No successful balance on record (last run 2026-05-18 PM late twitched and fell in ~1 s). Carry over the three open problems: K spread across pulses, operator-motion poisoning the noise baseline, possibly-aggressive pole target vs BNO055 NDOF phase budget.
+2. **Bench-confirm the new NaN failsafes** behave (kill-switch cuts on a real BNO055 NaN; NaN→0 PID clamp doesn't glitch on a transient; watchdog-starved cut doesn't false-trip at 200 Hz).
+3. **Retire scope-violation constants once balancing** — every remaining row is bench-gated; the 5 noise-floor-dependent rows are now unblocked on the *measurement* side and can be derived from `noise_floor_estimator` σ on the next stable run. See [findings/mega_scope_violation_triage_2026-05-22.md](findings/mega_scope_violation_triage_2026-05-22.md).
+4. **F-3 — `K_VEL` bench observation** — validate the 4M.14-derived velocity gain on the real plant.
+5. **Regression-baseline capture** — record a known-good `g`-telemetry run with `tools/plot_bench_run.py`.
+6. **Real-motor PWM-discovery validation** — verify the Gap-3 `stiction_min_pwm` wiring against real stiction.
+7. **Tuner bench validation** (Phase 4U) — 8 s sim → 30 s real-bot.
 
-See "Completed 2026-05-21 → Bench-hardware-gated" below for detail.
+See "Completed 2026-05-22" and "Completed 2026-05-21 → Bench-hardware-gated" below for detail.
 
 For phase-level context see [roadmap.md](roadmap.md). For framework bounds see [scope.md](scope.md). For the pivot rationale see operator memory `project_strategic_pivot_2026-05-19.md` and [scope.md §Platform bifurcation](scope.md#platform-bifurcation-2026-05-19--mega-universal-vs-uno-minimal).
+
+---
+
+## Completed 2026-05-22
+
+Safety/correctness/docs session — no new control phase. Full session record: [archive/session_records/2026-05-22_safety_correctness_docs.md](archive/session_records/2026-05-22_safety_correctness_docs.md). All uncommitted.
+
+- [x] **NaN-safety failsafes across the motor path** — kill-switch NaN guard (`main.cpp`), PID gain/output NaN reject + clamp (`pid_controller.cpp`), mount-offset EEPROM finiteness guard (`main.cpp`), pitch NaN guard at IMU boundary (`balance_app.cpp`), watchdog result wired into `loop()`. Closes the 3 P1 failsafe-gap findings. See [findings/security_audit_2026-05-22.md](findings/security_audit_2026-05-22.md).
+- [x] **Noise-floor measurement layer** — new `src/applications/balancing_robot/noise_floor_estimator.h` (Welford online mean+σ, observation-only — consumes nothing yet). The missing measurement layer that doubly-blocked 5 scope-violation rows; those are now unblocked on the *measurement* side. See [findings/mega_scope_violation_triage_2026-05-22.md](findings/mega_scope_violation_triage_2026-05-22.md).
+- [x] **Quaternion gimbal-lock PRODUCTION fix** — `quaternion_conversions.cpp` `toEuler` now normalizes before `asin` + clamps `sinp` to `[-1,1]`; fixes a ~0.03° pitch error at exactly ±90°.
+- [x] **Uno link regression FIXED** — the quaternion fix introduced an `undefined reference to Quaternion::normalize()` link error in `arduino_uno_minimal`; resolved with a **one-line `platformio.ini` `+<math/quaternion.cpp>` `build_src_filter` addition** (line 161). Both focus builds now compile clean: `arduino_uno_minimal` SUCCESS (54.1% flash), `mega_balance` SUCCESS (16.4% flash). Native suite **22/22**.
+- [x] **Uno-minimal P1 cleanup** — `read_fail_count_` (rdfail) sensor-health telemetry + `ATOMIC_BLOCK`-guarded `last_pwm_` access in `uno_balance_app.cpp`.
+- [x] **Native test repairs + additions** — 3 broken test files fixed (stray `#endif`), 2 ill-posed gimbal-lock assertions corrected, 2 new tests (`test_noise_floor_estimator.cpp`, `test_pid_nan_safety.cpp`); `tools/build_tests.sh` extended. **22/22 pass** (up from 18/22 mid-session).
+- [x] **Docs — ASCII→Mermaid + architecture + as-built reconciliation** — converted the docs corpus to Mermaid (4 invalid diagrams fixed), added `docs/architecture/` LEVEL_0/1/2 + INDEX, and reconciled as-built vs as-designed (pole-placement not AMIGO, no `BootstrapStage` enum, mean-pitch mount estimator, `g=9.81` position loop) in `MASTER_DESIGN.md` + `docs/implementation/`. See [architecture/INDEX.md](architecture/INDEX.md), [findings/autocal_autotune_verification_2026-05-22.md](findings/autocal_autotune_verification_2026-05-22.md).
+- [x] **Verification docs** — security audit (0 P0 / 3 P1 all fixed / 6 P2 / 4 P3), auto-cal/auto-tune verification (math-sound + test-covered + compiles, NOT bench-validated), Mega scope-violation triage (0 of 14 statically retireable). Files: [findings/security_audit_2026-05-22.md](findings/security_audit_2026-05-22.md), [findings/autocal_autotune_verification_2026-05-22.md](findings/autocal_autotune_verification_2026-05-22.md), [findings/mega_scope_violation_triage_2026-05-22.md](findings/mega_scope_violation_triage_2026-05-22.md).
+
+### Bench-hardware-gated — next session (needs the physical robot)
+
+Carried forward; bench validation is now the only gate on the balance loop. The scope-violation rows are bench-gated but the measurement infrastructure (noise-floor σ) now exists, so the 5 doubly-blocked rows become derivable on the next stable run.
+
+- [ ] **Bench-validate the balance loop** — no successful balance on record; last run twitched and fell.
+- [ ] **Bench-confirm the new NaN failsafes** — kill-switch / PID clamp / watchdog behave on real hardware without false-trips.
+- [ ] **Retire scope-violation constants once balancing** — derive from `noise_floor_estimator` σ; see [findings/mega_scope_violation_triage_2026-05-22.md](findings/mega_scope_violation_triage_2026-05-22.md).
 
 ---
 
@@ -528,4 +554,4 @@ See [roadmap.md#phase-7](roadmap.md#phase-7--application-catalog-expansion). Top
 
 ---
 
-*Last updated: 2026-05-21 (Workstream G bench-tuning support codeable items + Phase 4M.14 native test coverage + two P1 security fixes (mounting CRC + `restoreFromEEPROM()` buffer-overflow) landed; Mega cascade Phases 4M.2/4M.11/4M.13/4M.14 all confirmed LANDED — Workstream F complete; all 6 firmware envs build clean, native suite 17/17. All uncommitted. Session record: [archive/session_records/2026-05-21_multi_agent_workstream_g_security.md](archive/session_records/2026-05-21_multi_agent_workstream_g_security.md). Next-session focus: bench-hardware-gated — F-3 K_VEL observation, regression-baseline capture, real-motor PWM-discovery validation, tuner bench validation). When you finish an item, move it to "Recently completed" with date. When you start a new item, mark it in-progress in `TodoWrite`.*
+*Last updated: 2026-05-22 (safety/correctness/docs session — no new control phase. NaN-safety failsafes across the motor path (3 P1 fixes), new `noise_floor_estimator.h` observation layer, quaternion gimbal-lock production fix, native suite 22/22, ASCII→Mermaid + `docs/architecture/` LEVEL_0/1/2 + as-built/as-designed reconciliation. Mid-session Uno link regression FIXED via one-line `platformio.ini` `+<math/quaternion.cpp>` src_filter — `arduino_uno_minimal` (54.1%) + `mega_balance` (16.4%) both build clean. All uncommitted. Bench validation is now the only gate on the balance loop; scope-violation retirement is bench-gated with the noise-floor measurement side now in place. Session record: [archive/session_records/2026-05-22_safety_correctness_docs.md](archive/session_records/2026-05-22_safety_correctness_docs.md). Prior: 2026-05-21 — Workstream G codeable items + 4M.14 test coverage + two P1 calibration-storage fixes, native 17/17). When you finish an item, move it to "Recently completed" with date. When you start a new item, mark it in-progress in `TodoWrite`.*

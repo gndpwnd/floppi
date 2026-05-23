@@ -79,6 +79,7 @@
 #include "../../navigation/online_mounting_estimator.h"
 #include "../../actuators/motor_driver.h"
 #include "safety.h"
+#include "noise_floor_estimator.h"
 
 #ifdef USE_WHEEL_ENCODERS
 #include "../../sensors/wheel_encoder.h"
@@ -726,6 +727,39 @@ public:
     // latch semantics.
     void            clear_collision();
 
+    // ----- Baseline noise-floor measurement --------------------------------
+    // (noise_floor_estimator.h; triage mega_scope_violation_triage_2026-05-22.md)
+    //
+    // PURE OBSERVATION. read_imu_() feeds the gyro pitch-rate magnitude and the
+    // accel-magnitude deviation into two Welford estimators, but only on ticks
+    // the bot is judged quiet (LP-filtered lateral-gyro magnitude below
+    // NOISE_FLOOR_QUIET_GYRO_DPS). After kWindowSamples (~1 s) of unbroken
+    // stillness the standard deviation freezes and noise_floor_settled() latches
+    // true. NOTHING downstream consumes these yet — they exist so a future
+    // (bench-gated) step can derive STUCK_GYRO_DPS / HELD lift gates from σ
+    // instead of the current hardcoded literals. Captured at boot/IDLE before
+    // any motor pulse, so the window reflects genuine sensor noise.
+
+    // Captured gyro pitch-rate noise floor (1σ, deg/s). 0 until settled.
+    float gyro_noise_floor() const { return gyro_noise_.std_dev(); }
+
+    // Captured accel-magnitude-deviation noise floor (1σ, m/s²). 0 until settled.
+    float accel_noise_floor() const { return accel_noise_.std_dev(); }
+
+    // True once BOTH estimators have gathered a full quiet window and frozen
+    // their floors. Latches — once true it stays true until the next begin().
+    bool noise_floor_settled() const {
+        return gyro_noise_.settled() && accel_noise_.settled();
+    }
+
+    // Quiet-window progress (samples collected toward kWindowSamples). Lets a
+    // host UI show a "measuring..." indicator. Reports the lesser of the two.
+    uint16_t noise_floor_progress() const {
+        const uint16_t g = gyro_noise_.sample_count();
+        const uint16_t a = accel_noise_.sample_count();
+        return g < a ? g : a;
+    }
+
 #ifdef USE_WHEEL_ENCODERS
     // ----- PWM range auto-discovery (Phase 4M.12) --------------------------
     // Start PWM_DISCOVERY: operator must have lifted the bot off the ground
@@ -967,6 +1001,20 @@ private:
     float    linear_accel_mag_;
     uint8_t  collision_sustain_counter_;
     bool     collision_latched_;
+
+    // Baseline noise-floor estimators (noise_floor_estimator.h). Fed from
+    // read_imu_() on quiet ticks only. PURE OBSERVATION — see the public
+    // gyro_noise_floor()/accel_noise_floor() getters. gyro_noise_ accumulates
+    // |raw_gyro_dps_[1]| (pitch-axis rate magnitude); accel_noise_ accumulates
+    // the |accel|−9.81 deviation. No member here drives control.
+    NoiseFloorEstimator gyro_noise_;
+    NoiseFloorEstimator accel_noise_;
+    // Stillness gate threshold for noise-floor sampling: a tick counts toward
+    // the quiet window only when the LP-filtered lateral-gyro magnitude is
+    // below this. Conservative (a still bot on a bench reads well under this);
+    // exceeding it aborts the in-progress window without clearing a latched
+    // floor. NOT a control threshold — gates measurement only.
+    static constexpr float NOISE_FLOOR_QUIET_GYRO_DPS = 3.0f;
 
 #ifdef USE_WHEEL_ENCODERS
     // Phase 4M.11 wheel-encoder integration. Two encoders, one per drive

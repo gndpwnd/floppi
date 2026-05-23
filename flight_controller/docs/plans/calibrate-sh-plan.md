@@ -1,8 +1,12 @@
 # Plan: calibrate.sh — Interactive Calibration Wrapper
 
-> Status: Planned
+> Status: Implemented (shipped 2026-02-17 — `tools/calibrate.sh`; see [roadmap](../roadmap.md))
 > Priority: High
 > Created: 2026-02-13
+>
+> **This is a historical design record.** The wrapper described below shipped as
+> `tools/calibrate.sh`. Kept for the rationale and design decisions; the live tool
+> is the source of truth.
 
 ## Summary
 

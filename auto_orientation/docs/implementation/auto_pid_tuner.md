@@ -4,36 +4,36 @@
 **Phase**: 4.5b — generic PID + auto-tuner.
 **Decision rows**: [D9, D10](../findings/MASTER_DESIGN.md) in `findings/MASTER_DESIGN.md`.
 
+> **AS-BUILT (2026-05-22, verified vs source).** This relay-feedback tuner is **no longer the primary auto-tune path** for the balancing robot. The shipped balance build (`mega_balance`) **compiles `relay_feedback.cpp` out** (`platformio.ini` `build_src_filter -<control/tuners/relay_feedback.cpp>`) and constructs `AutoPIDTuner` with a `NoOpStrategy` (`main.cpp:107-125`) purely to satisfy the `BalanceApp` constructor without dragging in the relay machinery. The `AUTO_TUNE` app-state is retained in the enum for API stability but is **not wired to any operator gesture** — long-press / `b` / capture-success all chain to **BOOTSTRAP** instead. The real auto-tune mapping is **critically-damped pole-placement** in `PlantIdentifier::recompute_targets_()` (`plant_identifier.cpp:262-282`): `Kp = ωₙ²/K_motor`, `Kd = 2ζωₙ/K_motor`, fed by the BOOTSTRAP ±PWM pulse seed + continuous scalar RLS. The AMIGO/ZN-relay coefficients documented below survive **only** in the (now-unwired) `relay_feedback.cpp`. See decision row D9 in [`../findings/MASTER_DESIGN.md`](../findings/MASTER_DESIGN.md) and the bootstrap protocol AS-BUILT note for the divergence rationale. The rest of this document accurately describes the relay tuner *as a component*; it just is not the live tuner.
+
 ## Purpose
 
 Splits "algorithm" from "policy" for unattended PID tuning. `ITuningStrategy` is the abstract base every algorithm implements (relay-feedback is the default; twiddle and RLS are reserved for later phases). `AutoPIDTuner` is the coordinator that owns *policy*: cache the PID's pre-tune gains, enforce safety tripwires, drive the strategy step-by-step, and either commit the result via `apply_to(pid)` or roll back via `restore_original(pid)`. The coordinator never touches the PID mid-run — the calling app is expected to disconnect the actuator from the PID and route the tuner's output directly to the plant.
 
 ## Data flow
 
+```mermaid
+flowchart TD
+    APP["application (balancing robot, etc.)<br/>setpoint, output limits, measurement"] --> BEGIN["AutoPIDTuner.begin(pid, …)<br/>caches kp/ki/kd"]
+    BEGIN --> STEP
+
+    subgraph LOOP["per-step loop"]
+        STEP["tuner.step(measurement, now_ms)"]
+        STEP --> TRIP["pre-check coord tripwires (abort, time)"]
+        TRIP --> STRAT["call strategy.step(meas, safety, now_ms)"]
+        STRAT --> CACHE["if strategy.is_done(): cache result"]
+    end
+
+    STEP -->|returns output to drive plant| MOTORS["motors / actuator"]
+    CACHE --> DONE{"is_done() → succeeded()?"}
+    DONE -->|yes| APPLY["tuner.apply_to(pid)"]
+    DONE -->|no| RESTORE["tuner.restore_original(pid)"]
 ```
-                   ┌──── application (balancing robot, etc.) ────┐
-                   │  setpoint, output limits, measurement       │
-                   ▼                                             │
-              AutoPIDTuner.begin(pid, …)                         │
-                   │ caches kp/ki/kd                             │
-                   ▼                                             │
-        ┌─── per-step loop ──────────────────────────────┐       │
-        │  tuner.step(measurement, now_ms)               │       │
-        │    ├─ pre-check coord tripwires (abort, time)  │       │
-        │    ├─ call strategy.step(meas, safety, now_ms) │       │
-        │    └─ if strategy.is_done(): cache result      │       │
-        │  → returns output to drive plant ──────────────┼──► motors/actuator
-        └────────────────────────────────────────────────┘       │
-                   │                                             │
-                   ▼                                             │
-           is_done() → succeeded() ?                             │
-              yes → tuner.apply_to(pid)                          │
-              no  → tuner.restore_original(pid)                  │
-                                                                 │
-   Strategy implementations (compile-time selected via USE_TUNER_xxx):
-     RelayFeedbackStrategy  (USE_TUNER_RELAY,  default)
-     (future) TwiddleStrategy / RLSStrategy
-```
+
+Strategy implementations (compile-time selected via `USE_TUNER_xxx`):
+
+- `RelayFeedbackStrategy` (`USE_TUNER_RELAY`, default)
+- (future) `TwiddleStrategy` / `RLSStrategy`
 
 ## Core algorithm
 

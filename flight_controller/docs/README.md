@@ -9,6 +9,7 @@ Open-source VTOL flight controller firmware for Teensy 4.0/4.1, based on dRehmFl
 | [scope.md](scope.md) | What this project IS and IS NOT |
 | [roadmap.md](roadmap.md) | Feature checklist and milestones |
 | [todo.md](todo.md) | Immediate tasks and session work |
+| [architecture/INDEX.md](architecture/INDEX.md) | Layered architecture docs (Mermaid) — start at Level 0 system overview, drill down per subsystem |
 
 ## User Guides
 
@@ -18,6 +19,13 @@ Open-source VTOL flight controller firmware for Teensy 4.0/4.1, based on dRehmFl
 | [1_hardware_setup.md](1_hardware_setup.md) | Complete wiring guide with diagrams |
 | [2_calibration_guide.md](2_calibration_guide.md) | Manual and automatic calibration procedures |
 | [3_troubleshooting.md](3_troubleshooting.md) | Problem solving reference |
+| [diagnose_decision_tree.md](diagnose_decision_tree.md) | Decision-tree symptom flows (pairs with `dev.sh diagnose`) |
+| [pid-tuning-guide.md](pid-tuning-guide.md) | PID tuning workflow (`g` command, conservative starts) |
+| [testing.md](testing.md) | How to run the native unit tests and the calibration suite |
+| [ota_runbook.md](ota_runbook.md) | Operator runbook for ESP32 over-the-air firmware flashing |
+| [esp32_wifi_onboarding.md](esp32_wifi_onboarding.md) | First-time ESP32 WiFi credentials setup |
+| [security_posture.md](security_posture.md) | Threat model + security posture for WiFi builds — read before flying on any network |
+| [network_security_setup.md](network_security_setup.md) | Operator how-to: enable command-API auth, set the OTA password, build a GPS position-privacy variant |
 
 ## Optional ESP32 Sensors
 
@@ -34,6 +42,7 @@ only — neither touches the flight loop.
 
 | Folder | Contents |
 |--------|----------|
+| [architecture/](architecture/) | Layered architecture diagrams (Level 0 overview → Level 1 subsystems → Level 2 detail) |
 | [features/](features/) | Feature specifications and usage docs |
 | [findings/](findings/) | Research, investigations, and discoveries |
 | [archive/](archive/) | Session summaries and historical records |

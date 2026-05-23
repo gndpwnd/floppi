@@ -231,20 +231,22 @@ void setup() {
 
 ### Proposed Architecture
 
-```
-Core 0: Flight Control Task
-├── IMU reading (1kHz)
-├── Madgwick filter
-├── PID control
-├── Motor output
-└── SBUS receiver polling
-
-Core 1: Communications Task
-├── WiFi AP mode
-├── HTTP REST API
-├── WebSocket for real-time data
-├── OLED display updates (10Hz)
-└── Logging to SD card (if present)
+```mermaid
+flowchart TB
+    subgraph core0["Core 0: Flight Control Task"]
+        a0["IMU reading (1kHz)"]
+        b0["Madgwick filter"]
+        c0["PID control"]
+        d0["Motor output"]
+        e0["SBUS receiver polling"]
+    end
+    subgraph core1["Core 1: Communications Task"]
+        a1["WiFi AP mode"]
+        b1["HTTP REST API"]
+        c1["WebSocket for real-time data"]
+        d1["OLED display updates (10Hz)"]
+        e1["Logging to SD card (if present)"]
+    end
 ```
 
 ### Build Configuration

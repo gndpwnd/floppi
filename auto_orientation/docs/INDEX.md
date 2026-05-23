@@ -7,6 +7,7 @@ Navigation map for `auto_orientation/docs/`. Each subfolder is themed; open its 
 ## Start here
 
 - [README.md](README.md) — Project overview, status, capabilities
+- [architecture/](architecture/INDEX.md) — **Layered architecture diagrams** (Level 0 system overview → Level 1 subsystems → Level 2 components), reflecting the Mega-universal vs Uno-minimal split
 - [getting_started/](getting_started/INDEX.md) — Onboarding, FAQ, architecture overview
 - [build/BUILD_GUIDE.md](build/INDEX.md) — How to compile/flash
 - [../FOLDER_STRUCTURE.md](../FOLDER_STRUCTURE.md) — Top-level project file tree
@@ -45,6 +46,7 @@ Navigation map for `auto_orientation/docs/`. Each subfolder is themed; open its 
 
 | Subfolder | Purpose |
 |-----------|---------|
+| [architecture/](architecture/INDEX.md) | Layered architecture diagrams (L0 system → L1 subsystems → L2 components), grounded in source |
 | [getting_started/](getting_started/INDEX.md) | Onboarding: getting started, FAQ, architecture overview |
 | [theory/](theory/INDEX.md) | Conceptual / math background (quaternions, NED frame, BNO085 algorithm) |
 | [build/](build/INDEX.md) | Build guides, feature flags, snapshot feature |

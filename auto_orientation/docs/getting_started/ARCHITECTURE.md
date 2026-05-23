@@ -387,33 +387,21 @@ stateDiagram-v2
 ```mermaid
 stateDiagram-v2
     [*] --> BootCheck: Board powers on
-    
-    BootCheck --> EEPROMValid: Check EEPROM\nmarker (0xCA)
-    
-    EEPROMValid --> HasCal{Valid calibration\nfound?}
-    
-    HasCal -->|Yes| RestoreFromEEPROM: Restore 256 bytes\nfrom EEPROM
-    
-    HasCal -->|No| InitializeNew: Start calibration\nfrom scratch
-    
-    RestoreFromEEPROM --> VerifyCRC: Verify CRC8\nchecksum
-    
-    VerifyCRC --> CRCValid{Checksum\nvalid?}
-    
-    CRCValid -->|Yes| ApplyCal: Apply to BNO085\nvia setCalibration()
-    
-    CRCValid -->|No| InitializeNew: CRC failed,\nstart fresh
-    
-    InitializeNew --> WaitCalibration: Normal calibration\nflow
-    
-    WaitCalibration --> CalDone: Calibration\ncomplete
-    
-    ApplyCal --> Running: Skip init, run\nwith restored cal
-    
-    CalDone --> SaveToEEPROM: Save to EEPROM\n(~850 ms write time)
-    
+    BootCheck --> EEPROMValid: Check EEPROM marker (0xCA)
+    state HasCal <<choice>>
+    EEPROMValid --> HasCal: Valid calibration found?
+    HasCal --> RestoreFromEEPROM: Yes (restore 256 bytes)
+    HasCal --> InitializeNew: No (calibrate from scratch)
+    RestoreFromEEPROM --> VerifyCRC: Verify CRC8 checksum
+    state CRCValid <<choice>>
+    VerifyCRC --> CRCValid: Checksum valid?
+    CRCValid --> ApplyCal: Yes (setCalibration())
+    CRCValid --> InitializeNew: No (CRC failed, start fresh)
+    InitializeNew --> WaitCalibration: Normal calibration flow
+    WaitCalibration --> CalDone: Calibration complete
+    ApplyCal --> Running: Skip init, run with restored cal
+    CalDone --> SaveToEEPROM: Save to EEPROM (~850 ms write time)
     SaveToEEPROM --> [*]: Boot complete
-    
     note right of RestoreFromEEPROM
         Calibration persistence saves
         ~30 seconds of manual calibration
@@ -595,18 +583,15 @@ graph TD
     MPU -->|AccelData,<br/>GyroData| FUSION
     
     FUSION -->|Fused<br/>Orientation| OUTPUT["Output<br/>Formatter"]
-    
-    note right of FUSION
-        Future: Could implement complementary
-        filter or Kalman filter to blend
-        BNO085 absolute orientation with
-        MPU6050 relative measurements
-    end note
-    
+
+    NOTE["Future: complementary filter or Kalman<br/>filter to blend BNO085 absolute orientation<br/>with MPU6050 relative measurements"]
+    FUSION -.note.-> NOTE
+
     style BNO fill:#e3f2fd
     style MPU fill:#ffe0b2
     style FUSION fill:#f1f8e9
     style OUTPUT fill:#c8e6c9
+    style NOTE fill:#fffde7,stroke-dasharray: 4 4
 ```
 
 **Implementation Steps**:
@@ -631,18 +616,16 @@ graph TD
     
     SDWRITE -->|SPI| SDCARD["SD Card<br/>Module"]
     
-    SDCARD -->|File| LOGFILE["deployment_<date>.json<br/>or .csv"]
-    
-    note right of SDWRITE
-        Async write prevents blocking
-        sensor reads. Buffer ~50 lines
-        before writing to card.
-    end note
-    
+    SDCARD -->|File| LOGFILE["deployment_date.json<br/>or .csv"]
+
+    NOTE["Async write prevents blocking sensor reads.<br/>Buffer ~50 lines before writing to card."]
+    SDWRITE -.note.-> NOTE
+
     style OUTPUT fill:#f1f8e9
     style SDWRITE fill:#ffe0b2
     style SDCARD fill:#f3e5f5
     style LOGFILE fill:#c8e6c9
+    style NOTE fill:#fffde7,stroke-dasharray: 4 4
 ```
 
 **Implementation Steps**:
@@ -667,19 +650,15 @@ graph TD
     
     JSON -->|Queue| WEBSOCK
     WEBSOCK -->|JSON frame<br/>per 100ms| BROWSER
-    
-    note right of BROWSER
-        Dashboard could display:
-        - Real-time quaternion plot
-        - Calibration status gauges
-        - GPS satellite count & accuracy
-        - Compass/heading visualization
-    end note
-    
+
+    NOTE["Dashboard could display:<br/>real-time quaternion plot,<br/>calibration status gauges,<br/>GPS satellite count & accuracy,<br/>compass/heading visualization"]
+    BROWSER -.note.-> NOTE
+
     style ARDUINO fill:#fff9c4
     style JSON fill:#f1f8e9
     style WEBSOCK fill:#ffe0b2
     style BROWSER fill:#c8e6c9
+    style NOTE fill:#fffde7,stroke-dasharray: 4 4
 ```
 
 **Implementation Steps**:

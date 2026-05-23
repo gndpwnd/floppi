@@ -5,12 +5,20 @@
 > Status: Spec lifted from existing implementation — NOT new protocol design
 > Scaffolding source: `future_session_scaffolding_2026-05-20.md` §3.5
 
-**Verified 2026-05-20 against:**
-- `src/web_server.cpp@HEAD` (commit 9dd60ca)
-- `src/api_client.cpp@HEAD`
+**Verified 2026-05-21 against:**
+
+- `src/web_server.cpp@HEAD` (GPS `gps` block in `serializeDisplayData()` — on `/api/status` + `/ws`)
+- `src/api_client.cpp@HEAD` (GPS `gps` block now also in the outbound `/api/telemetry` POST)
 - `lib/RadioComm/radioComm.cpp`, `radioComm_ext.cpp`, `radioComm.h`
 - `docs/findings/command-arbitration-design.md`
 - `swarm_api/src/drone.py@HEAD` (client side — readable and reviewed)
+
+> **Re-stamp 2026-05-21:** the W5 GPS passthrough is LANDED (committed in
+> `3f57a6c`; missing-pin-default fix in `include/config.h`). The optional `gps`
+> block now appears on **all three** telemetry surfaces — `GET /api/status`,
+> the `/ws` stream, and the outbound `/api/telemetry` POST. §3.1b and §5 below
+> are reconciled to match. **Still open:** there is no `api_version` field on
+> any surface (§7) — the schema is demonstrably mutable yet unversioned.
 
 This document is the joint contract between the ESP32 `flight_controller` firmware
 and the sibling Python `swarm_api` project. Both sides should reference it. When
@@ -347,6 +355,31 @@ Implemented in `failSafe()` (`radioComm.cpp:213-253`):
 | `rssi` | int | WiFi RSSI dBm |
 | `heap` | int | Free heap bytes |
 | `uptime_ms` | int | `millis()` |
+
+### 5.1 Optional `baro` / `gps` blocks (compile-gated)
+
+The outbound POST mirrors the inbound `/api/status` optional blocks. When the
+firmware is built with `USE_BAROMETER` / `USE_GPS`, `handleApiClient()`
+(`api_client.cpp`) appends the matching object to the POST body. Both are
+**absent entirely** in a default (flag-off) build — key presence off
+`("baro" in payload)` / `("gps" in payload)`, exactly as for `/api/status`.
+
+```json
+"baro": { "ok": true, "pressure_pa": 101180.4, "altitude_m": 12.07, "temp_c": 23.41 },
+"gps":  { "nmea": "$GNGGA,123519.00,4807.0380,N,...*47", "age_ms": 230, "ok": true }
+```
+
+The `gps` block carries identical field semantics to §3.1b: `gps.nmea` is the
+raw most-recent NMEA sentence verbatim (≤82 chars), `gps.age_ms` is its age in
+ms, and `gps.ok` is a **liveness bit, not a fix-quality bit**. The firmware
+parses nothing beyond `$…\r\n` framing — no lat/lon/alt/sats/fix decoding — and
+no GPS-derived value reaches the Core-0 flight loop (see
+`phase_w5_gps_landed_2026-05-21.md`). The POST buffer was raised to 512 B to
+cover the base payload plus both optional blocks.
+
+> **Privacy:** the outbound POST relays absolute latitude/longitude in
+> `gps.nmea` to the central server — and, like the inbound surface, it is
+> unauthenticated. See §8 item 1.
 
 Notes:
 - This is **drone-initiated push** to a central server — distinct from the

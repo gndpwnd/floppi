@@ -93,16 +93,22 @@ static void Madgwick6DOF(float gx, float gy, float gz,
         s2 = 4.0f * q0q0 * q2 + _2q0 * ax + _4q2 * q3q3 - _2q3 * ay - _4q2 + _8q2 * q1q1 + _8q2 * q2q2 + _4q2 * az;
         s3 = 4.0f * q1q1 * q3 - _2q1 * ax + 4.0f * q2q2 * q3 - _2q2 * ay;
 
-        recipNorm = invSqrt(s0 * s0 + s1 * s1 + s2 * s2 + s3 * s3);
-        s0 *= recipNorm;
-        s1 *= recipNorm;
-        s2 *= recipNorm;
-        s3 *= recipNorm;
+        // M-1 guard: skip the gradient-descent correction when the gradient
+        // norm collapses (exact level gravity etc.), avoiding invSqrt(0)=inf.
+        // Faithful copy of src/imu.cpp.
+        float gradNormSq = s0 * s0 + s1 * s1 + s2 * s2 + s3 * s3;
+        if (gradNormSq > 1.0e-12f) {
+            recipNorm = invSqrt(gradNormSq);
+            s0 *= recipNorm;
+            s1 *= recipNorm;
+            s2 *= recipNorm;
+            s3 *= recipNorm;
 
-        qDot1 -= MADGWICK_BETA * s0;
-        qDot2 -= MADGWICK_BETA * s1;
-        qDot3 -= MADGWICK_BETA * s2;
-        qDot4 -= MADGWICK_BETA * s3;
+            qDot1 -= MADGWICK_BETA * s0;
+            qDot2 -= MADGWICK_BETA * s1;
+            qDot3 -= MADGWICK_BETA * s2;
+            qDot4 -= MADGWICK_BETA * s3;
+        }
     }
 
     q0 += qDot1 * invSampleFreq;
@@ -110,11 +116,19 @@ static void Madgwick6DOF(float gx, float gy, float gz,
     q2 += qDot3 * invSampleFreq;
     q3 += qDot4 * invSampleFreq;
 
-    recipNorm = invSqrt(q0 * q0 + q1 * q1 + q2 * q2 + q3 * q3);
-    q0 *= recipNorm;
-    q1 *= recipNorm;
-    q2 *= recipNorm;
-    q3 *= recipNorm;
+    // M-1 guard: reset to identity on a non-finite or zero-norm quaternion
+    // instead of normalising through inf/NaN. Faithful copy of src/imu.cpp.
+    float qNormSq = q0 * q0 + q1 * q1 + q2 * q2 + q3 * q3;
+    if (!(qNormSq > 1.0e-12f) || std::isnan(q0) || std::isnan(q1) ||
+        std::isnan(q2) || std::isnan(q3)) {
+        q0 = 1.0f; q1 = 0.0f; q2 = 0.0f; q3 = 0.0f;
+    } else {
+        recipNorm = invSqrt(qNormSq);
+        q0 *= recipNorm;
+        q1 *= recipNorm;
+        q2 *= recipNorm;
+        q3 *= recipNorm;
+    }
 
     roll_IMU  = atan2(q0 * q1 + q2 * q3, 0.5f - q1 * q1 - q2 * q2) * 57.2957795;
     pitch_IMU = asin(-2.0f * (q1 * q3 - q0 * q2)) * 57.2957795;
@@ -178,21 +192,60 @@ TEST_MAIN("attitude estimation (Madgwick6DOF + invSqrt)") {
         }
     }
 
-    // --- 2. Level convergence ----------------------------------------------
-    // Zero gyro, accel = level gravity. NOTE: feeding the *exactly*
-    // mathematically-pure (0,0,1)g into the identity quaternion makes the
-    // gradient vector s0..s3 collapse to all-zero, and the src then computes
-    // invSqrt(0) = +inf -> 0*inf = NaN. A real IMU never delivers a perfectly
-    // exact vector, so we start slightly tilted and confirm it settles toward
-    // 0 deg (gravity essentially straight down).
+    // --- 2. Level convergence (slightly tilted) ----------------------------
+    // Zero gyro, near-level accel. Confirms the estimator settles toward the
+    // commanded ~2 deg tilt. (The exact-level degenerate case is now its own
+    // test below — see test 2b — since the M-1 guard makes it safe.)
     {
         reset_quat();
         float ax, ay, az;
         tilt_accel(2.0f, 2.0f, ax, ay, az);   // ~2 deg off level
         for (int i = 0; i < 12000; ++i)
             Madgwick6DOF(0, 0, 0, ax, ay, az, DT);
-        CHECK_NEAR(roll_IMU,  2.0, 1.0, "level: roll converges near 0 deg");
-        CHECK_NEAR(pitch_IMU, 2.0, 1.0, "level: pitch converges near 0 deg");
+        CHECK_NEAR(roll_IMU,  2.0, 1.0, "level: roll converges near 2 deg");
+        CHECK_NEAR(pitch_IMU, 2.0, 1.0, "level: pitch converges near 2 deg");
+    }
+
+    // --- 2b. M-1 guard: exact level gravity must NOT produce NaN ------------
+    // Feeding the *exactly* mathematically-pure (0,0,1)g into the identity
+    // quaternion with zero gyro collapses the gradient vector s0..s3 to
+    // all-zero. The UNGUARDED source computed invSqrt(0)=+inf -> 0*inf=NaN, and
+    // the NaN poisoned the quaternion forever (unrecoverable attitude). The M-1
+    // epsilon guard skips the correction in that case (and the final-norm
+    // reset-to-identity is a backstop), so the estimator stays finite and at
+    // identity (roll/pitch/yaw == 0). This test would FAIL (NaN) on the old src.
+    {
+        reset_quat();
+        for (int i = 0; i < 5000; ++i)
+            Madgwick6DOF(0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, DT);  // exact +1g down
+        CHECK_FINITE(q0, "M-1: q0 finite on exact level gravity (no NaN)");
+        CHECK_FINITE(q1, "M-1: q1 finite on exact level gravity");
+        CHECK_FINITE(q2, "M-1: q2 finite on exact level gravity");
+        CHECK_FINITE(q3, "M-1: q3 finite on exact level gravity");
+        CHECK_FINITE(roll_IMU,  "M-1: roll finite on exact level gravity");
+        CHECK_FINITE(pitch_IMU, "M-1: pitch finite on exact level gravity");
+        CHECK_FINITE(yaw_IMU,   "M-1: yaw finite on exact level gravity");
+        float norm2 = q0*q0 + q1*q1 + q2*q2 + q3*q3;
+        CHECK_NEAR(norm2, 1.0, 1e-4, "M-1: quaternion stays unit-norm at exact level");
+        // Identity quaternion -> 0 deg attitude.
+        CHECK_NEAR(roll_IMU,  0.0, 1e-3, "M-1: roll == 0 at exact level");
+        CHECK_NEAR(pitch_IMU, 0.0, 1e-3, "M-1: pitch == 0 at exact level");
+    }
+
+    // --- 2c. M-1 guard: recovery from a NaN-injected quaternion ------------
+    // Force the quaternion to NaN (simulating an upstream glitch) and confirm
+    // the next update resets it to a finite, unit-norm identity rather than
+    // staying dead. Exercises the isnan() reset-to-identity backstop directly.
+    {
+        reset_quat();
+        q0 = std::nanf(""); q1 = std::nanf(""); q2 = 0.0f; q3 = 0.0f;
+        // One update with a normal (slightly tilted) accel + zero gyro.
+        float ax, ay, az;
+        tilt_accel(3.0f, 0.0f, ax, ay, az);
+        Madgwick6DOF(0.0f, 0.0f, 0.0f, ax, ay, az, DT);
+        CHECK_FINITE(q0, "M-1: recovers finite q0 after NaN injection");
+        float norm2 = q0*q0 + q1*q1 + q2*q2 + q3*q3;
+        CHECK_NEAR(norm2, 1.0, 1e-4, "M-1: re-normalised to unit quaternion after NaN");
     }
 
     // --- 3. Tilt convergence: pure roll ------------------------------------

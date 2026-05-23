@@ -45,35 +45,27 @@ The M8T is optimized for **timing/synchronization** (NTP, PPS), while M9N is gen
 
 ## Problem Diagnosis Flowchart
 
-```
-1. Module Alive Check
-   ├─ LED blinking? → YES → Go to 2. Antenna Check
-   ├─ No LED activity? → Check power supply
-   └─ PPS/RX LED pattern? → Module may be searching (normal)
+```mermaid
+flowchart TD
+    S1["1. Module Alive Check"]
+    S1 -->|LED blinking? YES| S2
+    S1 -->|No LED activity| PWR["Check power supply"]
+    S1 -->|PPS/RX LED pattern| SEARCH["Module may be searching (normal)"]
 
-2. Antenna Check
-   ├─ External antenna connected? → NO → Install proper antenna
-   ├─ Antenna positioned flat (parallel to horizon)? → NO → Reposition
-   ├─ Clear sky view (>60 degrees elevation)? → NO → Move outdoors
-   └─ YES → Go to 3. Configuration Check
+    S2["2. Antenna Check"]
+    S2 -->|External antenna connected? NO| ANT["Install proper antenna"]
+    S2 -->|Antenna flat (parallel to horizon)? NO| REPOS["Reposition"]
+    S2 -->|Clear sky view (>60° elevation)? NO| OUT["Move outdoors"]
+    S2 -->|YES| S3
 
-3. Configuration Check
-   ├─ Check baud rate (default 9600)
-   ├─ Verify NMEA output enabled
-   ├─ Check antenna power (if active antenna)
-   └─ NO issues → Go to 4. Signal Strength Check
+    S3["3. Configuration Check<br/>- baud rate (default 9600)<br/>- NMEA output enabled<br/>- antenna power (if active antenna)"]
+    S3 -->|no issues| S4
 
-4. Signal Strength Check
-   ├─ Use u-center to monitor C/N0 ratio
-   ├─ Should be >44 dBHz average for fix
-   ├─ Check satellite count in u-center
-   └─ Poor signals → Better location or larger antenna needed
+    S4["4. Signal Strength Check<br/>- u-center C/N0 ratio (>44 dBHz avg for fix)<br/>- satellite count in u-center"]
+    S4 -->|poor signals| LOC["Better location or larger antenna needed"]
+    S4 --> S5
 
-5. Advanced Diagnostics
-   ├─ Check firmware version
-   ├─ Monitor temperature/voltage
-   ├─ Test alternate USB port (power delivery)
-   └─ Verify no RF interference
+    S5["5. Advanced Diagnostics<br/>- firmware version<br/>- temperature/voltage<br/>- alternate USB port (power delivery)<br/>- verify no RF interference"]
 ```
 
 ---

@@ -1,7 +1,21 @@
 # Roadmap: Auto Orientation Framework
 
 **Current phase**: Phase 4 — Auto-orientation framework + balancing-robot reference application (now bifurcated into 4M Mega-universal and 4U Uno-minimal — see below)
-**Last updated**: 2026-05-21 (Workstream G bench-tuning support + Phase 4M.14 test-coverage + two P1 security fixes landed — see [archive/session_records/2026-05-21_multi_agent_workstream_g_security.md](archive/session_records/2026-05-21_multi_agent_workstream_g_security.md))
+**Last updated**: 2026-05-22 (safety/NaN failsafes + noise-floor layer + quaternion fix + docs/architecture + as-built reconciliation; Uno link regression fixed — see [archive/session_records/2026-05-22_safety_correctness_docs.md](archive/session_records/2026-05-22_safety_correctness_docs.md))
+
+### 2026-05-22 status snapshot
+
+Safety/correctness/docs session — no new control phase. All static work landed; bench validation is the only remaining gate. Session record: [archive/session_records/2026-05-22_safety_correctness_docs.md](archive/session_records/2026-05-22_safety_correctness_docs.md).
+
+| Item | Status | Reference |
+|---|---|---|
+| NaN-safety failsafes across motor path (kill-switch, PID gains/clamp, mount-offset EEPROM, IMU boundary, watchdog wired into `loop()`) | **LANDED** — 3 P1 failsafe-gap fixes | [findings/security_audit_2026-05-22.md](findings/security_audit_2026-05-22.md) |
+| Noise-floor measurement layer (`noise_floor_estimator.h`, Welford σ, observation-only) | **LANDED** — unblocks 5 doubly-blocked scope rows on the measurement side | [findings/mega_scope_violation_triage_2026-05-22.md](findings/mega_scope_violation_triage_2026-05-22.md) |
+| Quaternion gimbal-lock production fix (`quaternion_conversions.cpp` `toEuler`: normalize-before-`asin` + `[-1,1]` clamp) | **LANDED** | [archive/session_records/2026-05-22_safety_correctness_docs.md](archive/session_records/2026-05-22_safety_correctness_docs.md) |
+| Uno link regression (`Quaternion::normalize()` undefined) | **FIXED** — one-line `platformio.ini` `+<math/quaternion.cpp>` src_filter; `arduino_uno_minimal` SUCCESS (54.1%), `mega_balance` SUCCESS (16.4%), native 22/22 | [archive/session_records/2026-05-22_safety_correctness_docs.md](archive/session_records/2026-05-22_safety_correctness_docs.md) |
+| `docs/architecture/` LEVEL_0/1/2 + as-built/as-designed reconciliation (pole-placement not AMIGO, no `BootstrapStage` enum, mean-pitch mount, `g=9.81` position loop) | **LANDED** | [architecture/INDEX.md](architecture/INDEX.md), [findings/autocal_autotune_verification_2026-05-22.md](findings/autocal_autotune_verification_2026-05-22.md), [findings/MASTER_DESIGN.md](findings/MASTER_DESIGN.md) |
+| Auto-cal/auto-tune verification | **VERIFIED math-sound + 22/22**, NOT bench-validated | [findings/autocal_autotune_verification_2026-05-22.md](findings/autocal_autotune_verification_2026-05-22.md) |
+| Mega scope-violation triage | **0 of 14 statically retireable** — all bench-gated | [findings/mega_scope_violation_triage_2026-05-22.md](findings/mega_scope_violation_triage_2026-05-22.md) |
 
 ### 2026-05-21 status snapshot
 
@@ -473,4 +487,4 @@ These show up in agent findings but are not yet on a phase plan. Promoted to a p
 
 ---
 
-*Last updated: 2026-05-21 (Mega cascade Phases 4M.2 / 4M.11 / 4M.13 / 4M.14 confirmed LANDED — Workstream F complete; Workstream G bench-tuning support codeable items landed; Phase 4M.14 native test coverage wired in; two P1 calibration-storage security fixes (mounting CRC + `restoreFromEEPROM()` buffer-overflow) landed; all 6 firmware envs build clean, native suite 17/17. All uncommitted. Bench-gated next steps: F-3 K_VEL observation, regression-baseline capture, real-motor PWM-discovery. Full session record: [archive/session_records/2026-05-21_multi_agent_workstream_g_security.md](archive/session_records/2026-05-21_multi_agent_workstream_g_security.md)). When a phase enters or exits, update both this file and `todo.md`. Per-session work logs go to `docs/archive/session_records/`.*
+*Last updated: 2026-05-22 (safety/correctness/docs session — no new control phase. NaN-safety failsafes across the motor path (3 P1 fixes), new `noise_floor_estimator.h` observation layer, quaternion gimbal-lock production fix, native suite 22/22, ASCII→Mermaid + new `docs/architecture/` LEVEL_0/1/2 + as-built/as-designed reconciliation. Mid-session Uno link regression FIXED via one-line `platformio.ini` `+<math/quaternion.cpp>` src_filter — both `arduino_uno_minimal` (54.1%) and `mega_balance` (16.4%) build clean. All uncommitted. Bench validation is now the only gate on the balance loop; scope-violation retirement is bench-gated (noise-floor layer now provides the measurement side). Full session record: [archive/session_records/2026-05-22_safety_correctness_docs.md](archive/session_records/2026-05-22_safety_correctness_docs.md). Prior: 2026-05-21 — Mega cascade Phases 4M.2/4M.11/4M.13/4M.14 LANDED, Workstream G codeable items, two P1 calibration-storage fixes, native 17/17.). When a phase enters or exits, update both this file and `todo.md`. Per-session work logs go to `docs/archive/session_records/`.*

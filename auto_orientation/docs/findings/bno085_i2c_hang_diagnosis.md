@@ -702,47 +702,23 @@ imu.begin_UART(&Serial1, 0);
 
 ## Decision Tree for Troubleshooting
 
-```
-START: Code hangs during imu.begin() initialization
-│
-├─ Run I2C Scanner (see above)
-│  │
-│  ├─ Scanner HANGS
-│  │  └─ Problem: Wire.begin() or I2C subsystem issue
-│  │     Fix: See "Debug Level 1" solutions
-│  │
-│  ├─ Scanner finds device at 0x4A or 0x4B
-│  │  └─ Device IS PRESENT on bus
-│  │     Next: Go to "Library Initialization Hang"
-│  │
-│  └─ Scanner finds NO DEVICES
-│     └─ Problem: Hardware not connected
-│        Checks:
-│        - Multimeter: VCC=3.3V, GND=0V
-│        - Continuity: SCL line has <5Ω to pin 21
-│        - Continuity: SDA line has <5Ω to pin 20
-│        - Visual: No cold solder joints
-│
-├─ Library Initialization Hang (begin_I2C times out)
-│  │
-│  ├─ Device present at correct address
-│  │  └─ Likely causes (in order):
-│  │     1. Weak pull-ups → Add 4.7kΩ external resistors
-│  │     2. Clock speed too high → Try Wire.setClock(100000L)
-│  │     3. Sensor in bad state → Power cycle
-│  │     4. Library bug → Update Adafruit library
-│  │
-│  ├─ Try reducing clock speed
-│  │  │
-│  │  ├─ Works at 100kHz
-│  │  │  └─ Fix: Add pull-up resistors, use 100kHz mode
-│  │  │
-│  │  └─ Hangs at all speeds
-│  │     └─ Fix: Power cycle, check wiring
-│
-└─ Initialization completes but code hangs in loop()
-   └─ Different problem (not initialization hang)
-      Check: getSensorEvent() call, enable report call, etc.
+```mermaid
+flowchart TD
+    START["Code hangs during imu.begin() initialization"]
+    START --> SCAN["Run I2C Scanner (see above)"]
+    SCAN --> SHANG{"Scanner result?"}
+    SHANG -->|HANGS| SH1["Wire.begin() or I2C subsystem issue<br/>Fix: see Debug Level 1 solutions"]
+    SHANG -->|"device at 0x4A or 0x4B"| SH2["Device IS PRESENT on bus<br/>Next: Library Initialization Hang"]
+    SHANG -->|NO DEVICES| SH3["Hardware not connected. Checks:<br/>- Multimeter: VCC=3.3V, GND=0V<br/>- Continuity: SCL <5Ω to pin 21<br/>- Continuity: SDA <5Ω to pin 20<br/>- Visual: no cold solder joints"]
+
+    SH2 --> LIB["Library Initialization Hang (begin_I2C times out)"]
+    LIB --> LIBCAUSE["Device present at correct address — likely causes:<br/>1. Weak pull-ups → add 4.7kΩ resistors<br/>2. Clock too high → Wire.setClock(100000L)<br/>3. Sensor in bad state → power cycle<br/>4. Library bug → update Adafruit library"]
+    LIBCAUSE --> CLK{"Try reducing clock speed"}
+    CLK -->|"works at 100 kHz"| CLK1["Fix: add pull-up resistors, use 100 kHz mode"]
+    CLK -->|"hangs at all speeds"| CLK2["Fix: power cycle, check wiring"]
+
+    START --> LOOPHANG["Init completes but code hangs in loop()"]
+    LOOPHANG --> LOOPFIX["Different problem (not init hang)<br/>Check: getSensorEvent(), enable report call, etc."]
 ```
 
 ---

@@ -78,18 +78,22 @@ machine. It lives in the calibration build only.
 
 ### Transitions
 
-```
-IDLE ──(enter test mode: command 'T')──> ATTEST_PROPS
-ATTEST_PROPS ──(token "PROPS-OFF" typed)──> ATTEST_BATTERY
-ATTEST_PROPS ──(anything else / timeout)──> IDLE
-ATTEST_BATTERY ──(token "BATTERY-<state>" typed)──> ARMED_FOR_TEST
-ATTEST_BATTERY ──(anything else / timeout)──> IDLE
-ARMED_FOR_TEST ──(phase command)──> RUNNING_PHASE
-ARMED_FOR_TEST ──(idle 5 s, no command)──> IDLE   [timeout auto-disarm]
-RUNNING_PHASE ──(phase complete)──> ARMED_FOR_TEST
-RUNNING_PHASE ──(phase command duration cap reached)──> ARMED_FOR_TEST
-ANY STATE ──(kill byte 'x')──> IDLE   [immediate, no confirm, motors cut first]
-ANY STATE ──(safety condition tripped)──> FAULT ──> IDLE
+```mermaid
+stateDiagram-v2
+    IDLE --> ATTEST_PROPS: enter test mode (command 'T')
+    ATTEST_PROPS --> ATTEST_BATTERY: token "PROPS-OFF" typed
+    ATTEST_PROPS --> IDLE: anything else / timeout
+    ATTEST_BATTERY --> ARMED_FOR_TEST: token "BATTERY-state" typed
+    ATTEST_BATTERY --> IDLE: anything else / timeout
+    ARMED_FOR_TEST --> RUNNING_PHASE: phase command
+    ARMED_FOR_TEST --> IDLE: idle 5 s, no command [timeout auto-disarm]
+    RUNNING_PHASE --> ARMED_FOR_TEST: phase complete
+    RUNNING_PHASE --> ARMED_FOR_TEST: phase command duration cap reached
+    note left of IDLE
+        ANY STATE --(kill byte 'x')--> IDLE [immediate, no confirm, motors cut first]
+        ANY STATE --(safety condition tripped)--> FAULT --> IDLE
+    end note
+    FAULT --> IDLE
 ```
 
 Rules:

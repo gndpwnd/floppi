@@ -213,4 +213,19 @@ Canonical session record: [../archive/session_records/2026-05-21_multi_agent_wor
 
 ---
 
-*Last updated: 2026-05-21 (2026-05-21 multi-agent session findings added). Prior: 2026-05-20 (post-sync hygiene pass — doc-fixer compact entries integrated above + err0r 2026-05-19 PM session additions kept; the 2026-05-19 AM-session detail block was de-duplicated into the compact entries in "Platform-bifurcation pivot" + "Audits & quality reviews" sections above; 2026-05-20 sync-session findings — architecture_plan, state_reconciliation, mega_ram_fix, security_fix_calibration, tuner_format_alignment — added and the four "in progress" audit placeholders resolved).*
+## 2026-05-22 session — safety/NaN failsafes, noise-floor layer, quaternion fix, as-built reconciliation
+
+Multi-agent session: NaN-safety failsafes across the motor path, a `noise_floor_estimator.h`
+observation layer, a production quaternion gimbal-lock fix, native-test repairs, and a docs pass
+(ASCII→Mermaid, new `docs/architecture/` LEVEL_0/1/2, as-built/as-designed reconciliation). The
+mid-session Uno link regression was fixed via a one-line `platformio.ini` src_filter addition;
+both focus builds now compile clean and the native suite is 22/22. Canonical session record:
+[../archive/session_records/2026-05-22_safety_correctness_docs.md](../archive/session_records/2026-05-22_safety_correctness_docs.md).
+
+- [security_audit_2026-05-22.md](security_audit_2026-05-22.md) — Security & safety re-audit (storage/calibration, auto-tune/BOOTSTRAP bounds, serial surface, memory safety, NaN→motor propagation, new `noise_floor_estimator.h`). 0 P0 / 3 P1 / 6 P2 / 4 P3; the 3 P1s were NaN-bypass failsafe gaps, all remediated in-tree (kill-switch NaN guard, PID gain/clamp NaN reject, mount-offset finiteness guard).
+- [autocal_autotune_verification_2026-05-22.md](autocal_autotune_verification_2026-05-22.md) — "Is auto-cal/auto-tune working?" verification. Verdict: real, math-sound, test-covered, compiles + wired end-to-end (RLS, BOOTSTRAP K-measurement, pole-placement, mount estimator all check out) — but NOT bench-validated as a stable closed loop (last hardware run twitched and fell).
+- [mega_scope_violation_triage_2026-05-22.md](mega_scope_violation_triage_2026-05-22.md) — Static-retireable vs bench-gated triage of the 14 Mega control-loop scope-violation rows. Conservative verdict: **0 of 14** safe to retire in a static session; 5 were doubly-blocked by the absent noise-floor layer (now unblocked on the measurement side by `noise_floor_estimator.h`), the rest bench-gated.
+
+---
+
+*Last updated: 2026-05-22 (2026-05-22 session findings added: security_audit, autocal_autotune_verification, mega_scope_violation_triage). Prior: 2026-05-21 (2026-05-21 multi-agent session findings added). Prior: 2026-05-20 (post-sync hygiene pass — doc-fixer compact entries integrated above + err0r 2026-05-19 PM session additions kept; the 2026-05-19 AM-session detail block was de-duplicated into the compact entries in "Platform-bifurcation pivot" + "Audits & quality reviews" sections above; 2026-05-20 sync-session findings — architecture_plan, state_reconciliation, mega_ram_fix, security_fix_calibration, tuner_format_alignment — added and the four "in progress" audit placeholders resolved).*

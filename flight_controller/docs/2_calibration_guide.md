@@ -2,6 +2,8 @@
 
 Complete guide for calibrating your flight controller firmware.
 
+> **Two calibration docs — which one?** This page is the **per-command procedure reference**: what each calibration command does, the menu workflow, and how to read each output. For the **hardware-staging / bring-up order** (which component to add and test first when assembling a new build), see [`features/calibration-guide.md`](features/calibration-guide.md).
+
 ---
 
 ## Overview

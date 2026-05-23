@@ -137,11 +137,21 @@ overkill. Defer until the gimbal application is funded.
 
 ## 7. Cascade control architecture
 
-```text
-[ wheel_vel_ref ]──►(+)──►[ outer PI ]──► pitch_ref ─►(+)──►[ inner PID ]──► PWM ──► motors ──► chassis
-                     ▲                                    ▲                                       │
-                     │                                    │                                       │
-                  encoder───────────────────────────  pitch_meas ◄─────── BNO085 ◄────────────────┘
+```mermaid
+flowchart LR
+    VREF["wheel_vel_ref"] --> SUM1(("+"))
+    SUM1 --> OUTER["outer PI"]
+    OUTER --> PREF["pitch_ref"]
+    PREF --> SUM2(("+"))
+    SUM2 --> INNER["inner PID"]
+    INNER --> PWM["PWM"]
+    PWM --> MOTORS["motors"]
+    MOTORS --> CHASSIS["chassis"]
+    CHASSIS --> BNO["BNO085"]
+    BNO --> PMEAS["pitch_meas"]
+    PMEAS --> SUM2
+    CHASSIS --> ENC["encoder"]
+    ENC --> SUM1
 ```
 
 The outer loop's authority is clipped (e.g., ±2° pitch_ref) so it can

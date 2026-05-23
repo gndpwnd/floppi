@@ -10,43 +10,31 @@ Captures the device's mounting offset relative to the user-chosen "level" / bala
 
 ## Data flow
 
-```
-   button trigger ──► start_capture()
-                            │
-                            ▼
-       ┌──────────────────────────────────────────────┐
-       │ feed_sample(accel_g, gyro_dps, now_ms)       │ ◄── called at 50–200 Hz
-       └────────────────┬─────────────────────────────┘
-                        │
-              ┌─────────┴──────────┐
-              ▼                    ▼
-        gyro stillness     accel low-pass EMA
-        gate (≤ threshold)         │
-              │                    ▼
-              ▼          Welford variance accumulator
-       state advances     (over capture window)
-              │
-              ▼
-       window expires → shortest_arc_quaternion(accel_lp_, [0,0,-1])
-                            │
-                            ▼
-        result_q_[4], stillness_var_ → serialize() → 24-byte record
-                                              │
-                                              ▼
-                              ps::write(...) → persistent storage
+```mermaid
+flowchart TD
+    BTN["button trigger"] --> START["start_capture()"]
+    START --> FEED["feed_sample(accel_g, gyro_dps, now_ms)<br/>called at 50–200 Hz"]
+    FEED --> GYRO["gyro stillness gate (≤ threshold)"]
+    FEED --> ACCEL["accel low-pass EMA"]
+    GYRO --> ADV["state advances"]
+    ACCEL --> WELFORD["Welford variance accumulator<br/>(over capture window)"]
+    ADV --> EXPIRE["window expires → shortest_arc_quaternion(accel_lp_, [0,0,-1])"]
+    WELFORD --> EXPIRE
+    EXPIRE --> SER["result_q_[4], stillness_var_ → serialize() → 24-byte record"]
+    SER --> PS["ps::write(...) → persistent storage"]
 ```
 
 ## State machine
 
-```text
-IDLE ──start_capture()──► WAITING_STILL
-   ▲                          │
-   │   feed_sample sees       │ consecutive_still_count_ ≥ N
-   │   excessive gyro motion  ▼
-   │                       CAPTURING
-   │                          │ time elapsed ≥ capture_duration_ms_
-   │                          ▼
-   └─ reset() ──── COMPLETE  /  FAILED
+```mermaid
+stateDiagram-v2
+    [*] --> IDLE
+    IDLE --> WAITING_STILL: start_capture()
+    WAITING_STILL --> CAPTURING: consecutive_still_count_ ≥ N
+    WAITING_STILL --> FAILED: feed_sample sees excessive gyro motion
+    CAPTURING --> COMPLETE: time elapsed ≥ capture_duration_ms_
+    COMPLETE --> IDLE: reset()
+    FAILED --> IDLE: reset()
 ```
 
 Defaults: gyro stillness ≤ 0.5 rad/s (~28.6°/s), 3 consecutive still samples to enter capture, 200 ms capture window, accel EMA α tuned for ~50 Hz × 200 ms.

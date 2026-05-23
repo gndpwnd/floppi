@@ -103,14 +103,16 @@ No receiver pins needed — commands arrive over WiFi.
 
 ## How WiFi Control Works
 
-```text
-Controller App (PC/laptop)          ESP32 Drone
-========================          ==============
-  Web dashboard                     WiFi STA mode
-  Send commands via HTTP     --->   Web server receives
-  POST throttle/roll/pitch/yaw      RadioComm processes
-                                     channel_X_pwm values
-                                     PID -> Motors
+```mermaid
+sequenceDiagram
+    participant App as Controller App (PC/laptop)
+    participant ESP as ESP32 Drone
+    Note over App: Web dashboard
+    Note over ESP: WiFi STA mode
+    App->>ESP: Send commands via HTTP (POST throttle/roll/pitch/yaw)
+    Note over ESP: Web server receives
+    Note over ESP: RadioComm processes channel_X_pwm values
+    Note over ESP: PID → Motors
 ```
 
 **Architecture:**
@@ -130,6 +132,62 @@ Controller App (PC/laptop)          ESP32 Drone
 - Fast FPV flying
 - Outdoor flights beyond WiFi range
 - Situations where RC failsafe is critical
+
+---
+
+## Optional: GPS Passthrough (`USE_GPS`)
+
+Telemetry-only, **passthrough-only**. The ESP32 reads raw NMEA on UART1 (RX-only)
+and relays the most-recent sentence over the swarm API. The flight loop never
+reads GPS data — it is bytes for an external flight computer. ESP32 / ESP32-S3
+only. Enable with `#define USE_GPS` in `config.h` (default OFF). See
+`docs/findings/phase_w5_gps_landed_2026-05-21.md`.
+
+```mermaid
+flowchart LR
+    subgraph GPS["GPS module (NEO-6M / M8N / M9N)"]
+        GTX[TX]
+        GRX[RX unused]
+        GVCC[VCC]
+        GGND[GND]
+    end
+    subgraph ESP["ESP32"]
+        G4[GPIO 4 UART1 RX]
+        EV33b[3.3V / 5V*]
+        EGNDb[GND]
+    end
+    GTX --> G4
+    EV33b --- GVCC
+    EGNDb --- GGND
+```
+
+> *Only the **GPS TX → ESP32 RX** wire is connected. Passthrough sends nothing to
+> the module (`GPS_PIN_TX = -1`), so the module's RX pin is left unconnected.
+
+### GPS Pin Reference
+
+| GPS pin | ESP32 GPIO | Notes |
+| ------- | ---------- | ----- |
+| TX | 4 (UART1 RX) | ESP32-S3: GPIO 16. RX-only — the only data wire. |
+| RX | — | Unused (`GPS_PIN_TX = -1`); leave unconnected. |
+| VCC | 3.3V or 5V | Per the module's regulator — check your breakout. |
+| GND | GND | Common ground. |
+
+- **No SBUS collision.** GPS is on UART1; SBUS is on UART2 (GPIO 16 on ESP32,
+  GPIO 18 on ESP32-S3). They coexist with no override. The compile-time `#error`
+  guard in `gps.h` only blocks GPS sharing UART1 with iBUS / DSM / serial-command
+  receivers.
+- **Active antenna.** All NEO-6M / M8N / M9N modules need an active ceramic-patch
+  or helical antenna for usable cold-start. Place it with a clear sky view, away
+  from the ESP32 and ESCs (RF noise lengthens time-to-fix).
+
+> **SECURITY — position leak.** Raw NMEA contains the drone's absolute
+> latitude/longitude. The swarm API has **no authentication and no TLS**, so with
+> `USE_GPS` enabled anyone on the LAN (and any configured central server) can
+> read the drone's exact position from the `gps.nmea` field on `/api/status`,
+> `/ws`, and the outbound `/api/telemetry` POST. Run the drone on an
+> isolated/trusted SSID only. This is a tracked development-phase scope decision
+> — see `docs/findings/swarm_api_contract_2026-05-20.md` §8 and `scope.md`.
 
 ---
 

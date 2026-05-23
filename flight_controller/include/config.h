@@ -55,7 +55,70 @@
     #define USE_WEB_SERVER      // Web status server (JSON API, WebSocket, mDNS)
     #define USE_API_SERVER      // API client (POST to centralized servers)
     #define USE_OTA             // Over-the-air firmware updates (ArduinoOTA)
+
+    //=========================================================================
+    // WIFI AUTH MODE  (ESP32/S3 only — uncomment exactly ONE)
+    //=========================================================================
+    // Compile-time link-layer auth selection. Only the chosen mode's code is
+    // compiled; unused modes cost zero flash/RAM. Validated by a #error block
+    // in wifi_config.h. Secrets/addresses live in wifi_credentials.h (NOT here)
+    // so config.h stays secret-free. STA mode only.
+    //
+    //   OPEN       — no password (WiFi.begin(ssid))
+    //   PSK        — WPA/WPA2-Personal (DEFAULT, byte-identical to legacy path)
+    //   WPA3_SAE   — WPA3-Personal (forces SAE; refuses WPA2-only APs)
+    //   ENTERPRISE — WPA2/WPA3-Enterprise EAP (the heavy mode: ~20-40 KB extra)
+    //
+    // NOTE on naming: the selector tokens use the WIFI_AUTH_MODE_* prefix (NOT
+    // bare WIFI_AUTH_OPEN/WIFI_AUTH_ENTERPRISE) because the ESP-IDF defines an
+    // enum wifi_auth_mode_t whose members ARE named WIFI_AUTH_OPEN /
+    // WIFI_AUTH_ENTERPRISE / WIFI_AUTH_WPA3_PSK ...; defining those as macros
+    // corrupts <esp_wifi_types.h>. The WIFI_AUTH_MODE_* prefix is collision-free.
+    //
+    // (A build flag -DWIFI_AUTH_OVERRIDE lets CI/test builds pick a different
+    //  mode via -D without editing this default. Normal users ignore it.)
+    #ifndef WIFI_AUTH_OVERRIDE
+    #define WIFI_AUTH_MODE_PSK            // WPA/WPA2-Personal (default)
+    //#define WIFI_AUTH_MODE_OPEN         // no password
+    //#define WIFI_AUTH_MODE_WPA3_SAE     // WPA3-Personal
+    //#define WIFI_AUTH_MODE_ENTERPRISE   // WPA2/WPA3-Enterprise (EAP)
+
+    // --- Enterprise EAP method (only used under WIFI_AUTH_MODE_ENTERPRISE; pick ONE) ---
+    #define WIFI_EAP_METHOD_PEAP     // username/password, optional CA
+    //#define WIFI_EAP_METHOD_TTLS   // username/password, optional CA
+    //#define WIFI_EAP_METHOD_TLS    // client cert+key (requires USE_WIFI_CERTS)
+    #endif // WIFI_AUTH_OVERRIDE
+
+    // --- Certificates (optional; CA validates the RADIUS server, client
+    //     cert+key provide EAP-TLS mutual auth). Blobs live in wifi_certs.h. ---
+    //#define USE_WIFI_CERTS
+
+    // --- Network addressing (optional; DHCP is the default) ---
+    //#define USE_STATIC_IP          // static address (IP/gateway/subnet/DNS in wifi_credentials.h)
+    //#define WIFI_HOSTNAME "floppi-fc"   // DHCP hostname; omit -> derived from MAC (floppi-XXXX)
 #endif
+
+// API_AUTH — shared-token authentication on the WiFi COMMAND surface.
+// Security audit 2026-05-22 SEC-01/03: POST /api/commands and the WebSocket
+// /ws can arm and throttle the aircraft, and there is NO sender authentication.
+// When USE_API_AUTH is enabled, every command-bearing request/WS message must
+// carry the shared token defined as FLOPPI_CMD_TOKEN in wifi_credentials.h;
+// mismatched/absent tokens are rejected (HTTP 401 / ignored WS frame).
+//
+// DEFAULT OFF for backward-compatibility: the existing swarm_api contract does
+// NOT send a token yet (cross-project handoff:
+// docs/handoffs/api_auth_contract_2026-05-22.md). Turning this ON before the
+// ground station is updated WILL break command delivery. Telemetry
+// (GET /api/status, /ws broadcast, GET /) is unaffected — read paths stay open.
+//
+//#define USE_API_AUTH
+
+// Loud reminder: WiFi command surface is open when API auth is off. The SEC-01
+// #warning is emitted from a single translation unit (src/web_server.cpp) so it
+// fires exactly ONCE per build instead of once per TU that includes config.h
+// (~14× per ESP32 build). The condition is identical to the build-gate that
+// compiles web_server.cpp, so the reminder appears under exactly the same
+// circumstances. It is a #warning (not #error) so default builds compile.
 
 // Optimization — Noise reduction for cheaper hardware.
 // Biquad gyro/D-term filters, gyro notch filter, accel second-stage LP.
@@ -203,6 +266,33 @@
     // telemetry `gps.ok` field reads false (GPS missing / unpowered / no link).
     #ifndef GPS_STALE_TIMEOUT_MS
         #define GPS_STALE_TIMEOUT_MS 2000
+    #endif
+
+    // UART RX pin (RX-only — passthrough sends nothing to the module, so the TX
+    // pin is the Arduino "unused" sentinel -1 and claims no GPIO). These mirror
+    // the existing UART1 RX defaults in pin_definitions_esp32.h: GPIO 4 on the
+    // ESP32, GPIO 16 on the ESP32-S3. They live here (in config.h, before the
+    // pin-definition headers) rather than in pin_definitions_esp32.h because the
+    // GPS driver was landed without its pin defaults; #ifndef-guarded so a build
+    // flag or a future pin_definitions_esp32.h entry still wins.
+    //
+    // GPIO-CONFLICT NOTE (SBUS priority on GPIO 16): with GPS_UART_NUM 1 (the
+    // default) the GPS is on UART1 RX and never touches GPIO 16 on the ESP32 —
+    // SBUS keeps GPIO 16 (UART2) uncontested, so SBUS + GPS coexist with no
+    // override. On the ESP32-S3, UART1 RX *is* GPIO 16, but the S3 SBUS RX
+    // default is GPIO 18 (pin_definitions_esp32.h:167), so there is still no
+    // collision. The only real contention is GPS vs the UART1 *serial*
+    // receivers (iBUS / DSM / serial-commands), which the #error guard in gps.h
+    // catches. See docs/findings/gps_passthrough_spec_2026-05-20.md §3.
+    #ifndef GPS_PIN_RX
+        #ifdef USE_ESP32S3
+            #define GPS_PIN_RX 16   // S3 UART1 RX
+        #else
+            #define GPS_PIN_RX 4    // ESP32 UART1 RX
+        #endif
+    #endif
+    #ifndef GPS_PIN_TX
+        #define GPS_PIN_TX -1       // unused — passthrough is RX-only
     #endif
 #endif
 
@@ -679,6 +769,28 @@
     #endif
     #ifndef GPS_PIN_TX
         #define GPS_PIN_TX -1       // unused — passthrough is RX-only
+    #endif
+
+    // GPS_TELEMETRY_INCLUDE_POSITION — privacy gate on the GPS telemetry block.
+    // Security audit 2026-05-22 SEC-04: the swarm API client (api_client.cpp)
+    // and the web server (web_server.cpp) relay the raw NMEA sentence verbatim
+    // over the (by default unauthenticated) network. GGA/RMC sentences carry
+    // latitude/longitude/altitude, so any LAN peer can track the precise
+    // aircraft position. Because the FC is a pure passthrough (it parses
+    // nothing), the position data lives ENTIRELY inside the NMEA string — there
+    // is no separate lat/lon field to drop, and fix/sat counts are embedded in
+    // that same string too. The only way to omit position without
+    // re-implementing an NMEA parser on the FC is to omit the raw `nmea` field
+    // altogether, keeping the non-identifying liveness fields (`ok`, `age_ms`).
+    //
+    // DEFAULT ON (1): preserves the existing swarm-API contract (full
+    // passthrough) and the documented behavior. The privacy trade-off — a
+    // default build broadcasts position to anyone on the flight LAN. Set to 0
+    // for an OPSEC build that withholds the raw NMEA sentence; consumers then
+    // see only gps.ok / gps.age_ms (a GPS-is-alive heartbeat) and no
+    // coordinates. Pair with USE_API_AUTH (SEC-01) to also gate the read path.
+    #ifndef GPS_TELEMETRY_INCLUDE_POSITION
+        #define GPS_TELEMETRY_INCLUDE_POSITION 1
     #endif
 #endif
 

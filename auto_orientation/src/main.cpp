@@ -26,6 +26,7 @@
  */
 
 #include <Arduino.h>
+#include <math.h>     // isnan / isinf — EEPROM float-load finiteness guards
 #include "config/mode.h"
 
 #ifdef USE_BALANCING_ROBOT
@@ -210,7 +211,17 @@ static bool load_mount_offset_(float& deg) {
     if (!ps::read(EE_MOUNT_ADDR, buf, EE_MOUNT_LEN)) return false;
     if (buf[0] != EE_MOUNT_MAGIC || buf[1] != EE_MOUNT_VER) return false;
     if (calculateCRC8(buf, 7) != buf[7]) return false;
-    memcpy(&deg, buf + 2, 4);
+    float v;
+    memcpy(&v, buf + 2, 4);
+    // Audit P1-002: this was the only EEPROM-loaded float without a NaN/range
+    // guard (encoder-radius and PWM-disc paths ARE guarded). A CRC-valid record
+    // whose payload is NaN/Inf (partial-flash, coincident corruption) would set
+    // reference_deg_ = NaN downstream, disabling the OnlineMountingEstimator
+    // clamp (NaN bounds pass everything) and poisoning corrected_pitch_(). A
+    // mounting offset outside ±90° is physically nonsensical, so reject it and
+    // fall back to the safe default (caller treats false as "no saved mount").
+    if (isnan(v) || isinf(v) || v < -90.0f || v > 90.0f) return false;
+    deg = v;
     return true;
 }
 
@@ -736,10 +747,26 @@ void loop() {
     // running at 100% with the bot on its side.
     {
         float p = app.get_pitch_deg();
-        if (p > 20.0f || p < -20.0f) {
+        // Audit P1-001: a NaN pitch makes BOTH (p > 20) and (p < -20) false
+        // (all NaN comparisons are false), so the kill-switch was NaN-blind —
+        // a non-finite IMU reading could leave the motors latched at the last
+        // commanded PWM. Treat any non-finite pitch as a fault: cut motors and
+        // request abort (-> IDLE), exactly as for an over-tilt.
+        if (isnan(p) || isinf(p) || p > 20.0f || p < -20.0f) {
             motors.stop();
             safety.request_abort();
         }
+    }
+
+    // Audit P2-006: BalanceSafety maintains a watchdog that the 200 Hz tick()
+    // feeds every healthy tick, but nothing ever read watchdog_starved() — the
+    // watchdog was fed and never checked, so a wedged tick ISR (the exact
+    // failure it exists to catch) produced no motor cut. Consume it here: if
+    // the watchdog has gone hungry (default 200 ms with no feed), the control
+    // loop is no longer running normally, so cut motors and request abort.
+    if (safety.watchdog_starved(now)) {
+        motors.stop();
+        safety.request_abort();
     }
 
     // Persist state on key transitions so the next boot can auto-RUN.

@@ -53,13 +53,32 @@
         .btn-stop { background: #888; color: white; }
 
         .warning { background: #e9456020; border: 1px solid #e94560; border-radius: 6px; padding: 10px 16px; margin-bottom: 16px; font-size: 0.85rem; color: #e94560; }
+
+        /* Auth controls */
+        .auth-box { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+        .auth-box input { background: #0f3460; border: 1px solid #1a1a3e; color: #e0e0e0; border-radius: 4px; padding: 6px 10px; font-size: 0.8rem; width: 160px; }
+        .auth-box input::placeholder { color: #6a7a9a; }
+        .auth-box button { background: #0f3460; color: #e0e0e0; border: 1px solid #1a1a3e; border-radius: 4px; padding: 6px 12px; font-size: 0.8rem; cursor: pointer; }
+        .auth-box button:hover { background: #1a1a3e; }
+        .auth-indicator { font-size: 0.75rem; color: #888; }
+        .auth-indicator.set { color: #4ecca3; }
+        .auth-banner { display: none; background: #e9456020; border: 1px solid #e94560; color: #e94560; padding: 10px 24px; font-size: 0.9rem; }
+        .auth-banner.show { display: block; }
     </style>
 </head>
 <body>
     <div class="header">
         <h1>FLOPPI SWARM</h1>
         <span class="status" id="connStatus">Connecting...</span>
+        <div class="auth-box">
+            <span class="auth-indicator" id="authIndicator">No token</span>
+            <input type="password" id="authTokenInput" placeholder="Auth token (if enabled)" autocomplete="off">
+            <button id="authSaveBtn" onclick="saveToken()">Save</button>
+            <button id="authClearBtn" onclick="clearToken()">Clear</button>
+        </div>
     </div>
+
+    <div class="auth-banner" id="authBanner"></div>
 
     <div class="container">
         <div class="fleet-panel">
@@ -152,14 +171,92 @@
         let sending = false;
         let sendInterval = null;
         let armed = false;
+        let wsAuthRejected = false;  // set when WS closed with 1008 (auth)
+
+        // --- Auth token management ---
+        // The server has an OPT-IN auth layer (server.auth_token). When the
+        // operator sets a token here, it is attached to mutating REST calls as
+        // an Authorization: Bearer header and to the /ws/dashboard URL as a
+        // ?token= query param. When no token is set, behaviour is identical to
+        // the unauthenticated default (backward compatible).
+        const TOKEN_KEY = 'floppi_auth_token';
+
+        function getToken() {
+            return localStorage.getItem(TOKEN_KEY) || '';
+        }
+
+        function refreshAuthIndicator() {
+            const ind = document.getElementById('authIndicator');
+            if (getToken()) {
+                ind.textContent = 'Token set';
+                ind.classList.add('set');
+            } else {
+                ind.textContent = 'No token';
+                ind.classList.remove('set');
+            }
+        }
+
+        function showAuthBanner(message) {
+            const banner = document.getElementById('authBanner');
+            banner.textContent = message;
+            banner.classList.add('show');
+        }
+
+        function hideAuthBanner() {
+            document.getElementById('authBanner').classList.remove('show');
+        }
+
+        function saveToken() {
+            const val = document.getElementById('authTokenInput').value.trim();
+            if (val) {
+                localStorage.setItem(TOKEN_KEY, val);
+            } else {
+                localStorage.removeItem(TOKEN_KEY);
+            }
+            document.getElementById('authTokenInput').value = '';
+            refreshAuthIndicator();
+            hideAuthBanner();
+            wsAuthRejected = false;
+            // Reconnect the WebSocket with the new token.
+            if (ws) { try { ws.close(); } catch (e) { /* ignore */ } }
+            connectWs();
+        }
+
+        function clearToken() {
+            localStorage.removeItem(TOKEN_KEY);
+            document.getElementById('authTokenInput').value = '';
+            refreshAuthIndicator();
+        }
+
+        // fetch wrapper that attaches the auth header (when a token is set) and
+        // surfaces 401s as an auth-required prompt.
+        function authedFetch(url, options) {
+            options = options || {};
+            const token = getToken();
+            if (token) {
+                options.headers = Object.assign({}, options.headers, {
+                    'Authorization': 'Bearer ' + token
+                });
+            }
+            return fetch(url, options).then(resp => {
+                if (resp.status === 401) {
+                    showAuthBanner('Authentication required: enter a valid auth token (header rejected by server).');
+                }
+                return resp;
+            });
+        }
 
         // --- WebSocket ---
         function connectWs() {
             const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-            ws = new WebSocket(`${proto}//${location.host}/ws/dashboard`);
+            const token = getToken();
+            const q = token ? ('?token=' + encodeURIComponent(token)) : '';
+            ws = new WebSocket(`${proto}//${location.host}/ws/dashboard${q}`);
 
             ws.onopen = () => {
                 document.getElementById('connStatus').textContent = 'Connected';
+                wsAuthRejected = false;
+                hideAuthBanner();
                 // Initial fleet fetch
                 fetch('/api/drones').then(r => r.json()).then(renderFleet);
             };
@@ -172,25 +269,54 @@
                 }
             };
 
-            ws.onclose = () => {
+            ws.onclose = (evt) => {
+                // 1008 = policy violation: the server rejected the handshake for
+                // a missing/invalid token or a disallowed Origin.
+                if (evt.code === 1008) {
+                    wsAuthRejected = true;
+                    document.getElementById('connStatus').textContent = 'Auth required';
+                    showAuthBanner('WebSocket rejected (auth required / invalid token or disallowed origin). Enter a valid auth token.');
+                    return;  // do not auto-reconnect into a 1008 loop
+                }
                 document.getElementById('connStatus').textContent = 'Disconnected — reconnecting...';
                 setTimeout(connectWs, 3000);
             };
         }
 
         // --- Fleet rendering ---
+        // SECURITY (F-10): drone-supplied telemetry is UNTRUSTED. A spoofed,
+        // compromised, or MITM'd drone controls fields like `name` and `ip`
+        // (`ip` in particular is adopted verbatim from telemetry `net.ip` with
+        // no server-side validation). Render every drone-derived string via
+        // textContent / DOM nodes — never innerHTML / template-string-into-HTML
+        // — so injected markup (`<script>`, `<img onerror=...>`, etc.) can never
+        // become live DOM. textContent does not HTML-parse, so unicode/fullwidth
+        // angle-bracket tricks are inert too.
         function renderFleet(drones) {
             const list = document.getElementById('fleetList');
-            list.innerHTML = '';
+            list.replaceChildren();  // clear without an HTML sink
             drones.forEach(d => {
                 const card = document.createElement('div');
                 card.className = 'drone-card' + (d.mac === selectedMac ? ' selected' : '');
-                card.id = 'card-' + d.mac.replace(/:/g, '');
+                card.id = 'card-' + String(d.mac).replace(/:/g, '');
                 card.onclick = () => selectDrone(d.mac);
-                card.innerHTML = `
-                    <div class="name"><span class="indicator ${d.online ? 'online' : 'offline'}"></span>${d.name}</div>
-                    <div class="meta">${d.mac} ${d.ip ? '| ' + d.ip : ''}</div>
-                `;
+
+                const nameDiv = document.createElement('div');
+                nameDiv.className = 'name';
+                const indicator = document.createElement('span');
+                indicator.className = 'indicator ' + (d.online ? 'online' : 'offline');
+                nameDiv.appendChild(indicator);
+                // d.name is drone/operator-controlled -> textContent, not HTML.
+                nameDiv.appendChild(document.createTextNode(d.name == null ? '' : String(d.name)));
+
+                const metaDiv = document.createElement('div');
+                metaDiv.className = 'meta';
+                // d.mac and d.ip are drone/telemetry-derived -> textContent.
+                const metaText = String(d.mac) + (d.ip ? ' | ' + String(d.ip) : '');
+                metaDiv.textContent = metaText;
+
+                card.appendChild(nameDiv);
+                card.appendChild(metaDiv);
                 list.appendChild(card);
             });
         }
@@ -226,8 +352,8 @@
             const card = document.getElementById(id);
             if (card) card.classList.add('selected');
 
-            // Fetch initial telemetry
-            fetch(`/api/drones/${encodeURIComponent(mac)}/telemetry`)
+            // Fetch initial telemetry (read-only endpoint, open even with auth)
+            authedFetch(`/api/drones/${encodeURIComponent(mac)}/telemetry`)
                 .then(r => r.json())
                 .then(data => updateTelemetry(mac, data));
         }
@@ -317,10 +443,11 @@
 
         // --- Periodic fleet refresh ---
         setInterval(() => {
-            fetch('/api/drones').then(r => r.json()).then(renderFleet).catch(() => {});
+            authedFetch('/api/drones').then(r => r.json()).then(renderFleet).catch(() => {});
         }, 5000);
 
         // --- Init ---
+        refreshAuthIndicator();
         connectWs();
     </script>
 </body>

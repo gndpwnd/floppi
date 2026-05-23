@@ -115,23 +115,39 @@ RotationMatrix RotationMatrix::transpose() const {
 EulerAngles quaternion_to_euler(const Quaternion& q) {
     EulerAngles euler;
 
+    // Normalize before extraction. The ZYX (Tait-Bryan) formulas below assume
+    // a unit quaternion: pitch = asin(2*(w*y - z*x)) is only valid when
+    // |q| == 1. Sensor / EKF / round-trip quaternions accumulate float32
+    // round-off and arrive slightly off-norm. Near the pitch = ±90° gimbal-lock
+    // singularity that tiny norm error is catastrophic: asin's derivative
+    // 1/sqrt(1-x^2) diverges as x -> 1, so a ~1e-7 error in the asin argument
+    // is amplified into a ~0.03° pitch error (enough to break a 0.01° tolerance
+    // at exactly 90°). Renormalizing pins |q|=1 so the singular case lands on
+    // |sinp| >= 1 and is handled exactly by the guard below.
+    Quaternion qn = q;
+    qn.normalize();
+
     // Roll (x-axis rotation)
-    float sinr_cosp = 2.0f * (q.w * q.x + q.y * q.z);
-    float cosr_cosp = 1.0f - 2.0f * (q.x * q.x + q.y * q.y);
+    float sinr_cosp = 2.0f * (qn.w * qn.x + qn.y * qn.z);
+    float cosr_cosp = 1.0f - 2.0f * (qn.x * qn.x + qn.y * qn.y);
     euler.roll = atan2(sinr_cosp, cosr_cosp);
 
     // Pitch (y-axis rotation)
-    float sinp = 2.0f * (q.w * q.y - q.z * q.x);
-    // Guard against out-of-range value due to numerical errors
-    if (fabs(sinp) >= 1.0f) {
-        euler.pitch = copysign(M_PI / 2.0f, sinp);  // Use ±90 degrees
+    float sinp = 2.0f * (qn.w * qn.y - qn.z * qn.x);
+    // Clamp into [-1, 1]: even after normalization, float round-off can leave
+    // |sinp| a hair above 1 at the singularity. The clamp keeps asin in-domain
+    // and snaps the singular case to exactly ±90°.
+    if (sinp >= 1.0f) {
+        euler.pitch = M_PI / 2.0f;
+    } else if (sinp <= -1.0f) {
+        euler.pitch = -M_PI / 2.0f;
     } else {
         euler.pitch = asin(sinp);
     }
 
     // Yaw (z-axis rotation)
-    float siny_cosp = 2.0f * (q.w * q.z + q.x * q.y);
-    float cosy_cosp = 1.0f - 2.0f * (q.y * q.y + q.z * q.z);
+    float siny_cosp = 2.0f * (qn.w * qn.z + qn.x * qn.y);
+    float cosy_cosp = 1.0f - 2.0f * (qn.y * qn.y + qn.z * qn.z);
     euler.yaw = atan2(siny_cosp, cosy_cosp);
 
     return euler;

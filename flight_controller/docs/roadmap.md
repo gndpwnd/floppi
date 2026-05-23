@@ -39,6 +39,18 @@ This roadmap tracks project-level features and milestones for the flight control
 
 **Next-session target (unchanged)**: hardware-bench validation — BMP388/MS5611 drivers vs real sensors, `'b'` calibration + swarm telemetry end-to-end, motor/ESC test framework (needs ESCs + protocol decision).
 
+## 2026-05-22 Status Snapshot
+
+Security-hardening + correctness + documentation wave, then an ESP32 WiFi auth-mode feature. **All changes UNCOMMITTED** (working tree only). Lean pointers — detail lives in the records below, not here.
+
+- **Security / auth hardening (opt-in, default-OFF, backward-compatible)**: command-API token auth (`USE_API_AUTH` + `FLOPPI_CMD_TOKEN`), OTA password/hash + build guards, GPS position-privacy gate (`GPS_TELEMETRY_INCLUDE_POSITION`), I2C command XOR checksum. External attack-surface audit (3 P0 / 2 P1) → fixes → QA **GO**. See [findings/security_audit_2026-05-22.md](findings/security_audit_2026-05-22.md), operator docs [security_posture.md](security_posture.md) + [network_security_setup.md](network_security_setup.md).
+- **Correctness fixes**: Madgwick6DOF NaN guard (degenerate exact-gravity input), dynamic WebSocket telemetry buffer (no truncation), latent `GPS_PIN_RX/TX` build-breaker fixed. See [findings/qa_review_2026-05-22.md](findings/qa_review_2026-05-22.md).
+- **Mermaid + layered architecture docs**: ASCII→Mermaid conversion + new `docs/architecture/` Level 0/1/2 doc set (entry: [architecture/INDEX.md](architecture/INDEX.md)).
+- **ESP32 WiFi auth-mode selector (NEW)**: compile-time `WIFI_AUTH_MODE_*` (PSK default / OPEN / WPA3-SAE / ENTERPRISE with PEAP/TTLS/TLS), `USE_WIFI_CERTS` / `USE_STATIC_IP` / `WIFI_HOSTNAME`, `#error` validation, liftable `wifi_connect` module. PSK byte-identical to legacy. QA **GO**; hostname-ordering bug fixed. Plan: [plans/wifi-network-modes-plan.md](plans/wifi-network-modes-plan.md); feature doc: [features/wifi-configuration.md](features/wifi-configuration.md); QA: [findings/wifi_modes_qa_2026-05-22.md](findings/wifi_modes_qa_2026-05-22.md).
+- **Session records**: [archive/session_records/2026-05-22_security_correctness_docs.md](archive/session_records/2026-05-22_security_correctness_docs.md) (security/correctness/docs) + [archive/session_records/2026-05-22_wifi_network_modes.md](archive/session_records/2026-05-22_wifi_network_modes.md) (WiFi feature).
+
+**Next-session target**: runtime validation of the WiFi modes against real APs / eduroam (operator step, hardware-gated); operator decision on flipping `USE_API_AUTH` default-ON; remaining hardware-gated bench validation (unchanged).
+
 ---
 
 ## Core Features

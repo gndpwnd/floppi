@@ -20,45 +20,13 @@ Goal: **Determine camera orientation in world frame to enable 3D reconstruction,
 
 ## Mathematics Pipeline: Sensor → World Coordinates
 
-```
-┌─────────────────┐
-│   BNO085 IMU    │ Outputs: quaternion (w,x,y,z) = attitude in body frame
-└────────┬────────┘
-         │
-         ├─→ Convert Quaternion → Rotation Matrix
-         │   (How: See QUATERNION_REFERENCE.md)
-         │
-         v
-┌──────────────────────┐
-│  Body Frame Attitude │ Defines: which direction is "forward, up, right" relative to world
-└────────┬─────────────┘
-         │
-         ├─→ Apply camera extrinsics (fixed offset from body)
-         │   (How: See CAMERA_EXTRINSIC_CALIBRATION.md)
-         │
-         v
-┌──────────────────────┐
-│  Camera Frame        │ Now know where camera is pointing in world coordinates
-└────────┬─────────────┘
-         │
-         ├─→ Fuse with GPS to know absolute position
-         │   (How: See IMU_GPS_SENSOR_FUSION.md)
-         │
-         v
-┌──────────────────────┐
-│  World Coordinates   │ Image pixels → 3D world points
-└──────────────────────┘
-         │
-         ├─→ Apply applications
-         │   - Autonomous landing (detect, align, descend)
-         │   - Geo-tagging (pixel → GPS coordinate)
-         │   - 3D reconstruction (multiple frames → 3D model)
-         │   - Visual odometry (camera motion → position update)
-         │
-         v
-┌──────────────────────┐
-│  Navigation Output   │
-└──────────────────────┘
+```mermaid
+flowchart TD
+    IMU["BNO085 IMU<br/>Outputs: quaternion (w,x,y,z) = attitude in body frame"]
+    IMU -->|"Convert Quaternion → Rotation Matrix<br/>(see QUATERNION_REFERENCE.md)"| BODY["Body Frame Attitude<br/>which direction is forward, up, right relative to world"]
+    BODY -->|"Apply camera extrinsics (fixed offset from body)<br/>(see CAMERA_EXTRINSIC_CALIBRATION.md)"| CAM["Camera Frame<br/>where the camera is pointing in world coordinates"]
+    CAM -->|"Fuse with GPS to know absolute position<br/>(see IMU_GPS_SENSOR_FUSION.md)"| WORLD["World Coordinates<br/>image pixels → 3D world points"]
+    WORLD -->|"Apply applications:<br/>- Autonomous landing (detect, align, descend)<br/>- Geo-tagging (pixel → GPS coordinate)<br/>- 3D reconstruction (multiple frames → 3D model)<br/>- Visual odometry (camera motion → position update)"| NAV["Navigation Output"]
 ```
 
 ---
@@ -77,7 +45,7 @@ Goal: **Determine camera orientation in world frame to enable 3D reconstruction,
    - **Time**: ~45 minutes
    - **Next**: Implement quaternion class and rotation functions
 
-2. **[GPS_GEODETIC_COORDINATE_SYSTEMS.md](../../../GPS_GEODETIC_COORDINATE_SYSTEMS.md)**
+2. **[GPS_GEODETIC_COORDINATE_SYSTEMS.md](../../../research/GPS_GEODETIC_COORDINATE_SYSTEMS.md)**
    - **What**: GPS and coordinate frame theory
    - **Why**: GPS gives lat/long/alt; need to convert to local tangent plane (NED/ENU)
    - **Key sections**:
@@ -101,7 +69,7 @@ Goal: **Determine camera orientation in world frame to enable 3D reconstruction,
 
 ### Phase 2: Application-Specific (Read as needed)
 
-4. **[CAMERA_EXTRINSIC_CALIBRATION.md](../../../CAMERA_EXTRINSIC_CALIBRATION.md)**
+4. **[CAMERA_EXTRINSIC_CALIBRATION.md](../../../research/CAMERA_EXTRINSIC_CALIBRATION.md)**
    - **What**: Camera calibration mathematics
    - **When to read**: After understanding quaternions and coordinate frames
    - **Key sections**:
@@ -125,10 +93,10 @@ Goal: **Determine camera orientation in world frame to enable 3D reconstruction,
 
 ### Quick References
 
-- **[GPS_COORDINATE_QUICK_REFERENCE.md](../../../GPS_COORDINATE_QUICK_REFERENCE.md)** — cheat sheet for coordinate conversions
-- **[GPS_CHEAT_SHEET.txt](../../../GPS_CHEAT_SHEET.txt)** — printable field card
+- **[GPS_COORDINATE_QUICK_REFERENCE.md](../../../research/GPS_COORDINATE_QUICK_REFERENCE.md)** — cheat sheet for coordinate conversions
+- **[GPS_CHEAT_SHEET.txt](../../../research/GPS_CHEAT_SHEET.txt)** — printable field card
 - **[QUATERNION_MASTER_INDEX.md](../../../docs/QUATERNION_MASTER_INDEX.md)** — navigation guide for quaternion docs
-- **[GPS_IMPLEMENTATION_EXAMPLES.py](../../../GPS_IMPLEMENTATION_EXAMPLES.py)** — Python reference implementations
+- **[GPS_IMPLEMENTATION_EXAMPLES.py](../../../scripts/GPS_IMPLEMENTATION_EXAMPLES.py)** — Python reference implementations
 
 ---
 

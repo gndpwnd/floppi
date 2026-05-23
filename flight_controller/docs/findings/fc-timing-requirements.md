@@ -60,17 +60,15 @@ Key insight: **Diminishing returns above 1kHz for most applications.**
 
 ### End-to-End Control Latency
 
-```
-Radio TX → Receiver → FC Processing → Motor Response → Propeller Response
-
-Timeline:
-├─ Radio latency:        10-25ms (2.4GHz radio system)
-├─ Receiver processing:   1-5ms (SBUS/CRSF)
-├─ FC loop:              0.5-2ms (at 500Hz-2kHz)
-├─ Motor response:       5-15ms (ESC + motor inertia)
-└─ Propeller response:   10-20ms (aerodynamic lag)
-───────────────────────────────────
-Total:                   27-67ms typical
+```mermaid
+flowchart LR
+    TX["Radio TX<br/>10-25ms (2.4GHz radio system)"]
+    RX["Receiver<br/>1-5ms (SBUS/CRSF)"]
+    FC["FC Processing<br/>0.5-2ms (at 500Hz-2kHz)"]
+    MOT["Motor Response<br/>5-15ms (ESC + motor inertia)"]
+    PROP["Propeller Response<br/>10-20ms (aerodynamic lag)"]
+    TX --> RX --> FC --> MOT --> PROP
+    PROP --> TOTAL["Total: 27-67ms typical"]
 ```
 
 ### What FC Can Control

@@ -7,12 +7,31 @@ and programmatic access to config.json settings.
 
 import time
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
-from ..config import NetworkConfig, save_config
+from ..config import save_config
+from .auth import require_auth
 
 router = APIRouter(prefix="/api/system", tags=["system"])
+
+# Secret fields redacted from any config read (F-09).
+_REDACT = "command_token"
+
+
+def _redact_config(data: dict) -> dict:
+    """Return a copy of a config dump with secret tokens removed."""
+    net = data.get("network")
+    if isinstance(net, dict):
+        net.pop(_REDACT, None)
+    for d in data.get("drones", []):
+        if isinstance(d, dict):
+            d.pop(_REDACT, None)
+    server = data.get("server")
+    if isinstance(server, dict):
+        # auth_token is the client->server secret; never expose it.
+        server.pop("auth_token", None)
+    return data
 
 _start_time = time.time()
 
@@ -49,28 +68,49 @@ async def system_info(request: Request):
 
 @router.get("/config")
 async def get_config(request: Request):
-    """Read current configuration (all sections)."""
+    """Read current configuration (all sections), with secrets redacted (F-09)."""
     config = request.app.state.config
-    return config.model_dump()
+    return _redact_config(config.model_dump())
 
 
 @router.get("/config/network")
 async def get_network_config(request: Request):
-    """Read network configuration."""
-    return request.app.state.config.network.model_dump()
+    """Read network configuration (command_token redacted — F-09)."""
+    net = request.app.state.config.network.model_dump()
+    net.pop(_REDACT, None)
+    return net
 
 
-@router.put("/config/network")
+@router.put("/config/network", dependencies=[Depends(require_auth)])
 async def update_network_config(update: NetworkConfigUpdate, request: Request):
-    """Update network configuration settings. Only updates fields present in body."""
+    """
+    Update network configuration settings. Only updates fields present in body.
+
+    F-04: this mutates and persists config.json, so it now requires the server
+    auth token (when configured) and can be globally disabled via
+    server.config_mutation_enabled. Never an unauthenticated config rewrite when
+    auth is enabled; never any rewrite when mutation is disabled.
+    """
     config = request.app.state.config
+
+    if not config.server.config_mutation_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Runtime config mutation is disabled "
+                   "(server.config_mutation_enabled = false)",
+        )
+
     changes = update.model_dump(exclude_unset=True, exclude_none=True)
 
     if not changes:
-        return config.network.model_dump()
+        net = config.network.model_dump()
+        net.pop(_REDACT, None)
+        return net
 
     for key, value in changes.items():
         setattr(config.network, key, value)
 
     save_config(config)
-    return config.network.model_dump()
+    net = config.network.model_dump()
+    net.pop(_REDACT, None)
+    return net

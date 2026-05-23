@@ -10,18 +10,14 @@ A uniform, byte-addressable persistent-storage API across every MCU we target. R
 
 ## Data flow
 
-```
-caller (calibration_storage.cpp, mounting record, ...)
-     │
-     ▼
-   ps::begin / read / write / commit / clear / capacity
-     │
-     ▼  (compile-time backend selection via macros)
-  ┌─────────────────────────┬────────────────────────┬─────────────────────┬────────────────────┐
-  │ ARDUINO_ARCH_AVR        │ __IMXRT1062__          │ ARDUINO_ARCH_ESP32  │ (none of above)    │
-  │ persistent_storage_avr  │ persistent_storage_teensy │ persistent_storage_esp32 │ persistent_storage_native │
-  │ on-chip EEPROM, ~3.3ms  │ flash-emulated EEPROM  │ NVS Preferences blob │ heap buffer (tests) │
-  └─────────────────────────┴────────────────────────┴─────────────────────┴────────────────────┘
+```mermaid
+flowchart TD
+    CALLER["caller (calibration_storage.cpp, mounting record, ...)"] --> PS["ps::begin / read / write / commit / clear / capacity"]
+    PS --> SEL{"compile-time backend<br/>selection via macros"}
+    SEL -->|ARDUINO_ARCH_AVR| AVR["persistent_storage_avr<br/>on-chip EEPROM, ~3.3 ms"]
+    SEL -->|__IMXRT1062__| TEENSY["persistent_storage_teensy<br/>flash-emulated EEPROM"]
+    SEL -->|ARDUINO_ARCH_ESP32| ESP32["persistent_storage_esp32<br/>NVS Preferences blob"]
+    SEL -->|none of above| NATIVE["persistent_storage_native<br/>heap buffer (tests)"]
 ```
 
 The `native_test` env's `build_src_filter` explicitly excludes the embedded back-ends so the host build only links the native one (see `platformio.ini` `[env:native_test]`).

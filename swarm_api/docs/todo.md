@@ -1,6 +1,6 @@
 # Swarm API - Todo
 
-> Last updated: 2026-02-10
+> Last updated: 2026-05-22
 
 ## In Progress
 
@@ -17,6 +17,15 @@ _(none)_
 - [ ] Network interface selection support
 - [ ] Gamepad/joystick input mapping (browser Gamepad API)
 
+## Security Follow-ups (from 2026-05-22 hardening)
+
+- [ ] TLS / HTTPS in front of the server (traffic still plaintext; token is a gate, not confidentiality)
+- [ ] Decide whether server auth should default ON (operator/deployment policy)
+- [ ] Rate limiting at the reverse proxy + WS client cap (audit F-08)
+- [ ] Explicit CORS allowlist (audit F-03, defense-in-depth)
+  See: docs/findings/security_audit_2026-05-22.md, docs/findings/auth_qa_review_2026-05-22.md,
+       docs/archive/session_records/2026-05-22_security_hardening.md
+
 ## Backlog
 
 - [ ] Telemetry recording/playback
@@ -25,6 +34,10 @@ _(none)_
 
 ## Recently Completed
 
+- [x] Security audit + opt-in server auth layer (Bearer/X-Auth-Token, WS Origin+token handshake) — 2026-05-22
+- [x] Input validators (XSS/SSRF), secret redaction + chmod 0600, dashboard auth wiring — 2026-05-22
+- [x] Telemetry-XSS fix (textContent + server-side ip validation); independent QA GO, 27 tests pass — 2026-05-22
+  See: docs/archive/session_records/2026-05-22_security_hardening.md
 - [x] Fleet API: status, batch commands, emergency disarm, group/tag listing — 2026-02-10
 - [x] System API: server info, config read/update — 2026-02-10
 - [x] Drone identity: groups, tags, metadata update (PUT endpoint) — 2026-02-10

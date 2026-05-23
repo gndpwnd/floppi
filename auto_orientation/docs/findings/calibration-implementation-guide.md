@@ -8,23 +8,19 @@
 
 ## Architecture Overview
 
-```
-Auto Orientation HAL Interface
-│
-├─ OrientationSensor::getCalibrationProfile(data, length)
-├─ OrientationSensor::setCalibrationProfile(data, length)
-│
-└─ BNO085 Implementation
-   │
-   ├─ Read from BNO085 (SH-2 protocol)
-   │  └─ Feature 0xFE GET_FEATURE_REQUEST/RESPONSE
-   │
-   ├─ Write to BNO085 (SH-2 protocol)
-   │  └─ Feature 0xFE SET_FEATURE_REQUEST/RESPONSE
-   │
-   └─ Persistent Storage
-      ├─ Arduino EEPROM (240 bytes at offset 0)
-      └─ Metadata (timestamp, location, version)
+```mermaid
+flowchart TD
+    HAL["Auto Orientation HAL Interface"]
+    HAL --> GET["OrientationSensor::getCalibrationProfile(data, length)"]
+    HAL --> SET["OrientationSensor::setCalibrationProfile(data, length)"]
+    HAL --> IMPL["BNO085 Implementation"]
+    IMPL --> READ["Read from BNO085 (SH-2 protocol)"]
+    READ --> GETF["Feature 0xFE GET_FEATURE_REQUEST/RESPONSE"]
+    IMPL --> WRITE["Write to BNO085 (SH-2 protocol)"]
+    WRITE --> SETF["Feature 0xFE SET_FEATURE_REQUEST/RESPONSE"]
+    IMPL --> STORE["Persistent Storage"]
+    STORE --> EEPROM["Arduino EEPROM (240 bytes at offset 0)"]
+    STORE --> META["Metadata (timestamp, location, version)"]
 ```
 
 ---

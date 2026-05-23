@@ -30,61 +30,47 @@ The `SensorOutputManager` is a combined output interface that multiplexes orient
 ## Architecture
 
 ### Class Diagram
-```
-SensorOutputManager
-├── Data State
-│   ├── OrientationData (latest)
-│   ├── PositionData (latest)
-│   ├── orientation_valid_ (bool)
-│   ├── position_valid_ (bool)
-│   ├── position_fresh_ (bool)
-│   ├── orientation_timestamp_ms_
-│   └── position_timestamp_ms_
-│
-├── Configuration
-│   ├── format_ (OutputFormat)
-│   ├── frequency_hz_
-│   ├── output_interval_ms_
-│   ├── gps_freshness_timeout_ms_
-│   └── last_output_ms_
-│
-└── Methods
-    ├── begin(OutputFormat)
-    ├── update(const OrientationData&)
-    ├── update(const PositionData&)
-    ├── shouldOutput() → bool
-    ├── getFormattedOutput(buffer, len) → uint16_t
-    ├── getOutputFormat() → OutputFormat
-    └── setters for configuration
+
+```mermaid
+classDiagram
+    class SensorOutputManager {
+        %% Data State
+        +OrientationData orientation_latest
+        +PositionData position_latest
+        +bool orientation_valid_
+        +bool position_valid_
+        +bool position_fresh_
+        +uint32_t orientation_timestamp_ms_
+        +uint32_t position_timestamp_ms_
+        %% Configuration
+        +OutputFormat format_
+        +uint16_t frequency_hz_
+        +uint16_t output_interval_ms_
+        +uint16_t gps_freshness_timeout_ms_
+        +uint32_t last_output_ms_
+        %% Methods
+        +begin(OutputFormat) void
+        +update(OrientationData&) void
+        +update(PositionData&) void
+        +shouldOutput() bool
+        +getFormattedOutput(buffer, len) uint16_t
+        +getOutputFormat() OutputFormat
+        +setConfiguration() void
+    }
 ```
 
 ### Data Flow
 
-```
-BNO085 (10 Hz)      NEO-M9N (1 Hz)
-   │                    │
-   v                    v
-update(orientation)  update(position)
-   │                    │
-   └─────────┬──────────┘
-             v
-        Store Latest
-        (timestamps)
-             │
-             v
-    shouldOutput() called
-             │
-        Check interval
-             │
-        yes/no
-             │
-    getFormattedOutput()
-             │
-        Format JSON/CSV
-        Include position if fresh
-             │
-             v
-         Output
+```mermaid
+flowchart TD
+    BNO["BNO085 (10 Hz)"] --> UO["update(orientation)"]
+    GPS["NEO-M9N (1 Hz)"] --> UP["update(position)"]
+    UO --> STORE["Store Latest (timestamps)"]
+    UP --> STORE
+    STORE --> SHOULD["shouldOutput() called"]
+    SHOULD --> CHECK{"Check interval — yes/no"}
+    CHECK -->|yes| FMT["getFormattedOutput()<br/>Format JSON/CSV<br/>Include position if fresh"]
+    FMT --> OUT["Output"]
 ```
 
 ## Usage Example

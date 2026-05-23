@@ -1,6 +1,8 @@
 # Calibration Guide — Hardware Requirements & Test Sequencing
 
 > A step-by-step guide for setting up new hardware. Add components one at a time, test each, and build confidence before flying. Each step tells you what hardware you need, what calibration to run, and what values you get.
+>
+> **Two calibration docs — which one?** This page is the **hardware-staging / bring-up** guide: *the order in which to add and test components* (IMU → radio → ESCs → props). For the **per-command procedure reference** (what each calibration command does and how to read its output), see [`../2_calibration_guide.md`](../2_calibration_guide.md). Read this page first when assembling a new build; reach for the other when you need the detail of a single calibration step.
 
 ## Philosophy
 
@@ -314,22 +316,15 @@ Uncomment each marker after completing that stage. The reset tool (`python3 tool
 
 ## Calibration Workflow Summary
 
-```text
-Stage 0: Software setup, config.h basics, verify compilation
-  │
-Stage 1: MCU + IMU → calibrate IMU (i/m/o) + magnetometer (MPU9250)
-  │                    Hardware: just MCU board + IMU breakout
-  │
-Stage 2: + Command source → calibrate radio (r) + failsafe (f) [RC only]
-  │                    Hardware: add receiver/serial/I2C/WiFi (per config.h)
-  │
-Stage 3: + ESCs/Motors → calibrate ESCs (e), verify spin direction
-  │                    Hardware: add ESCs + motors (NO PROPS!)
-  │
-Stage 4: + Props (tethered) → tune PID (g) + filters (p)
-  │                    Hardware: full drone, tethered
-  │
-Done: Flash live build → fly freely
+```mermaid
+flowchart TB
+    S0["Stage 0: Software setup, config.h basics, verify compilation"]
+    S1["Stage 1: MCU + IMU → calibrate IMU (i/m/o) + magnetometer (MPU9250)<br/>Hardware: just MCU board + IMU breakout"]
+    S2["Stage 2: + Command source → calibrate radio (r) + failsafe (f) [RC only]<br/>Hardware: add receiver/serial/I2C/WiFi (per config.h)"]
+    S3["Stage 3: + ESCs/Motors → calibrate ESCs (e), verify spin direction<br/>Hardware: add ESCs + motors (NO PROPS!)"]
+    S4["Stage 4: + Props (tethered) → tune PID (g) + filters (p)<br/>Hardware: full drone, tethered"]
+    DONE["Done: Flash live build → fly freely"]
+    S0 --> S1 --> S2 --> S3 --> S4 --> DONE
 ```
 
 Each stage builds on the previous. You can always go back and re-run any calibration.

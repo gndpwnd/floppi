@@ -1,7 +1,9 @@
 # Bootstrap Protocol for an Unstable Plant
 
-Status: PROPOSAL — implementation across Phase 4.5d, 4.7d, 4.10 (new sub-phases).
-Last updated: 2026-05-12
+Status: PROPOSAL (2026-05-12) — **SUPERSEDED IN PART by the as-built implementation. Read §11 first.**
+Last updated: 2026-05-22 (added §11 AS-BUILT reconciliation)
+
+> **⚠️ This document is the original design proposal. The shipped firmware diverges from it in several material ways** (no `BootstrapStage` enum, pole-placement instead of AMIGO, mean-pitch instead of I-term mount tracking). Sections 2–7 below describe the *proposed* staged protocol, **not what runs**. The as-built reconciliation in [§11](#11-as-built-reconciliation-2026-05-22) is authoritative for the current implementation; the canonical summary is the AS-BUILT table in [`MASTER_DESIGN.md`](MASTER_DESIGN.md).
 
 ## 1. The problem in one paragraph
 
@@ -287,9 +289,12 @@ strict — each depends on the previous landing and being verified on hardware.
 
 Dependency block:
 
-```text
-Phase 4.6.5 (raw gyro)  ─┐
-                         ├──>  4.5d  ──>  4.10a  ──>  4.10b  ──>  4.10c
+```mermaid
+flowchart LR
+    P465["Phase 4.6.5<br/>(raw gyro)"] --> P45d["4.5d"]
+    P45d --> P410a["4.10a"]
+    P410a --> P410b["4.10b"]
+    P410b --> P410c["4.10c"]
 ```
 
 Phase 4.6.5 (raw gyro on `OrientationSensor`) is already on the critical
@@ -385,3 +390,85 @@ protocol, but a hard prerequisite for the Stage 2 freeze-gate fix.
    and their resolution," *Communications in Information and Systems*
    5(1). Bursting and parameter drift when two adaptive loops coexist
    (Stage 2 + Stage 3). Motivates the K_motor freeze gate in §4.
+
+## 11. AS-BUILT reconciliation (2026-05-22)
+
+Verified line-by-line against current `src/` (see
+[`autocal_autotune_verification_2026-05-22.md`](autocal_autotune_verification_2026-05-22.md)).
+The proposal above was *layered staging*; the implementation **collapsed the
+staging** into a simpler architecture that is arguably better for an unstable
+plant. The math of every as-built path was checked and is correct. The
+divergences:
+
+### 11.1 No `BootstrapStage` enum / staged state machine (§5 not built)
+
+§5 specifies a `BootstrapStage { SEED, MOUNT_CONVERGED, PLANT_IDENTIFIED,
+GAINS_REFINED, ADAPTIVE }` enum, a `try_advance_bootstrap_()` orchestrator, the
+§3 per-stage completion-rule table, the `b`-command stage reporting, LED color
+encoding, and EEPROM write-back of refined K/offset. **None of that exists** —
+`grep` finds no `BootstrapStage` symbol anywhere in `src/`. Instead:
+
+- A single discrete **`BOOTSTRAP` app-state** does **direct ±PWM pulse
+  identification** of `K_motor` (replacing §"Stage 3 = RLS from natural
+  disturbance" — direct pulses excite the plant cleanly without waiting for a
+  natural disturbance on an unstable bot).
+- Measured `K_motor` is handed to the inner loop via `seed_k_motor()`.
+- `RUN` then runs **continuous scalar RLS** (λ=0.998, σ-modification) + a
+  **5%/s gain ramp** + the mount estimator, indefinitely.
+
+The "what we know" vs "what we're doing" orthogonality the proposal wanted is
+realised by app-state + estimator confidence, not a separate enum.
+
+### 11.2 Gain mapping is pole-placement, not AMIGO (Stage 4 §2 superseded)
+
+Stage 4 (§2) and `MASTER_DESIGN D9` specify AMIGO (`Kp=0.45·Ku`,
+`Ki=Kp/(0.85·Tu)`, `Kd=Kp·0.125·Tu`). The live path
+(`PlantIdentifier::recompute_targets_()`, `plant_identifier.cpp:262-282`) uses
+**critically-damped pole-placement**: `Kp = ωₙ²/K_motor`, `Kd = 2ζωₙ/K_motor`,
+`ωₙ = 4/ts`, `ζ = 0.7`. Both methods are individually valid; pole-placement is
+the same trick the position outer loop uses (phase_4m14), giving one mental
+model across the stack. AMIGO survives **only** in `relay_feedback.cpp`, which
+is **compiled out** of the balance build (`platformio.ini`
+`-<control/tuners/relay_feedback.cpp>`) and unwired (a `NoOpStrategy` satisfies
+the `AutoPIDTuner` constructor; long-press/`b`/capture-success chain to
+BOOTSTRAP, not to a tuner). See [`../implementation/auto_pid_tuner.md`](../implementation/auto_pid_tuner.md) AS-BUILT note.
+
+### 11.3 Mount estimator tracks mean-pitch, not I-term (Stage 2 §2 superseded)
+
+Stage 2 (§2) describes `OnlineMountingEstimator` reading `pid_.get_i_term()`
+and LPFing the implied offset. The implementation **abandoned** that: a
+2026-05-18 PM bench finding showed the I-term path could only shift ±0.4°
+(I-term clamp ±40 PWM) and averaged to zero under oscillation, so it never
+converged. The estimator now LPFs **mean pitch directly** (`target_deg =
+pitch_deg`, `online_mounting_estimator.cpp:189`); `i_term`/`gain_to_angle_` are
+dead `(void)`-cast no-ops kept for API stability. The 60 s time constant quoted
+in Stage 2 is also stale: code default is 300 s, **overridden to 8 s** at
+`main.cpp:588` (triage doc #13 flags 8 s as questionable for a slow-drift
+tracker). See [`../implementation/online_mounting_estimator.md`](../implementation/online_mounting_estimator.md).
+
+### 11.4 Persistence: refined gains/offset/K write-back not built as specified
+
+§5 / §9.3 describe writing the refined mount offset (Stage 2) and learned
+K_motor (Stage 3) back to EEPROM so re-power starts pre-converged. The collapsed
+architecture does not implement the staged write-back machinery described; mount
+offset persistence follows the one-shot capture path, and gains/K are rebuilt
+from BOOTSTRAP each session (consistent with the "gains do NOT persist, mount
+offset DOES" operator preference in §8).
+
+### 11.5 New layer the proposal did not anticipate — noise-floor estimator
+
+`src/applications/balancing_robot/noise_floor_estimator.h` (Welford running σ
+of gyro-rate / accel-deviation over a 200-sample / 1 s quiet window) is the
+"measure, don't hardcode" feedstock for re-expressing several thresholds as
+multiples of measured σ. It is **observation-only — nothing consumes it yet**
+(by design); it *unblocks the measurement side* of the 5 noise-cited scope
+violations, which remain bench-gated to actually wire up. See
+[`mega_scope_violation_triage_2026-05-22.md`](mega_scope_violation_triage_2026-05-22.md).
+
+**Net:** the as-built tuning chain is **BOOTSTRAP ±PWM pulses → measured K_motor
+→ pole-placement Kp/Kd → continuous RLS → 5%/s ramp**, with mean-pitch mount
+tracking and the noise-floor estimator running in `RUN`. The dependency diagram
+in §7 (Phase 4.5d→4.10a→4.10b→4.10c) describes the *planned* build order; the
+4.10c "Bootstrap stage machine" deliverable was **not built as an enum/state
+machine** — it landed as the collapsed BOOTSTRAP-state + continuous-RLS design
+above.

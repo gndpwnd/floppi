@@ -218,24 +218,31 @@ flight_controller/
 
 ### Dependency Graph
 
-```
-main.cpp
-├── radioComm.h → SBUS.h / DSMRX.h / radioComm_rc.cpp / radioComm_ext.cpp
-├── imu.h → MPU6050 / MPU9250
-├── control.h → (no external deps)
-├── motors.h → PWMServo
-├── display.h → U8g2 / display_data.h
-├── config.h (single point of truth)
-├── globals.h (extern declarations)
-└── calibration_mode.h → Calibration/ (5 modules)
+```mermaid
+flowchart TB
+    MAIN["main.cpp"]
+    MAIN --> RADIO["radioComm.h"]
+    RADIO --> RADIO_DEP["SBUS.h / DSMRX.h / radioComm_rc.cpp / radioComm_ext.cpp"]
+    MAIN --> IMU["imu.h"]
+    IMU --> IMU_DEP["MPU6050 / MPU9250"]
+    MAIN --> CONTROL["control.h (no external deps)"]
+    MAIN --> MOTORS["motors.h"]
+    MOTORS --> PWMSERVO["PWMServo"]
+    MAIN --> DISPLAY["display.h"]
+    DISPLAY --> DISPLAY_DEP["U8g2 / display_data.h"]
+    MAIN --> CONFIG["config.h (single point of truth)"]
+    MAIN --> GLOBALS["globals.h (extern declarations)"]
+    MAIN --> CALMODE["calibration_mode.h"]
+    CALMODE --> CAL["Calibration/ (5 modules)"]
+    CAL2["calibration/"] --> CAL2_DEP["ArduinoJson, config.h"]
 
-calibration/ → ArduinoJson, config.h
-
-[ESP32 only]
-├── wifi_config.h → [WiFi STA code]
-├── web_server.h → ESPAsyncWebServer / ArduinoJson
-├── api_client.h → (HTTP client)
-└── ota.h → ArduinoOTA
+    subgraph esp32["ESP32 only"]
+        WIFI["wifi_config.h"] --> WIFI_DEP["WiFi STA code"]
+        WEB["web_server.h"] --> WEB_DEP["ESPAsyncWebServer / ArduinoJson"]
+        API["api_client.h"] --> API_DEP["HTTP client"]
+        OTA["ota.h"] --> OTA_DEP["ArduinoOTA"]
+    end
+    MAIN -.-> esp32
 ```
 
 ---

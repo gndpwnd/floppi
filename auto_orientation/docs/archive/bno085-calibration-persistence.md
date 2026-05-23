@@ -370,35 +370,14 @@ void test_eeprom_save_restore() {
 
 ## Architecture Summary
 
-```
-┌─────────────────────────────────────┐
-│  OrientationSensor (HAL Interface)  │
-│  ├─ setCalibrationProfile()         │
-│  └─ getCalibrationProfile()         │
-└──────────────┬──────────────────────┘
-               │
-        ┌──────▼─────────┐
-        │  BNO085 Driver │
-        └──────┬─────────┘
-               │
-        ┌──────▼──────────────────┐
-        │  SH-2 Protocol Layer    │
-        │ (sh2_read_feature)      │
-        │ (sh2_write_feature)     │
-        └──────┬──────────────────┘
-               │
-        ┌──────▼─────────────────────┐
-        │  Hardware Interface        │
-        │  (I2C or UART to BNO085)  │
-        └────────────────────────────┘
+```mermaid
+flowchart TD
+    HAL["OrientationSensor (HAL Interface)<br/>• setCalibrationProfile()<br/>• getCalibrationProfile()"]
+    HAL --> DRV["BNO085 Driver"]
+    DRV --> SH2["SH-2 Protocol Layer<br/>(sh2_read_feature)<br/>(sh2_write_feature)"]
+    SH2 --> HW["Hardware Interface<br/>(I2C or UART to BNO085)"]
 
-┌──────────────────────────────┐
-│  Calibration Storage Layer   │
-├──────────────────────────────┤
-│ • Arduino EEPROM (v1.0)      │
-│ • SD Card (v1.1+)            │
-│ • JSON metadata              │
-└──────────────────────────────┘
+    STORE["Calibration Storage Layer<br/>• Arduino EEPROM (v1.0)<br/>• SD Card (v1.1+)<br/>• JSON metadata"]
 ```
 
 ---
