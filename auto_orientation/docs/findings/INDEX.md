@@ -187,8 +187,8 @@ Multi-agent landing wave that completed the Mega two-stage cascade controller (P
 
 ### Uno guided tuning
 
-- [uno_guided_tuning_design_2026-05-20.md](uno_guided_tuning_design_2026-05-20.md) — Design for the Uno on-device interactive serial-driven guided P→I→D tuning experience (Option B hybrid, build-env split); operator-driven scope pivot.
-- [guided_tuning_review_2026-05-20.md](guided_tuning_review_2026-05-20.md) — Review of the guided-tuning feature against design §2 and embedded-safety criteria. Verdict: feature sound, cleared for bench use, no must-fix items.
+- [uno_guided_tuning_design_2026-05-20.md](uno_guided_tuning_design_2026-05-20.md) — Design for the Uno on-device interactive serial-driven guided tuning experience (Option B hybrid, build-env split); operator-driven scope pivot. **Superseded in two specific ways on 2026-05-26** (stage order is now **P→D→I**; on-Uno BNO055 calibration via `'c'` is now live, no Mega-path dependency) — see the banner at the top of the doc, [applications/balancing_robot_uno/README.md](../applications/balancing_robot_uno/README.md) §4 for the canonical live workflow, and [`../archive/session_records/2026-05-26_uno_setup_mode.md`](../archive/session_records/2026-05-26_uno_setup_mode.md) for the setup-mode landing record.
+- [guided_tuning_review_2026-05-20.md](guided_tuning_review_2026-05-20.md) — Review of the guided-tuning feature against design §2 and embedded-safety criteria. Verdict: feature sound, cleared for bench use, no must-fix items. *(Historical — reviewed the 2026-05-20 P→I→D landing; the live stage order is now P→D→I.)*
 
 ### Audits & synthesis
 
@@ -228,4 +228,12 @@ both focus builds now compile clean and the native suite is 22/22. Canonical ses
 
 ---
 
-*Last updated: 2026-05-22 (2026-05-22 session findings added: security_audit, autocal_autotune_verification, mega_scope_violation_triage). Prior: 2026-05-21 (2026-05-21 multi-agent session findings added). Prior: 2026-05-20 (post-sync hygiene pass — doc-fixer compact entries integrated above + err0r 2026-05-19 PM session additions kept; the 2026-05-19 AM-session detail block was de-duplicated into the compact entries in "Platform-bifurcation pivot" + "Audits & quality reviews" sections above; 2026-05-20 sync-session findings — architecture_plan, state_reconciliation, mega_ram_fix, security_fix_calibration, tuner_format_alignment — added and the four "in progress" audit placeholders resolved).*
+## 2026-05-26 session — Uno SETUP/OPERATIONAL mode + on-Uno BNO055 cal + P→D→I + photo-backup
+
+Uno-only multi-agent session — no new findings docs (the session record + the already-updated `applications/balancing_robot_uno/README.md` §4 are the canonical record). The prior `uno_guided_tuning_design_2026-05-20.md` was annotated with a superseded-in-two-ways banner (P→I→D → P→D→I; on-Uno cal replaces the prior Mega-path dependency) and is cross-referenced in the "Uno guided tuning" subsection above.
+
+Canonical session record: [../archive/session_records/2026-05-26_uno_setup_mode.md](../archive/session_records/2026-05-26_uno_setup_mode.md).
+
+---
+
+*Last updated: 2026-05-26 (Uno setup-mode landing — no new findings docs; session record + README §4 are canonical; the 2026-05-20 guided-tuning design doc carries a superseded banner). Prior: 2026-05-22 (security_audit, autocal_autotune_verification, mega_scope_violation_triage). Prior: 2026-05-21 (Workstream G findings). Prior: 2026-05-20 (post-sync hygiene pass).*

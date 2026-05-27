@@ -25,6 +25,18 @@ static const char* fmt_(float v, char* buf) {
   return buf;
 }
 
+// IMU tag for photo-backup. Mirrors the selection in uno_balance_app.cpp:
+// USE_BNO085 forces "BNO085"; default = "BNO055". Centralised here so a
+// future BNO085 calibration_session that lands on a non-AVR target cannot
+// silently mislabel its blob as BNO055.
+static const char* imu_tag_for_print_() {
+#if defined(USE_BNO085)
+  return "BNO085";
+#else
+  return "BNO055";
+#endif
+}
+
 TuningSession::TuningSession()
     : app_(nullptr),
       stage_(TuneStage::IDLE),
@@ -49,8 +61,8 @@ void TuningSession::apply_masked_() {
   float kd = work_kd_;
   switch (stage_) {
     case TuneStage::STAGE_P: ki = 0.0f; kd = 0.0f; break;
-    case TuneStage::STAGE_I: kd = 0.0f;            break;
-    default:                                       break;  // D / REVIEW / IDLE: full
+    case TuneStage::STAGE_D: ki = 0.0f;            break;
+    default:                                       break;  // I / REVIEW / IDLE: full
   }
   app_->apply_gains(kp, ki, kd);
 }
@@ -60,11 +72,11 @@ void TuningSession::print_prompt_() {
     case TuneStage::STAGE_P:
       Serial.println(F("[P] Ki=Kd=0. +/- Kp. n=next"));
       break;
-    case TuneStage::STAGE_I:
-      Serial.println(F("[I] Kd=0. +/- Ki. n=next b=back"));
-      break;
     case TuneStage::STAGE_D:
-      Serial.println(F("[D] +/- Kd. n=review b=back"));
+      Serial.println(F("[D] Ki=0. +/- Kd. n=next b=back"));
+      break;
+    case TuneStage::STAGE_I:
+      Serial.println(F("[I] +/- Ki. n=review b=back"));
       break;
     case TuneStage::REVIEW:
       Serial.println(F("[REVIEW] w=save q=quit b=back"));
@@ -131,18 +143,18 @@ void TuningSession::handle_command(char c) {
 
     case 'n':  // lock current term, advance
       switch (stage_) {
-        case TuneStage::STAGE_P: enter_stage_(TuneStage::STAGE_I); break;
-        case TuneStage::STAGE_I: enter_stage_(TuneStage::STAGE_D); break;
-        case TuneStage::STAGE_D: enter_stage_(TuneStage::REVIEW);  break;
+        case TuneStage::STAGE_P: enter_stage_(TuneStage::STAGE_D); break;
+        case TuneStage::STAGE_D: enter_stage_(TuneStage::STAGE_I); break;
+        case TuneStage::STAGE_I: enter_stage_(TuneStage::REVIEW);  break;
         default: break;
       }
       break;
 
     case 'b':  // back one stage
       switch (stage_) {
-        case TuneStage::STAGE_I: enter_stage_(TuneStage::STAGE_P); break;
-        case TuneStage::STAGE_D: enter_stage_(TuneStage::STAGE_I); break;
-        case TuneStage::REVIEW:  enter_stage_(TuneStage::STAGE_D); break;
+        case TuneStage::STAGE_D: enter_stage_(TuneStage::STAGE_P); break;
+        case TuneStage::STAGE_I: enter_stage_(TuneStage::STAGE_D); break;
+        case TuneStage::REVIEW:  enter_stage_(TuneStage::STAGE_I); break;
         default: break;
       }
       break;
@@ -168,6 +180,20 @@ void TuningSession::handle_command(char c) {
         blk.pitch_off = PITCH_OFFSET_DEG;
         if (tune_storage::save_tuning(blk)) {
           Serial.println(F("SAVED. Reboot to fly."));
+          // Photo-backup: last thing on screen so the operator photographs it.
+          // Cal blob is variable-length (BNO055=22, BNO085=~36-72) — load into
+          // a TUNE_CAL_MAX_BYTES buffer and pass the actual length and IMU tag
+          // to the photo printer. The IMU tag branches on USE_BNO085 via
+          // imu_tag_for_print_() so that a future BNO085 calibration_session
+          // cannot mislabel its blob as BNO055.
+          uint8_t   cal[TUNE_CAL_MAX_BYTES];
+          uint16_t  cal_len = 0;
+          bool cal_valid = tune_storage::has_cal_blob() &&
+                           tune_storage::load_cal_blob(cal, sizeof(cal),
+                                                       &cal_len);
+          tune_storage::print_photo_backup(/*pid_valid=*/true, blk,
+                                           cal_valid, cal, cal_len,
+                                           imu_tag_for_print_());
         } else {
           Serial.println(F("SAVE FAILED"));
         }
@@ -185,8 +211,20 @@ void TuningSession::handle_command(char c) {
       }
       break;
 
-    case 's':  // status
+    case 's':  // status + one-keystroke EEPROM photo-backup
       print_status();
+      {
+        TuneBlock blk;
+        bool pid_valid = tune_storage::load_tuning(blk);
+        // See save-path note above for the IMU-tag rationale.
+        uint8_t   cal[TUNE_CAL_MAX_BYTES];
+        uint16_t  cal_len = 0;
+        bool cal_valid = tune_storage::has_cal_blob() &&
+                         tune_storage::load_cal_blob(cal, sizeof(cal),
+                                                     &cal_len);
+        tune_storage::print_photo_backup(pid_valid, blk, cal_valid, cal,
+                                         cal_len, imu_tag_for_print_());
+      }
       break;
 
     default:

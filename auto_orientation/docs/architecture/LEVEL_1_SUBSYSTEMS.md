@@ -92,7 +92,7 @@ flowchart TD
     end
 
     subgraph DEVICE["On-device"]
-        GUIDED["guided P→I→D tuning session<br/>(arduino_uno_tuning env)"]
+        GUIDED["guided P→D→I tuning session<br/>(arduino_uno_tuning env)"]
         EEPROM["EEPROM tune block<br/>(tune_storage, CRC8)"]
         GUIDED --> EEPROM
     end

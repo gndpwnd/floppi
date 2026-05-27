@@ -1,23 +1,54 @@
 # Todo: Auto Orientation Framework
 
 **Current phase**: Phase 4 — bifurcated 2026-05-19 into Phase 4M (Mega-universal) and Phase 4U (Uno-minimal)
-**Last updated**: 2026-05-22 (safety/NaN failsafes + noise-floor layer + quaternion fix + docs/architecture + as-built reconciliation; Uno link regression FIXED — see [archive/session_records/2026-05-22_safety_correctness_docs.md](archive/session_records/2026-05-22_safety_correctness_docs.md))
+**Last updated**: 2026-05-26 wave 6 (Uno IMU selection wired at build level — `#error` on USE_BNO085+Uno + cal-blob slot widened to 72 B for future BNO085; appended to existing 2026-05-26 session record). Prior 2026-05-26 wave: SETUP/OPERATIONAL split + on-Uno BNO055 cal via `'c'` + P→D→I + photo-backup printer — see [archive/session_records/2026-05-26_uno_setup_mode.md](archive/session_records/2026-05-26_uno_setup_mode.md).
 
 ### Next session — focus
 
-As of 2026-05-22 **all static (no-hardware) work is done**: both focus builds compile clean (`arduino_uno_minimal` 54.1%, `mega_balance` 16.4%), native suite 22/22, the three P1 NaN-safety failsafes are in-tree, and the noise-floor measurement layer (`noise_floor_estimator.h`) exists. The remaining work is **bench-hardware-gated** — it cannot be advanced statically:
+As of 2026-05-26 the Uno setup-mode landing is done in the working tree (uncommitted). Both Uno builds compile clean (`arduino_uno_tuning` 73 %, `arduino_uno_minimal` 63 %), `mega_balance` unchanged, native 19/19, all 8 audit categories GREEN. The remaining work is **bench-hardware-gated** — it cannot be advanced statically:
 
-1. **Bench-validate the balance loop** — the one property only hardware can confirm. No successful balance on record (last run 2026-05-18 PM late twitched and fell in ~1 s). Carry over the three open problems: K spread across pulses, operator-motion poisoning the noise baseline, possibly-aggressive pole target vs BNO055 NDOF phase budget.
-2. **Bench-confirm the new NaN failsafes** behave (kill-switch cuts on a real BNO055 NaN; NaN→0 PID clamp doesn't glitch on a transient; watchdog-starved cut doesn't false-trip at 200 Hz).
-3. **Retire scope-violation constants once balancing** — every remaining row is bench-gated; the 5 noise-floor-dependent rows are now unblocked on the *measurement* side and can be derived from `noise_floor_estimator` σ on the next stable run. See [findings/mega_scope_violation_triage_2026-05-22.md](findings/mega_scope_violation_triage_2026-05-22.md).
-4. **F-3 — `K_VEL` bench observation** — validate the 4M.14-derived velocity gain on the real plant.
-5. **Regression-baseline capture** — record a known-good `g`-telemetry run with `tools/plot_bench_run.py`.
-6. **Real-motor PWM-discovery validation** — verify the Gap-3 `stiction_min_pwm` wiring against real stiction.
-7. **Tuner bench validation** (Phase 4U) — 8 s sim → 30 s real-bot.
+1. **Bench-validate the new Uno operator UX (NEW 2026-05-26)** — actually run the `'c'` calibration + `'t'` P→D→I tune on a real bot. The flow compiles, audits clean, and the `'s'`-branch wiring bug was caught + fixed, but the prompts/order/timing have only been read, not driven. Also confirm the photo-backup hardcode-paste recovery path: wipe EEPROM → paste a photographed block into `balance_constants.h` → reflash `arduino_uno_minimal` → bot resumes last-known-good.
+2. **Bench-validate the balance loop** — the one property only hardware can confirm. No successful balance on record (last run 2026-05-18 PM late twitched and fell in ~1 s). Carry over the three open problems: K spread across pulses, operator-motion poisoning the noise baseline, possibly-aggressive pole target vs BNO055 NDOF phase budget.
+3. **Bench-confirm the new NaN failsafes** behave (kill-switch cuts on a real BNO055 NaN; NaN→0 PID clamp doesn't glitch on a transient; watchdog-starved cut doesn't false-trip at 200 Hz).
+4. **Retire scope-violation constants once balancing** — every remaining row is bench-gated; the 5 noise-floor-dependent rows are now unblocked on the *measurement* side and can be derived from `noise_floor_estimator` σ on the next stable run. See [findings/mega_scope_violation_triage_2026-05-22.md](findings/mega_scope_violation_triage_2026-05-22.md).
+5. **F-3 — `K_VEL` bench observation** — validate the 4M.14-derived velocity gain on the real plant.
+6. **Regression-baseline capture** — record a known-good `g`-telemetry run with `tools/plot_bench_run.py`.
+7. **Real-motor PWM-discovery validation** — verify the Gap-3 `stiction_min_pwm` wiring against real stiction.
+8. **Tuner bench validation** (Phase 4U) — 8 s sim → 30 s real-bot. *(Largely superseded by the on-device guided tune — keep until on-device path is bench-validated.)*
 
-See "Completed 2026-05-22" and "Completed 2026-05-21 → Bench-hardware-gated" below for detail.
+### Open questions (operator decision)
+
+- **Add a `'c'` re-cal command to the OPERATIONAL flight build (`arduino_uno_minimal`) too?** Today, field re-calibration requires reflashing `arduino_uno_tuning`. A flight-build `'c'` would let the operator re-cal in place without losing the tuned gains. Cost: a few hundred bytes of flash + one more `calibration_session.cpp` link in the flight env. Flagged 2026-05-26 — see session record.
+
+### Future workstreams (wave-6 follow-ups, 2026-05-26)
+
+- [ ] **Mega-side BNO085 wiring** — no flash constraint on Mega 2560 (256 KB), so USE_BNO085 on `mega_balance` is architecturally supported but not wired up. Selection mechanism (`#ifdef USE_BNO085` / `#else USE_BNO055`) and driver are both already present; what is missing is the `mega_balance` env in `platformio.ini` getting a `-DUSE_BNO085` override path and an end-to-end build run. Tagged as a future workstream.
+- [ ] **BNO085 SH-2 FRS guided calibration session** — the existing `calibration_session.{cpp,h}` polls Adafruit_BNO055-specific cal accessors. A BNO085 path needs its own guided wizard that reads the SH-2 DYNAMIC_CALIBRATION FRS record (~36–72 B) and persists via the now-variable-length `tune_storage::save_cal_blob(blob, len)` API. Slot already sized for it; only the in-driver readout + pose script is missing. Tagged as a future workstream.
+- [ ] **`BNO085_CAL_BLOB[<len>]` PHOTO-BACKUP hardcode site** — when USE_BNO085 is enabled on a non-Uno target, the operator may want to add a matching `BNO085_CAL_BLOB[<len>]` declaration to `balance_constants.h` alongside the existing `BNO055_CAL_BLOB[22]` hardcode site, so the photo-backup paste-recovery path covers BNO085 the same way it covers BNO055. Low priority — couples to the BNO085 SH-2 cal session above.
+
+See "Completed 2026-05-26", "Completed 2026-05-22" and "Completed 2026-05-21 → Bench-hardware-gated" below for detail.
 
 For phase-level context see [roadmap.md](roadmap.md). For framework bounds see [scope.md](scope.md). For the pivot rationale see operator memory `project_strategic_pivot_2026-05-19.md` and [scope.md §Platform bifurcation](scope.md#platform-bifurcation-2026-05-19--mega-universal-vs-uno-minimal).
+
+---
+
+## Completed 2026-05-26
+
+Uno-only session — Mega side unchanged. Full session record: [archive/session_records/2026-05-26_uno_setup_mode.md](archive/session_records/2026-05-26_uno_setup_mode.md). **All uncommitted (per operator instruction).**
+
+- [x] **Uno SETUP MODE vs OPERATIONAL MODE split** — `arduino_uno_tuning` (calibrate + tune + photo-backup) vs `arduino_uno_minimal` (lean flight, reads EEPROM). New boot banners in `main.cpp` distinguish the two builds out-of-the-box; on-boot cal restore in both; clear missing-EEPROM `WARN` in the flight build. Builds: `arduino_uno_tuning` 73 % flash (+3058 B), `arduino_uno_minimal` 63 % flash (+3642 B for cal restore + photo-backup linked).
+- [x] **On-Uno BNO055 guided calibration** — new `'c'` command (SETUP build only) + new `src/applications/balancing_robot_uno/calibration_session.{cpp,h}`. Runs a pose script, polls BNO055 cal-status bytes, saves the 22-byte blob via new `tune_storage::save_cal_blob`. **The Uno no longer depends on the Mega calibration path.**
+- [x] **Guided PID stage order reordered P→I→D → P→D→I** in `tuning_session.{cpp,h}` (enum, transitions, masks, prompts). Rationale: D damps Kp's oscillation first; then a small Ki removes residual drift without re-exciting it. See [applications/balancing_robot_uno/README.md §4.3](applications/balancing_robot_uno/README.md#43--walk-p--d--i-t).
+- [x] **Photo-backup printer (value-robustness principle)** — new `tune_storage::print_photo_backup()` emits a copy-paste-ready `==== PHOTO-BACKUP -- paste into balance_constants.h ====` block (4 float lines + 22-byte hex array) on both `'w'` (save) and `'s'` (status). `balance_constants.h` gained PHOTO-BACKUP HARDCODE SITE comment block + `BNO055_CAL_BLOB[22]` declaration (default = 22 × `0xFF` = no seed cal) as canonical recovery path after EEPROM loss.
+- [x] **Wave-3 bug fix** — `main.cpp` `'s'` branch wiring corrected to route through `tuningSession.handle_command('s')` (was unreachable). Caught by the verifier agent.
+- [x] **Doc updates** — `scope.md` (Mega-vs-Uno capability-tier framing + IMU flexibility + value-robustness), `applications/balancing_robot_uno/README.md` (§3 first-boot, §4 setup-mode walkthrough, §4.7 value-robustness, §5 file tree), `applications/balancing_robot/INDEX.md` (universal-auto framing), `findings/uno_guided_tuning_design_2026-05-20.md` (superseded-in-two-ways banner — P→I→D order + on-Uno cal), `architecture/LEVEL_1_SUBSYSTEMS.md` (Mermaid label fix), `findings/INDEX.md` (cross-reference).
+- [x] **Verification** — `arduino_uno_tuning` SUCCESS (73 % flash, 27 % headroom), `arduino_uno_minimal` SUCCESS (63 % flash), `mega_balance` unchanged, native 19/19 PASS. All 8 audit categories GREEN (CRC/EEPROM, calibration_session, photo-backup, banners, P→D→I reorder, on-boot restore, simplicity, flash). No P1/P2 issues.
+- [x] **Wave 6 — Uno IMU selection wired at build level (T1)** — `src/applications/balancing_robot_uno/main.cpp` now selects the IMU via `#ifdef USE_BNO085` / `#else default USE_BNO055`. Three `#error` guards: (1) both flags defined; (2) USE_BNO085 on `__AVR_ATmega328P__` (BNO085 lib too big for Uno's 32 KB — memory-tier principle made concrete); (3) implicit default when neither flag is set. `tune_storage` gained a variable-length cal-blob API (`save_cal_blob` / `load_cal_blob` / `has_cal_blob`) — slot at `0x220` reserves 72 B (BNO085 SH-2 worst case), version 0x02 → 0x03 (old 22-byte v2 blobs reject-on-load cleanly). `calibration_session` kept BNO055-specific, double-gated on `defined(USE_BNO055) && defined(UNO_GUIDED_TUNING)`. Builds: `arduino_uno_minimal` +292 B (20634 / 716 RAM), `arduino_uno_tuning` +412 B (23952 / 744 RAM), Mega unchanged. USE_BNO085 on Uno trips `#error` cleanly per design. Out-of-zone edit: `tuning_session.cpp` (2 call sites) consumed the new API. See appended "## Wave 6" section in [archive/session_records/2026-05-26_uno_setup_mode.md](archive/session_records/2026-05-26_uno_setup_mode.md).
+
+### Bench-hardware-gated — next session (NEW 2026-05-26)
+
+- [ ] **Bench-validate the new Uno operator UX** — actually drive `'c'` (calibration) + `'t'` (P→D→I tune) on the real bot; the flow audits clean but the prompts/order/timing have only been read, not driven.
+- [ ] **Confirm the photo-backup hardcode-paste recovery path** — wipe EEPROM, paste a photographed block into `balance_constants.h`, reflash `arduino_uno_minimal`, verify the bot resumes last-known-good.
 
 ---
 
@@ -554,4 +585,4 @@ See [roadmap.md#phase-7](roadmap.md#phase-7--application-catalog-expansion). Top
 
 ---
 
-*Last updated: 2026-05-22 (safety/correctness/docs session — no new control phase. NaN-safety failsafes across the motor path (3 P1 fixes), new `noise_floor_estimator.h` observation layer, quaternion gimbal-lock production fix, native suite 22/22, ASCII→Mermaid + `docs/architecture/` LEVEL_0/1/2 + as-built/as-designed reconciliation. Mid-session Uno link regression FIXED via one-line `platformio.ini` `+<math/quaternion.cpp>` src_filter — `arduino_uno_minimal` (54.1%) + `mega_balance` (16.4%) both build clean. All uncommitted. Bench validation is now the only gate on the balance loop; scope-violation retirement is bench-gated with the noise-floor measurement side now in place. Session record: [archive/session_records/2026-05-22_safety_correctness_docs.md](archive/session_records/2026-05-22_safety_correctness_docs.md). Prior: 2026-05-21 — Workstream G codeable items + 4M.14 test coverage + two P1 calibration-storage fixes, native 17/17). When you finish an item, move it to "Recently completed" with date. When you start a new item, mark it in-progress in `TodoWrite`.*
+*Last updated: 2026-05-26 wave 6 (Uno IMU selection wired at build level — `#ifdef USE_BNO085` / `#else USE_BNO055` + three `#error` guards including hard refusal of USE_BNO085 on AVR ATmega328P; `tune_storage` cal-blob API widened to variable-length 72 B / version 0x03 [old 22-byte v2 blobs reject-on-load cleanly]; Mega-side BNO085 wiring + BNO085 SH-2 FRS guided cal added as future workstreams. Build deltas: `arduino_uno_minimal` +292 B, `arduino_uno_tuning` +412 B, Mega unchanged. Prior 2026-05-26: Uno SETUP/OPERATIONAL mode split + on-Uno BNO055 cal via new `'c'` + `calibration_session.{cpp,h}` + P→D→I stage order + photo-backup printer + `balance_constants.h` PHOTO-BACKUP HARDCODE SITE + `BNO055_CAL_BLOB[22]`; wave-3 `'s'`-branch unreachable-code bug fixed; Mega side unchanged; `arduino_uno_tuning` 73 % flash, `arduino_uno_minimal` 63 % flash, native 19/19; all 8 audit categories GREEN; uncommitted in working tree per operator instruction; bench-validation of new Uno UX added to bench gate. Session record: [archive/session_records/2026-05-26_uno_setup_mode.md](archive/session_records/2026-05-26_uno_setup_mode.md). Prior: 2026-05-22 — NaN-safety failsafes, noise-floor layer, quaternion fix, ASCII→Mermaid + `docs/architecture/` LEVEL_0/1/2 + as-built reconciliation, native 22/22). When you finish an item, move it to "Recently completed" with date. When you start a new item, mark it in-progress in `TodoWrite`.*

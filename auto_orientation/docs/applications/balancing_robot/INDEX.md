@@ -6,6 +6,8 @@ This is the first full-stack application the framework ships: an Arduino Mega + 
 
 Gains are not relay-feedback auto-tuned. The app derives them at boot: the **BOOTSTRAP** state pulses the motors to measure K_motor and derives the inner-loop PID gains analytically (Phase 4M.2 adds an encoder-driven K cross-check that aborts BOOTSTRAP on slip/bind disagreement). On encoder-equipped builds a **position/velocity cascade** (Phase 4M.13) adds an outer station-keeping loop whose gains are themselves auto-derived in closed form via pole-placement at BOOTSTRAP finalise (Phase 4M.14). No hand-tuned or relay-tuned constants on the operating path.
 
+This Mega application is the **universal "plug-and-play" auto** tier of the [platform bifurcation](../../scope.md#platform-bifurcation-2026-05-19-clarified-2026-05-26--mega-universal-vs-uno-minimal): the Mega's flash + RAM headroom is what makes the BOOTSTRAP / K cross-check / analytical gain auto-derivation stack possible. The sibling [Uno-minimal application](../balancing_robot_uno/README.md) is the **manual operator-guided** tier (IMU calibration + guided P→D→I tuning) for the small/cheap target where that stack does not fit — different capability tier, same project family. **IMU choice is orthogonal to MCU choice**: both BNO055 and BNO085 are valid on either MCU (current envs default to BNO055).
+
 ---
 
 ## Read in order
@@ -43,4 +45,4 @@ For everything else, start with [USER_GUIDE.md](USER_GUIDE.md).
 
 ---
 
-*Last updated: 2026-05-20.*
+*Last updated: 2026-05-26 (added bifurcation cross-reference: Mega = universal-auto tier, Uno = manual-guided tier; IMU orthogonal to MCU).*

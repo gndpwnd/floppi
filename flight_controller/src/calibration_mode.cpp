@@ -18,6 +18,13 @@
 #include "debug.h"
 #include "radioComm.h"
 
+// Vendored EEPROM-backed calibration persistence (lib/CalibrationStorage/).
+// Used after each IMU-cal command so the new offsets survive a reflash —
+// the operator no longer has to copy-paste into config.h and rebuild.
+// See lib/CalibrationStorage/calibration_storage.h for the on-disk layout
+// (matches imu.cpp's restore-on-boot path exactly).
+#include "calibration_storage.h"
+
 #ifdef USE_BAROMETER
 #include "calibration_baro.h"
 #endif
@@ -283,6 +290,28 @@ static void calibrateSequential() {
     Serial.println(F("Run 'a' again to see status and continue where you left off.\n"));
 }
 
+// Persist the freshly-computed MPU6050 offsets from calResults to EEPROM, so
+// the next boot's imu.cpp restore-on-boot path picks them up instead of
+// falling back to config.h defaults. Layout must match the unpack in
+// src/imu.cpp setupIMU(): 6 floats in order AccErr X/Y/Z, GyroErr X/Y/Z.
+// No-op (with a brief log) if the calibration didn't actually run.
+static void persistIMUCalibration() {
+    if (!calResults.hasIMU) return;  // user cancelled / cal didn't complete
+    float vals[6] = {
+        calResults.accErrorX,  calResults.accErrorY,  calResults.accErrorZ,
+        calResults.gyroErrorX, calResults.gyroErrorY, calResults.gyroErrorZ,
+    };
+    uint8_t blob[sizeof(vals)];
+    memcpy(blob, vals, sizeof(vals));
+    if (cs_save(blob, sizeof(blob))) {
+        Serial.print(F("MPU6050 cal saved to EEPROM ("));
+        Serial.print((unsigned)sizeof(blob));
+        Serial.println(F(" bytes)"));
+    } else {
+        Serial.println(F("MPU6050 cal save to EEPROM FAILED"));
+    }
+}
+
 void runCalibrationIfRequested() {
     if (calibration_mode != CALIB_NONE && !calibration_in_progress) {
         calibration_in_progress = true;
@@ -294,16 +323,19 @@ void runCalibrationIfRequested() {
             case CALIB_ACCEL_GYRO:
                 Serial.println(F("Running IMU Calibration (single-position, offsets only)"));
                 calibrateIMU();
+                persistIMUCalibration();
                 break;
 
             case CALIB_6POSITION:
                 Serial.println(F("Running 6-Position IMU Calibration (offsets + scale)"));
                 calibrateIMU6Position();
+                persistIMUCalibration();
                 break;
 
             case CALIB_ATTITUDE:
                 Serial.println(F("Running IMU Calibration + Orientation Detection"));
                 calibrateIMUWithOrientation();
+                persistIMUCalibration();
                 break;
 
             case CALIB_RADIO:
@@ -330,6 +362,10 @@ void runCalibrationIfRequested() {
 
             case CALIB_SEQUENTIAL:
                 calibrateSequential();
+                // Sequential workflow may include IMU cal as one of its
+                // steps; persist if so. persistIMUCalibration() is a no-op
+                // when calResults.hasIMU is still false (operator skipped).
+                persistIMUCalibration();
                 break;
 
             default:

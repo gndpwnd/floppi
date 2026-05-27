@@ -26,7 +26,44 @@
 #include <Wire.h>
 #include <MsTimer2.h>
 
+// ----------------------------------------------------------------------------
+// Compile-time IMU selection
+// ----------------------------------------------------------------------------
+// The architectural memory tier holds that "BNO055 and BNO085 are both valid
+// IMUs on either MCU." Default for this build = BNO055 (matches the reference
+// SelfBallancingRobot3.ino). To override at build time, add `-DUSE_BNO085` to
+// build_flags — see platformio.ini [uno_minimal_base] for the documented
+// pattern. Exactly one of {USE_BNO055, USE_BNO085} must be defined; the sanity
+// #error below catches a build that smuggles both in (e.g. a stale -DUSE_BNO055
+// left behind in a custom env when a developer adds -DUSE_BNO085).
+//
+// Hard #error on Uno + USE_BNO085: the Adafruit_BNO08x / SH-2 library footprint
+// (~15-20 KB flash) plus the existing minimal app overflows the 32 KB Uno. The
+// selection mechanism is still architecturally clean — the same source compiles
+// on Mega/Teensy/ESP32 where flash is not the bottleneck. (Mega-side wiring is
+// out of scope for this turn; this Uno build_src filter targets only the Uno
+// envs and the Mega `mega_balance` env excludes this directory entirely.)
+//
+// Order matters: check "both defined" and the Uno+BNO085 error FIRST (so a
+// developer overriding via PLATFORMIO_BUILD_FLAGS="-DUSE_BNO085" sees the
+// real diagnostic) and only THEN auto-default to USE_BNO055 if neither was
+// specified.
+#if defined(USE_BNO055) && defined(USE_BNO085)
+#error "Pick exactly one IMU: USE_BNO055 OR USE_BNO085 (not both). Note: the default platformio.ini envs set -DUSE_BNO055 — to switch, edit build_flags rather than appending."
+#endif
+#if defined(USE_BNO085) && defined(__AVR_ATmega328P__)
+#error "USE_BNO085 not supported on AVR ATmega328P (Uno) — BNO085 library exceeds Uno's 32 KB flash. Use BNO055 on Uno, or BNO085 on Mega/Teensy/ESP32."
+#endif
+#if !defined(USE_BNO055) && !defined(USE_BNO085)
+#define USE_BNO055   // default
+#endif
+
+#if defined(USE_BNO085)
+#include "../../sensors/bno085.h"
+#else
 #include "../../sensors/bno055.h"
+#endif
+
 #include "../../actuators/l298n_motor_driver.h"
 #include "../../control/pid_controller.h"
 #include "uno_balance_app.h"
@@ -34,12 +71,22 @@
 
 #ifdef UNO_GUIDED_TUNING
 #include "tuning_session.h"
+// calibration_session is BNO055-specific (polls Adafruit_BNO055-only cal
+// accessors); guarded inside the header by USE_BNO055 so a USE_BNO085 build
+// can include this header harmlessly and the 'c' wizard branch elides.
+#include "calibration_session.h"
 #endif
 
 // ----------------------------------------------------------------------------
 // Module instances (file-scope — no heap)
 // ----------------------------------------------------------------------------
 
+#if defined(USE_BNO085)
+// BNO085: ctor takes no args (I2C addr/reset_pin defaulted in driver). The
+// reference board is the Adafruit BNO085 breakout (product 4754) wired with
+// DI=GND (addr 0x4A) and no separate reset pin.
+static BNO085             imu;
+#else
 // BNO055: Adafruit breakouts ship with the external 32 kHz crystal populated.
 // Set BNO055_NO_EXT_CRYSTAL in build_flags for generic modules (CJMCU-055, etc).
 #ifdef BNO055_NO_EXT_CRYSTAL
@@ -47,6 +94,7 @@ static BNO055             imu(0x28, /*use_ext_crystal=*/false);
 #else
 static BNO055             imu(0x28, /*use_ext_crystal=*/true);
 #endif
+#endif  // USE_BNO085 / USE_BNO055
 
 // L298N pin map matches the reference .ino exactly. If your bot drives
 // backward when it should drive forward, swap (in1, in2) and (in3, in4) here
@@ -123,10 +171,23 @@ static void handle_serial() {
       case 'S':
         print_status_line();
 #ifdef UNO_GUIDED_TUNING
-        // Tuning build: also emit the stage + working-gains line.
-        tuningSession.print_status();
+        // Tuning build: route through handle_command('s') so the wave-2
+        // status + photo-backup-snapshot flow runs (not just print_status).
+        tuningSession.handle_command('s');
 #endif
         break;
+#if defined(UNO_GUIDED_TUNING) && defined(USE_BNO055)
+      case 'c':
+      case 'C':
+        // Setup-mode only: run the guided BNO055 calibration walk-through,
+        // persist the 22-byte cal blob to EEPROM, then hint at next step.
+        // BNO085 has its own SH-2 FRS-based cal flow (not yet implemented)
+        // so this branch is gated on USE_BNO055 — a USE_BNO085 build elides
+        // 'c' entirely until the BNO085 calibration session lands.
+        calibration_session::run_guided_cal(app, imu);
+        Serial.println(F("READY for 't' to start tuning"));
+        break;
+#endif
       case 'p':
       case 'P':
         telem_periodic = !telem_periodic;
@@ -153,11 +214,17 @@ static void handle_serial() {
 
 void setup() {
   Serial.begin(115200);
-  Serial.println(F("uno_balance_minimal"));
+#ifdef UNO_GUIDED_TUNING
+  Serial.println(F("==== SETUP MODE -- calibrate + guided PID tune ===="));
+  Serial.println(F("Commands: c=calibrate t=tune | + - * n b r w q | a g s p"));
+  Serial.println(F("When done: flash arduino_uno_minimal to fly."));
+#else
+  Serial.println(F("==== OPERATIONAL MODE -- flying on EEPROM values ===="));
   Serial.print(F("Kp=")); Serial.print(BALANCE_KP);
   Serial.print(F(" Ki=")); Serial.print(BALANCE_KI);
   Serial.print(F(" Kd=")); Serial.print(BALANCE_KD);
   Serial.print(F(" off=")); Serial.println(PITCH_OFFSET_DEG);
+#endif
 
   if (!motors.begin()) {
     Serial.println(F("ERR motors"));
@@ -166,7 +233,11 @@ void setup() {
   }
 
   if (!imu.begin()) {
+#if defined(USE_BNO085)
+    Serial.println(F("ERR BNO085"));
+#else
     Serial.println(F("ERR BNO055"));
+#endif
     app.abort();
   }
 

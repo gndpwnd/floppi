@@ -1,6 +1,6 @@
 # Flight Controller Firmware - Todo
 
-> Last updated: 2026-05-22 (end-of-session reconciliation)
+> Last updated: 2026-05-26 (wave 6 — `calibration_storage` HAL ported from `auto_orientation/` into `lib/CalibrationStorage/`; MPU6050 offsets now persist across reflashes. Scale-factor persistence flagged as possible follow-up. See [archive/session_records/2026-05-26_calibration_storage_port.md](archive/session_records/2026-05-26_calibration_storage_port.md).)
 
 ## In Progress
 
@@ -34,7 +34,7 @@ _The barometer/GPS/swarm-telemetry workstreams (W2/W4/W5/W6) all closed out 2026
 _Don't expand inline — see the planning docs._
 
 - **Session 2 (low-risk research, no hardware)** and **Session 3 (bigger integration scaffolds)** items live in [findings/future_session_scaffolding_2026-05-20.md](findings/future_session_scaffolding_2026-05-20.md) §3 + §4. Highlights: motor/ESC test framework spec, swarm-API contract spec, WiFi failover trace, voltage-monitoring spec, barometer integration spec, GPS passthrough spec.
-- **BNO055/BNO085 + calibration HAL port phases for FC v2** — see [/home/devel/floppi/docs/findings/bno_cross_project_2026-05-20.md](/home/devel/floppi/docs/findings/bno_cross_project_2026-05-20.md). Highest-ROI cheap win identified there: `calibration_storage` HAL port.
+- **BNO055/BNO085 + calibration HAL port phases for FC v2** — see [/home/devel/floppi/docs/findings/bno_cross_project_2026-05-20.md](/home/devel/floppi/docs/findings/bno_cross_project_2026-05-20.md). **Update 2026-05-26 wave 6**: the highest-ROI cheap win — the `calibration_storage` HAL port — has **landed** (see Completed 2026-05-26 above and [archive/session_records/2026-05-26_calibration_storage_port.md](archive/session_records/2026-05-26_calibration_storage_port.md)). The BNO055/BNO085 driver port remains a future workstream.
 - **Modular test runner top-level dispatcher + remaining suite stubs** (`test_imu.sh`, `test_radio.sh`, `test_motors.sh`) — harness already exists; see [findings/test_infrastructure_v2_2026-05-20.md](findings/test_infrastructure_v2_2026-05-20.md).
 - **ESP32 reset path in test harness** — stubbed today, needs hardware to validate. See §2 #10 in scaffolding doc.
 - **3 ESP32 GPIO-conflict `[VERIFY]` flags** — raised by the 2026-05-20 wiring-guide audit; resolve against `pin_definitions_esp32.h` (and on hardware where needed). See [archive/session_records/2026-05-20_recon_builds_and_scaffolding.md](archive/session_records/2026-05-20_recon_builds_and_scaffolding.md).
@@ -158,6 +158,26 @@ _Tasks waiting on something (include reason)_
 ## Recently Completed
 
 _For context; clear periodically_
+
+### Completed 2026-05-26
+
+_Wave 6 — cross-project HAL port. Full record: [archive/session_records/2026-05-26_calibration_storage_port.md](archive/session_records/2026-05-26_calibration_storage_port.md). UNCOMMITTED._
+
+- [x] **`calibration_storage` HAL ported from `auto_orientation/`** — new `lib/CalibrationStorage/calibration_storage.{h,cpp}` (auto-discovered by PlatformIO LDF, no `platformio.ini` change required). Vendored with all 2026-05-20 P1 security fixes: CRC-8-CCITT (not naive XOR), `out_capacity` overflow guard on load, version-byte refusal of legacy v1 blobs, `marker == 0xCA` validity check. Tighter public API (`cs_begin` / `cs_save` / `cs_load` / `cs_has_valid`) than the AO original — the FC only needs 6 floats of MPU6050 offsets (24 B); AO carries history up to 506 B. On-disk layout byte-identical to AO v2.
+- [x] **EEPROM backend with ESP32 NVS-awareness** — `cs_begin()` handles ESP32's required `EEPROM.begin(size)`; `cs_save()` calls `EEPROM.commit()` after writes. Avoids the cross-project KI-1 footgun (writes silently dropped on reset). AVR/Teensy paths are byte-identical to bare `<EEPROM.h>`.
+- [x] **Restore on boot** — `src/imu.cpp setupIMU()` `USE_MPU6050` branch restores the 6 offsets from EEPROM; falls through silently to `config.h` defaults if no blob is present. Boot is byte-identical to pre-vendoring behaviour when EEPROM is empty.
+- [x] **Persist after each cal type** — `src/calibration_mode.cpp persistIMUCalibration()` writes the offsets to EEPROM after `CALIB_ACCEL_GYRO` (`'i'`), `CALIB_6POSITION` (`'m'`), `CALIB_ATTITUDE` (`'o'`), and `CALIB_SEQUENTIAL`. Safe to fire unconditionally — the `calResults.hasIMU` short-circuit makes it a no-op if the operator cancelled or that path doesn't touch the IMU.
+- [x] **Build verification** — `esp32` SUCCESS +8744 B (581017 / 35676 — one-shot cost of pulling EEPROM/NVS library into the link); `teensy40` SUCCESS clean; `esp32_calibration` SUCCESS clean.
+- [x] **Docs** — `docs/scope.md` (Auto-Calibration Philosophy section + revision history row), `docs/archive/session_records/INDEX.md` (this record added — plus reconciled INDEX with the two 2026-05-22 records that were missing), `docs/todo.md` (this section + follow-up flagged + cross-project research bullet updated).
+
+### Hardware-gated next steps (wave 6 additions)
+
+- [ ] **Bench-validate the MPU6050 cal restore-on-boot path** — flash `teensy40_calibration` or `esp32_calibration`, run `'i'`, confirm the `MPU6050 cal saved to EEPROM (24 bytes)` line, power-cycle, confirm the `MPU6050 cal restored from EEPROM` line on next boot. Hardware-gated.
+- [ ] **Bench-validate the ESP32 NVS path specifically** — save → hard power-cycle (not just reset) → restore. The ESP32 backend split is the trickiest part of the port; hardware-gated.
+
+### Follow-up (operator decision)
+
+- [ ] **MPU6050 scale-factor persistence** — runtime-ize `IMU_ACC_SCALE_X/Y/Z` macros in `imu.cpp getIMUdata()` and persist alongside the offsets if desired. Today only the 6 offsets persist; the 3 scale factors are still compile-time `#define`s, only set by the 6-position `'m'` routine, and continue to require the hand-paste-into-`config.h` step. Cost: 3 new globals, blob widens from 24 B to 36 B (still well under the 506 B cap), `imu.cpp getIMUdata()` consumes runtime vars instead of macros. Crosses the runtime-mutable-constants boundary — flagged for operator decision. See [archive/session_records/2026-05-26_calibration_storage_port.md §5](archive/session_records/2026-05-26_calibration_storage_port.md).
 
 ### Completed 2026-05-22
 

@@ -7,6 +7,21 @@
 
 ---
 
+> ## ⚠️ SUPERSEDED in two specific ways (2026-05-26 setup-mode landing) — body retained for historical context
+>
+> This doc is the canonical record of the **original** Uno guided-tuning design. Two parts of it are now stale:
+>
+> 1. **Tuning order is P → D → I, not P → I → D.** The live `TuneStage` walk is `IDLE → STAGE_P → STAGE_D → STAGE_I → REVIEW`. `STAGE_P` forces `Ki=Kd=0`, `STAGE_D` forces `Ki=0`, `STAGE_I` has no mask (full PID active). Authority: `src/applications/balancing_robot_uno/tuning_session.{h,cpp}`. The §2 tables/flows below describe the original P → I → D order — read them with that substitution in mind.
+> 2. **The Uno self-calibrates the BNO055** via the `'c'` serial command on the `arduino_uno_tuning` build. The 22-byte cal blob is persisted to Uno EEPROM at region `0x220` (see `tune_storage.h` `TUNE_CAL_BASE`). The Uno **no longer depends on the Mega calibration path** to pre-populate the cal blob. Authority: `src/applications/balancing_robot_uno/calibration_session.{h,cpp}`, `tune_storage.{h,cpp}`.
+>
+> Also landed this session: `tune_storage::print_photo_backup()` (a `==== PHOTO-BACKUP -- paste into balance_constants.h ====` block emitted on `'w'` save and `'s'` status) and a `BNO055_CAL_BLOB[22]` declaration + PHOTO-BACKUP HARDCODE SITE comment in `balance_constants.h`. The operator photographs the scrollback and can paste the printed block back into the hand-edited seed.
+>
+> **Canonical current docs for the live workflow:** [`docs/applications/balancing_robot_uno/README.md`](../applications/balancing_robot_uno/README.md) §4 (especially §4.2 `'c'` calibration, §4.3 P → D → I walk, §4.7 value robustness). [`docs/scope.md`](../scope.md) describes the wider platform bifurcation.
+>
+> The §0–§7 body below is kept as-is for historical context — operator's original scope pivot, the Option-A/B/C reconciliation, the env-split rationale, and the Workstream UT-A/B/C/D phasing all remain accurate. Only the per-stage **order** and the **Mega-dependency framing** are superseded.
+
+---
+
 ## 0. Executive summary
 
 The operator clarified that the Uno balance build's primary purpose is *"walking the user through tuning everything like P, I, and D individually."* This is an **on-device, interactive, serial-driven guided tuning experience** — not the offline-Python-tuner workflow currently documented.

@@ -1,6 +1,6 @@
 # Flight Controller Firmware - Scope
 
-> Last updated: 2026-05-22
+> Last updated: 2026-05-26 (calibration_storage HAL ported from auto_orientation — IMU offsets now persist across reflashes; see Auto-Calibration Philosophy section)
 > Status: Active
 
 ---
@@ -105,6 +105,8 @@ The firmware aims to **automate every calibration process**. Every `#define` val
 **Workflow**: Flash calibration build → run auto-calibration routines → firmware outputs `#define` values → copy to config.h → flash live build → fly. Every step is guided with serial prompts and quality validation.
 
 **Testing built-in**: Each calibration routine validates its own results (stability checks, range checks, quality scoring) and offers retry on poor results. The firmware is its own test harness.
+
+**IMU calibration now persists across reflashes (2026-05-26).** The MPU6050 offsets that the `'i'` / `'m'` / `'o'` / sequential calibration routines compute are persisted to EEPROM via [`lib/CalibrationStorage/`](../lib/CalibrationStorage/) — vendored from `auto_orientation/src/config/calibration_storage` with the 2026-05-20 P1 security fixes (CRC-8-CCITT not naive XOR, `out_capacity` overflow guard on load, version-byte refusal of legacy v1 blobs, `marker == 0xCA` validity check). The 6 offsets (`AccErrorX/Y/Z` + `GyroErrorX/Y/Z`) restore on boot from EEPROM (or NVS-backed EEPROM on ESP32 — `cs_begin()` handles the `EEPROM.begin(size)` + `EEPROM.commit()` requirements that broke the cross-project KI-1 footgun); the operator re-cals via the existing calibration commands and the new offsets persist automatically. Live builds still hard-code values via `config.h` per the existing workflow — EEPROM is the calibration-build convenience that removes the copy-paste-into-`config.h` step during iteration, not a replacement for it. **Scale factors** (`IMU_ACC_SCALE_X/Y/Z`, only set by the 6-position `'m'` routine) remain compile-time `#define`s in `imu.cpp`'s `getIMUdata()` and do **not** persist — that would require runtime-izing those macros + 3 new globals, flagged as a possible follow-up. See [archive/session_records/2026-05-26_calibration_storage_port.md](archive/session_records/2026-05-26_calibration_storage_port.md).
 
 ## RadioComm — Universal Command Entry Point
 
@@ -324,6 +326,7 @@ This sub-project is the primary research workspace for all flight dynamics topic
 | 2026-02-10 | All RadioComm command sources implemented (serial, I2C, WiFi API). I2C slave on Wire1. Arbitration design doc written. External controller app (swarm_api) marked as built. | LLM + User |
 | 2026-05-20 | Bumped "Last updated" header to match content. Added carve-out footnote on the baro/GPS/magnetometer exclusion: telemetry-only barometer and passthrough-only GPS are now in scope as Core-1 modular sensors (see barometer/GPS specs); GPS-guided flight remains out of scope. | LLM + User |
 | 2026-05-22 | Clarified the ESP32 WiFi In-Scope line with the compile-time auth-mode selector (OPEN/PSK/WPA3-SAE/Enterprise PEAP/TTLS/TLS). Updated the swarm-API-auth footnote to note the now-available opt-in `USE_API_AUTH` token + OTA password (committed default still unauthenticated; TLS still deferred). Telemetry-only / flight-stabilizer scope unchanged. | doc-writer (Orchestra) |
+| 2026-05-26 | Auto-Calibration Philosophy: documented the new `lib/CalibrationStorage/` HAL — MPU6050 offsets now persist across reflashes (vendored from auto_orientation with the 2026-05-20 P1 security fixes; ESP32 NVS-awareness handles the cross-project KI-1 footgun). Scale factors still compile-time, flagged as possible follow-up. | doc-writer (Orchestra, wave 6) |
 
 ---
 

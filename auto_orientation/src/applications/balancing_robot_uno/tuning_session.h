@@ -8,10 +8,10 @@
  * The session walks the operator through classic manual PID tuning, one term
  * at a time, with the bot LIVE and balancing throughout:
  *
- *     IDLE -> STAGE_P -> STAGE_I -> STAGE_D -> REVIEW -> (save to EEPROM)
+ *     IDLE -> STAGE_P -> STAGE_D -> STAGE_I -> REVIEW -> (save to EEPROM)
  *
  * Each stage masks the not-yet-tuned terms to zero (STAGE_P forces Ki=Kd=0,
- * STAGE_I forces Kd=0) and pushes the masked gains live via
+ * STAGE_D forces Ki=0) and pushes the masked gains live via
  * UnoBalanceApp::apply_gains(). On REVIEW 'w' the working gains are persisted
  * through tune_storage::save_tuning().
  *
@@ -32,8 +32,8 @@
 enum class TuneStage : uint8_t {
   IDLE,      // bot balances on EEPROM/seed gains; no tuning active
   STAGE_P,   // Ki=Kd=0 forced; operator adjusts Kp
-  STAGE_I,   // Kp locked; Kd=0 forced; operator adjusts Ki
-  STAGE_D,   // Kp,Ki locked; operator adjusts Kd
+  STAGE_D,   // Kp locked; Ki=0 forced; operator adjusts Kd
+  STAGE_I,   // Kp,Kd locked; operator adjusts Ki (full PID active)
   REVIEW     // all three locked; confirm + save
 };
 

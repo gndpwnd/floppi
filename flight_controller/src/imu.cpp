@@ -13,6 +13,22 @@
 #endif
 
 #include <Wire.h>
+#include <string.h>
+
+// Vendored EEPROM-backed calibration persistence (lib/CalibrationStorage/).
+// Auto-discovered by PlatformIO's LDF — no platformio.ini change required.
+// See lib/CalibrationStorage/calibration_storage.h for the on-disk layout
+// (matches auto_orientation v2: marker 0xCA, version 0x02, uint16_t LE
+// length, CRC-8-CCITT, 6-byte header + payload).
+#include "calibration_storage.h"
+
+// On-disk MPU6050 calibration blob — 6 floats laid out in the order the
+// runtime globals appear in main.cpp (AccErrorX/Y/Z then GyroErrorX/Y/Z).
+// Packed via memcpy so we don't depend on struct padding being identical
+// across compilers / boards. The blob is 24 bytes; cs_save() prepends a
+// 6-byte header so the total EEPROM footprint is 30 bytes (out of 512).
+#define FC_MPU6050_CAL_BLOB_BYTES (6u * sizeof(float))
+static_assert(FC_MPU6050_CAL_BLOB_BYTES == 24, "MPU6050 cal blob must be 24 bytes");
 
 //========================================================================================================================//
 //                                                  IMU HARDWARE                                                           //
@@ -105,6 +121,40 @@ void setupIMU() {
             if (Wire.endTransmission() == 0) {
                 Serial.println(F("BNO085 detected at 0x4B (Phase A — not yet used)"));
             }
+        }
+    #endif
+
+    //========================================================================//
+    // MPU6050 calibration restore from EEPROM (vendored CalibrationStorage)
+    //========================================================================//
+    // Restores the 6 runtime offsets (Acc/Gyro X/Y/Z) that were saved by the
+    // calibration build's IMU-cal command. If no valid blob is present, the
+    // runtime globals keep the config.h-macro defaults that main.cpp seeded
+    // them with — byte-identical to pre-vendoring behaviour. Scale factors
+    // (IMU_ACC_SCALE_*) remain compile-time constants and are not persisted
+    // here (they would require runtime-izing those macros, which is out of
+    // this change's zone).
+    #ifdef USE_MPU6050
+        if (cs_begin()) {
+            uint8_t blob[FC_MPU6050_CAL_BLOB_BYTES];
+            uint16_t blob_len = 0;
+            if (cs_load(blob, sizeof(blob), &blob_len) &&
+                blob_len == FC_MPU6050_CAL_BLOB_BYTES) {
+                float vals[6];
+                memcpy(vals, blob, sizeof(vals));
+                AccErrorX  = vals[0];
+                AccErrorY  = vals[1];
+                AccErrorZ  = vals[2];
+                GyroErrorX = vals[3];
+                GyroErrorY = vals[4];
+                GyroErrorZ = vals[5];
+                Serial.println(F("MPU6050 cal restored from EEPROM"));
+            } else {
+                Serial.println(F("MPU6050 using config.h defaults (no EEPROM cal)"));
+            }
+        } else {
+            // ESP32 NVS init failed (rare) — fall through to config.h defaults.
+            Serial.println(F("MPU6050 using config.h defaults (EEPROM unavailable)"));
         }
     #endif
 }

@@ -48,6 +48,16 @@
 #ifndef BALANCE_CONSTANTS_H
 #define BALANCE_CONSTANTS_H
 
+// ============================================================================
+// PHOTO-BACKUP HARDCODE SITE
+// ----------------------------------------------------------------------------
+// This file IS the hardcode-from-photo target. The symbols below
+// (BALANCE_KP / BALANCE_KI / BALANCE_KD, PITCH_OFFSET_DEG, BNO055_CAL_BLOB)
+// are exactly what the SETUP-mode photo-backup printer emits over serial.
+// To restore after EEPROM loss: paste the photographed block here verbatim,
+// then reflash `arduino_uno_minimal` to operate from these hardcoded values.
+// ============================================================================
+
 #include <stdint.h>
 
 // ----------------------------------------------------------------------------
@@ -100,5 +110,16 @@ static const float TIP_CUTOFF_DEG = 25.0000f;
 // Sanity-reject any raw pitch reading whose magnitude exceeds this. Matches
 // the reference .ino's `abs(rawPitch) < 90` guard against gimbal-lock / NaN.
 static const float PITCH_SANITY_DEG = 90.0000f;
+
+// ----------------------------------------------------------------------------
+// BNO055 calibration blob  (SEED — photo-backup paste target)
+// ----------------------------------------------------------------------------
+// All 0xFF = no seed cal; uno_balance_app::begin() leaves the chip uncalibrated.
+// Flash arduino_uno_tuning and run 'c' to write EEPROM, or paste a photographed
+// blob here.
+static const uint8_t BNO055_CAL_BLOB[22] = {
+    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
+};
 
 #endif  // BALANCE_CONSTANTS_H

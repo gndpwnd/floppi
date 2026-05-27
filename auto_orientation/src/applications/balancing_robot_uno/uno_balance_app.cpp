@@ -50,6 +50,49 @@ UnoBalanceApp::UnoBalanceApp(OrientationSensor& imu,
       read_fail_count_(0) {}
 
 void UnoBalanceApp::begin() {
+  // ---------------------------------------------------------------------
+  // BNO055 calibration restore (independent of the PID tune block — they
+  // live in separate EEPROM regions and are populated by separate flows:
+  // the tuning-build 'c' command writes the cal blob, the tuning-build
+  // P/I/D session writes the PID block). We attempt cal-restore FIRST so
+  // even if the PID load fails and we fall back to seeds, the IMU is
+  // already cal'd and pitch readings are accurate from tick zero.
+  // ---------------------------------------------------------------------
+  // Size cal_buf for the LARGEST supported IMU blob (TUNE_CAL_MAX_BYTES,
+  // currently 72 B for the BNO085 worst case). BNO055 fills only the first
+  // 22 bytes; the rest is scratch. tune_storage's variable-length API gives
+  // us the actual stored length so we forward exactly that to the driver.
+  uint8_t  cal_buf[TUNE_CAL_MAX_BYTES];
+  uint16_t cal_len = 0;
+  const bool cal_present = tune_storage::has_cal_blob();
+  if (cal_present &&
+      tune_storage::load_cal_blob(cal_buf, sizeof(cal_buf), &cal_len)) {
+    // setCalibrationProfile is a base-class virtual; the BNO055 override
+    // forwards to Adafruit setSensorOffsets(), and BNO085 stashes the blob
+    // for later FRS write. Silently ignore the bool return — even if the
+    // driver rejects (e.g. not yet initialized), we still have the seed
+    // gains and can run uncal'd.
+    imu_.setCalibrationProfile(cal_buf, cal_len);
+#if defined(ARDUINO)
+    // String preserved verbatim for byte-identical default builds — the
+    // BNO055 is the default and the message historically read "BNO055 cal
+    // restored from EEPROM". USE_BNO085 builds reuse the same constant (no
+    // separate flash slot) since the cal block format and EEPROM region are
+    // identical; only the IMU underneath changes.
+    Serial.println(F("BNO055 cal restored from EEPROM"));
+#endif
+  }
+#if defined(ARDUINO) && !defined(UNO_GUIDED_TUNING)
+  // FLIGHT build only: a missing cal in flight means the IMU drifts on yaw
+  // and the operator has no in-the-field way to recalibrate. Print a loud
+  // WARN with the recovery path so it isn't a silent footgun.
+  if (!cal_present) {
+    Serial.println(F("WARN: no BNO055 cal in EEPROM"));
+    Serial.println(F("  -> flash arduino_uno_tuning and run 'c' to calibrate,"));
+    Serial.println(F("     OR hardcode BNO055_CAL_BLOB[22] in balance_constants.h."));
+  }
+#endif
+
   // Boot precedence: a valid EEPROM tune block wins over the
   // balance_constants.h seed. tune_storage is platform-guarded (host-safe).
   TuneBlock blk;
@@ -65,7 +108,28 @@ void UnoBalanceApp::begin() {
     cur_ki_ = BALANCE_KI;
     cur_kd_ = BALANCE_KD;
 #if defined(ARDUINO)
-    Serial.println(F("gains=seed"));
+    Serial.println(F("WARN: gains=seed (no EEPROM tune)"));
+    // Show the operator EXACTLY what they're about to fly with, and what
+    // (if anything) is backing it up. Reuses the cal_buf we already loaded
+    // above — its validity tracks cal_present, so we pass that through.
+    TuneBlock seed_blk;
+    seed_blk.kp        = BALANCE_KP;
+    seed_blk.ki        = BALANCE_KI;
+    seed_blk.kd        = BALANCE_KD;
+    seed_blk.pitch_off = PITCH_OFFSET_DEG;
+    // IMU tag selection mirrors the main.cpp instantiation: USE_BNO085
+    // forces the BNO085 driver and tags the blob "BNO085"; default = BNO055.
+    // The cal length comes from the variable-length tune_storage load above.
+#if defined(USE_BNO085)
+    const char* imu_tag = "BNO085";
+#else
+    const char* imu_tag = "BNO055";
+#endif
+    tune_storage::print_photo_backup(/*pid_valid=*/true, seed_blk,
+                                     /*cal_valid=*/cal_present,
+                                     cal_present ? cal_buf : nullptr,
+                                     cal_present ? cal_len : 0,
+                                     imu_tag);
 #endif
   }
   pid_.set_tunings(cur_kp_, cur_ki_, cur_kd_);

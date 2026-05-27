@@ -1,28 +1,55 @@
 # Project Scope: Auto Orientation Framework
 
 **Status**: Framework expansion (Phase 3 of original plan complete: BNO085 + GPS + EKF, 143+ tests passing)
-**Last updated**: 2026-05-20
+**Last updated**: 2026-05-26 (wave 6: Uno IMU selection wired at build level — `#error` on USE_BNO085+Uno; cal-blob slot widened to 72 B for future BNO085)
 
 > **Design direction**: see [MINIMIZE_ACCELERATIONS_PHILOSOPHY.md](MINIMIZE_ACCELERATIONS_PHILOSOPHY.md) for the project's current direction on the balancing-robot reference application.
 
 ---
 
-## Platform bifurcation (2026-05-19) — Mega-universal vs Uno-minimal
+## Platform bifurcation (2026-05-19, clarified 2026-05-26) — Mega-universal vs Uno-minimal
 
 After the 2026-05-18 PM-late bench run that left Uno at 97.5 % flash with the universal stack still unable to balance reliably, the balance-bot reference application **splits in two**. This is a strategic pivot, not a scope deletion — the universal vision continues, but it migrates exclusively to Mega-class targets where the flash and GPIO/interrupt budget can host the sensors it actually needs. The pivot is captured in detail in the operator-memory note `project_strategic_pivot_2026-05-19.md`.
 
+**The bifurcation is memory-driven, not sensor-driven.** The split is about which **capability tier** each MCU can host, not which IMU it talks to:
+
+- **Mega-class (lots of flash + RAM)** → **universal "plug-and-play" auto** tier. BOOTSTRAP + K cross-check + analytical gain auto-derivation (Phase 4M.14) all live here because the heavyweight measurement + identification code only fits on Mega.
+- **Uno-class (tight flash + RAM)** → **manual operator-guided** tier. Calibrate the IMU, then a guided P→D→I PID tuning session, then persist + flash a lean flight build. The Uno's small build is lean by intent precisely because the auto-tuning logic is deliberately absent — that absence is the design, not a deficiency.
+
+**IMU choice is orthogonal to MCU choice.** Both **BNO055 and BNO085** are valid IMUs on **either MCU**. Today's source defaults vary by build env (most balance envs ship BNO055; orientation framework envs ship BNO085) and the BNO085 path on the Uno minimal program is a research stub today, but the architecture is **not** coupled — the sensor abstraction (`OrientationSensor`) compiles either driver in or out via `USE_BNO055` / `USE_BNO085`, and there is no design reason a Mega cannot run BNO055 or a Uno cannot run BNO085. See [IMU selection (compile-time)](#imu-selection-compile-time) below.
+
 | Build | Target | Source tree | Philosophy | Flash budget |
 |---|---|---|---|---|
-| **Mega-balance (universal/adaptive)** | Arduino Mega 2560 + BNO055 + **wheel encoders** (+ future sensors) | `src/applications/balancing_robot/` (existing) | BOOTSTRAP + RLS + collision detection + OnlineMountingEstimator + position containment + auto-PID + everything in [UNIVERSAL_BALANCE_BOT_VISION.md](UNIVERSAL_BALANCE_BOT_VISION.md) | **Generous** — Mega has 256 KB. Optimize for clarity, not size. New code lands here by default. |
-| **Uno-balance (guided-tuning + minimal flight)** | Arduino Uno + BNO055 | `src/applications/balancing_robot_uno/` (new — owned by sibling agent) | Single-purpose self-balancer. `pitch → PID(Kp,Ki,Kd) → PWM`. **No** on-MCU adaptation (no RLS, no BOOTSTRAP, no OnlineMountingEstimator). Gains set via an on-device guided P→I→D tuning session (`arduino_uno_tuning` env), persisted to EEPROM; the lean flight build (`arduino_uno_minimal`) reads them at boot. Reference: `archive/balancing_robot_reference/SelfBallancingRobot3.ino`. See [findings/uno_guided_tuning_design_2026-05-20.md](findings/uno_guided_tuning_design_2026-05-20.md). | **Tight** (32 KB on Uno) — handled via a two-env split: guided-tuning firmware and lean flight build are flashed separately. |
+| **Mega-balance (universal/adaptive)** | Arduino Mega 2560 + BNO055 or BNO085 (current envs default to BNO055) + **wheel encoders** (+ future sensors) | `src/applications/balancing_robot/` (existing) | BOOTSTRAP + RLS + collision detection + OnlineMountingEstimator + position containment + auto-PID + everything in [UNIVERSAL_BALANCE_BOT_VISION.md](UNIVERSAL_BALANCE_BOT_VISION.md) | **Generous** — Mega has 256 KB. Optimize for clarity, not size. New code lands here by default. |
+| **Uno-balance (guided-tuning + minimal flight)** | Arduino Uno + BNO055 or BNO085 (current code defaults to BNO055; BNO085 path is a research stub) | `src/applications/balancing_robot_uno/` (new — owned by sibling agent) | Single-purpose self-balancer. `pitch → PID(Kp,Ki,Kd) → PWM`. **No** on-MCU adaptation (no RLS, no BOOTSTRAP, no OnlineMountingEstimator). Gains set via an on-device guided P→D→I tuning session (`arduino_uno_tuning` env), persisted to EEPROM; the lean flight build (`arduino_uno_minimal`) reads them at boot. Reference: `archive/balancing_robot_reference/SelfBallancingRobot3.ino`. See [findings/uno_guided_tuning_design_2026-05-20.md](findings/uno_guided_tuning_design_2026-05-20.md). | **Tight** (32 KB on Uno) — handled via a two-env split: guided-tuning firmware and lean flight build are flashed separately. |
 
 ### How the Uno gets its constants
 
-Universal *on-MCU adaptation* (RLS, BOOTSTRAP, OnlineMountingEstimator) is gone on Uno. The PID gains are tuned instead through an **on-device guided P→I→D tuning session** (operator clarification 2026-05-20): a serial-driven interactive walkthrough — hosted by a dedicated `arduino_uno_tuning` build env — that steps through Kp, Ki, Kd one term at a time while the bot balances live, then persists the result to **EEPROM**. The lean flight build (`arduino_uno_minimal`) reads the tuned gains from EEPROM at boot. `balance_constants.h` is a hand-editable **cold-start seed** used only when EEPROM holds no tune; it is no longer auto-generated.
+Universal *on-MCU adaptation* (RLS, BOOTSTRAP, OnlineMountingEstimator) is gone on Uno. The PID gains are tuned instead through an **on-device guided P→D→I tuning session** (operator clarification 2026-05-20; stage order corrected 2026-05-26): a serial-driven interactive walkthrough — hosted by a dedicated `arduino_uno_tuning` build env — that steps through Kp, Kd, Ki one term at a time while the bot balances live, then persists the result to **EEPROM**. The lean flight build (`arduino_uno_minimal`) reads the tuned gains from EEPROM at boot. `balance_constants.h` is a hand-editable **cold-start seed** used only when EEPROM holds no tune; it is no longer auto-generated.
 
 The offline Python brute-force / evolutionary tuner (`tools/sim/`, wrapping the `balance_bot_sim.py` plant model) is **demoted to an optional cold-start seed generator** for a brand-new chassis — it is no longer the operational tuning loop. When the bot needs re-tuning (new battery, new wheels, different surface) the operator runs another guided on-device session; no recompile, no host tooling required.
 
 See [docs/findings/uno_guided_tuning_design_2026-05-20.md](findings/uno_guided_tuning_design_2026-05-20.md) for the design and [docs/applications/balancing_robot_uno/README.md](applications/balancing_robot_uno/README.md) for the end-to-end workflow.
+
+### Uno modes: SETUP vs OPERATIONAL
+
+The Uno program is best understood as two distinct modes living in two separate build envs:
+
+- **SETUP MODE — `arduino_uno_tuning`.** Hosts the operator-facing flow: IMU calibration step, guided P→D→I PID tuning, persist-and-print-for-photo-backup. This is where every "manual operator step" lives — the deliberate small/cheap tier of the platform bifurcation. The flow ORDER is: open serial → calibrate the IMU → guided P → D → I tuning → save (which prints all values in a copy-paste / photo-friendly form).
+- **OPERATIONAL MODE — `arduino_uno_minimal`.** Lean flight build. Reads the stored values at boot (EEPROM tune block + IMU cal blob; falls back to the `balance_constants.h` cold-start seed if EEPROM is empty) and runs the `pitch → PID → PWM` loop. Carries none of the SETUP-MODE strings or state machines, so the flash budget stays comfortable.
+
+A typical lifecycle is therefore: flash SETUP MODE → run the guided session → save → flash OPERATIONAL MODE → operate. Re-tunes (new battery, new wheels, different surface) repeat that loop; no recompile of OPERATIONAL MODE is required.
+
+### Robustness against value loss — every persisted value is photographable
+
+Across the entire balance-bot reference application, **every value that gets persisted must also be printable to serial in a copy-paste-ready form** so the operator can photograph the serial console and hardcode the values back into source later if EEPROM is wiped or the chip is replaced. This is a **first-class design principle**, not an afterthought, and applies symmetrically:
+
+- **Uno side** — the SETUP MODE save step prints the IMU calibration blob, PID gains, and pitch offset in a form that pastes directly into `src/applications/balancing_robot_uno/balance_constants.h`. That header is the canonical hardcode-from-photo target — a wiped EEPROM is recoverable with one paste and a recompile.
+- **Mega side** — the equivalent live readout is the `g` serial telemetry command (BOOTSTRAP-derived gains streamed live during operation) plus the standard status output. The same paste-into-source recovery path applies if the operator wants to pin a known-good tune.
+
+The implication for any future feature that adds a persisted value: it must also be added to the print path. A persisted value with no printable form is a gap in the recovery story.
+
+**Wave-6 (2026-05-26) — cal-blob slot is now variable-length to accommodate BNO085.** `tune_storage`'s on-EEPROM cal slot at base `0x220` was widened from a fixed 22-byte BNO055 layout to a length-prefixed variable-length payload reserving up to 72 B (BNO085 SH-2 DYNAMIC_CALIBRATION FRS worst-case). The block-format version byte was bumped `0x02 → 0x03`; a pre-existing fixed-22-byte v2 blob from earlier firmware will reject-on-load cleanly (operator re-runs `'c'` to re-cal). The photo-backup printer schema continues to emit the array as `<imu_tag>_CAL_BLOB[<len>] = { ... }`, so a future operator on a BNO085-capable target may want to add a matching `BNO085_CAL_BLOB[<len>]` declaration to `balance_constants.h` alongside the existing `BNO055_CAL_BLOB[22]` hardcode site.
 
 ### How this affects existing scope-violation rows
 
@@ -44,7 +71,7 @@ The platformio.ini is intentionally tiny. Three active balance-robot envs (`mega
 |---|---|---|---|---|---|
 | `uno_balance` | **legacy/dead** | Arduino Uno | 32 KB | BNO055 | The old universal-stack-on-Uno path, superseded by the 2026-05-19 platform bifurcation. Kept only so `platformio.ini` history is readable; do not extend it. The live Uno builds are `arduino_uno_minimal` and `arduino_uno_tuning` below. |
 | `arduino_uno_minimal` | **active** | Arduino Uno | 32 KB | BNO055 | **Lean flight build** for the minimal program under `src/applications/balancing_robot_uno/`. `pitch → PID(Kp,Ki,Kd) → PWM`, no adaptive layer. Reads tuned gains from EEPROM at boot (falls back to the `balance_constants.h` cold-start seed). Targets <50% Uno flash. |
-| `arduino_uno_tuning` | **active** | Arduino Uno | 32 KB | BNO055 | **Guided P→I→D tuning build** — `arduino_uno_minimal` plus a serial-driven `TuningSession` state machine (`-D UNO_GUIDED_TUNING`). Walks the operator through Kp, Ki, Kd one term at a time while the bot balances live, then persists the result to EEPROM via `tune_storage`. The flight build compiles all of this out. |
+| `arduino_uno_tuning` | **active** | Arduino Uno | 32 KB | BNO055 | **Guided P→D→I tuning build** — `arduino_uno_minimal` plus a serial-driven `TuningSession` state machine (`-D UNO_GUIDED_TUNING`). Walks the operator through Kp, Kd, Ki one term at a time while the bot balances live, then persists the result to EEPROM via `tune_storage`. Also hosts the `'c'` on-Uno BNO055 calibration wizard (`calibration_session`) — no Mega-side dependency. The flight build compiles all of this out. |
 | `mega_balance` | **active** | Arduino Mega 2560 | 256 KB | BNO055 | **Pivot 2026-05-19**: home of the universal/adaptive stack — BOOTSTRAP, RLS, collision detection, OnlineMountingEstimator, position containment (Phase 4M.11). Wheel encoders preferred over IMU-only pitch double-integration. |
 | `esp32_balance` | *scaffolded* | ESP32 dev | 1.3 MB | BNO055 | Needs MsTimer2 → esp_timer port; WiFi cascade landed. |
 | `teensy_balance` | *scaffolded* | Teensy 4.0 | 1.9 MB | BNO055 | Needs MsTimer2 → IntervalTimer port; FPU + 600 MHz. |
@@ -54,7 +81,9 @@ The platformio.ini is intentionally tiny. Three active balance-robot envs (`mega
 
 ### IMU selection (compile-time)
 
-Every balance env defaults to **BNO055** (matches the reference .ino). To override:
+**IMU choice is orthogonal to MCU choice.** Every balance env *defaults* to **BNO055** (matches the reference .ino), but the architecture supports BNO055 or BNO085 on either MCU — the table-column "Default IMU" above describes today's env defaults, not a hardware constraint. Either driver compiles-in or compiles-out per its `USE_<IMU>` flag, so the binary only ships the chip you have wired.
+
+To override the default:
 
 ```bash
 # Use BNO085 instead of BNO055 on Mega:
@@ -64,7 +93,9 @@ pio run -e mega_balance --project-option="build_flags=-D USE_BNO085 -U USE_BNO05
 pio run -e mega_balance --project-option="build_flags=-D USE_MPU6050 -U USE_BNO055"
 ```
 
-The drivers compile-out when their `USE_<IMU>` flag is not set, so the binary only ships the chip you've actually wired.
+The same override pattern applies to the Uno envs in principle; today the Uno-minimal program's I²C wiring and the `uno_balance_app.cpp` direct-driver path are hand-rolled against BNO055, so a BNO085-on-Uno path is a doc-architectural intent rather than a fully wired-up build (the BNO085 driver itself does exist in `src/sensors/`). Closing that gap is a small future task, not an architectural change.
+
+**Wave-6 tightening (2026-05-26) — BNO085 on Uno is rejected at build time.** The architectural memory-tier principle ("Uno is the small/cheap tier") is now made concrete: `src/applications/balancing_robot_uno/main.cpp` selects the IMU via `#ifdef USE_BNO085` / `#else default USE_BNO055`, and a hard `#error` trips if a Uno target build smuggles in `-DUSE_BNO085` — the Adafruit BNO08x / SH-2 library footprint exceeds the Uno's 32 KB flash budget. A second `#error` rejects builds that define BOTH `USE_BNO055` and `USE_BNO085`. The `arduino_uno_*` envs continue to ship `-DUSE_BNO055` by default. USE_BNO085 on Mega/Teensy/ESP32 remains architecturally supported (no flash constraint there) but the Mega-side wiring is a future workstream — closing that gap is small once it's needed.
 
 ### Flash strategy on Uno (32 KB target)
 
@@ -161,7 +192,7 @@ Any future PR that adds a literal numeric constant outside of pin assignments mu
 
 This table lists every hardcoded tuning value still present in the firmware and the *concrete* replacement that retires it. Each violation must have an active replacement plan. **No exceptions for "it works well enough" on the Mega-universal path.** The 2026-05-18 PM bench session demonstrated empirically that even reasonable-looking hardcoded gains (Kp=50 inherited from the reference .ino) produce destructive oscillation on a different bot. **Hand-tuned constants do not generalise — that is the entire point of the universal stack.**
 
-**Pivot caveat (2026-05-19)**: this audit governs the **Mega-universal path** (`src/applications/balancing_robot/`). The new **Uno-minimal program** (`src/applications/balancing_robot_uno/`, scaffold landed 2026-05-19 commit c3c0c6b) **intentionally** uses hardcoded PID + PWM constants generated by the offline Python brute-force tuner (`tools/sim/brute_tune.py`). Constants in the Uno minimal program are not violations of this audit — they are a design choice of that build. See the [Platform bifurcation](#platform-bifurcation-2026-05-19--mega-universal-vs-uno-minimal) section above.
+**Pivot caveat (2026-05-19)**: this audit governs the **Mega-universal path** (`src/applications/balancing_robot/`). The new **Uno-minimal program** (`src/applications/balancing_robot_uno/`, scaffold landed 2026-05-19 commit c3c0c6b) **intentionally** uses hardcoded PID + PWM constants generated by the offline Python brute-force tuner (`tools/sim/brute_tune.py`). Constants in the Uno minimal program are not violations of this audit — they are a design choice of that build. See the [Platform bifurcation](#platform-bifurcation-2026-05-19-clarified-2026-05-26--mega-universal-vs-uno-minimal) section above.
 
 **Status legend**: ✅ retired (no longer in source) · 🔄 partially retired (mechanism in place, value now derived) · ⏳ still present, awaiting replacement · `[mega]` row applies on Mega-universal path · `[deferred-to-mega]` Uno-flash workaround that no longer needs retiring on Uno (Uno path is intentionally hardcoded; Mega path still needs the derivation) · `[uno-intentional]` design choice in Uno-minimal program, only a violation if it shows up in the Mega tree.
 
@@ -478,4 +509,4 @@ See [findings/application_catalog.md](findings/application_catalog.md) for the f
 
 ---
 
-*Last updated: 2026-05-20. This document is the source of truth for what the framework is and is not. When in doubt, scope it against this file; if the answer isn't here, raise it in a session and update accordingly.*
+*Last updated: 2026-05-26 (wave 6: Uno IMU selection wired via `#ifdef USE_BNO085` / `#else USE_BNO055` + hard `#error` on USE_BNO085+Uno [memory-tier principle made concrete] + cal-blob slot widened to 72 B / version 0x03 for future BNO085 SH-2 FRS support; old v2 22-byte blobs reject-on-load cleanly. Prior 2026-05-26: Mega-vs-Uno capability-tier clarification: IMU choice is orthogonal to MCU choice; added SETUP-vs-OPERATIONAL mode framing and value-robustness principle). This document is the source of truth for what the framework is and is not. When in doubt, scope it against this file; if the answer isn't here, raise it in a session and update accordingly.*
