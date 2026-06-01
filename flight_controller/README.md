@@ -330,3 +330,19 @@ flight_controller/
 ## Credits
 
 Based on [dRehmFlight](https://github.com/nickrehm/dRehmFlight) by Nicholas Rehm. MIT License.
+
+
+## Status <!-- repo-schema:status -->
+
+Active — managed by ResearchHub (workspace: `floppi_flight_controller`).
+Last schema sync: 2026-05-31.
+
+
+## Current Subjects <!-- repo-schema:current-subjects -->
+
+Embedded VTOL flight controller firmware covering attitude estimation, control algorithms, sensor fusion, and trajectory planning
+
+
+## Recent Papers <!-- repo-schema:recent-papers -->
+
+- (Populated automatically as papers are ingested by ResearchHub.)

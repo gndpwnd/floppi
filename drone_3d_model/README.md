@@ -20,3 +20,19 @@ drone_3d_model/
 - [Scope](docs/scope.md) — Project boundaries and objectives
 - [Roadmap](docs/roadmap.md) — Planned features and milestones
 - [Todo](docs/todo.md) — Current session tasks
+
+
+## Status <!-- repo-schema:status -->
+
+Active — managed by ResearchHub (workspace: `floppi_drone_3d_model`).
+Last schema sync: 2026-05-31.
+
+
+## Current Subjects <!-- repo-schema:current-subjects -->
+
+3D frame design for multi-rotor drones covering aerodynamics, vibration isolation, structural analysis, and sensor placement
+
+
+## Recent Papers <!-- repo-schema:recent-papers -->
+
+- (Populated automatically as papers are ingested by ResearchHub.)
