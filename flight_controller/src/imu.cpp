@@ -210,11 +210,8 @@ void getIMUdata() {
     GyroY = (1.0 - B_GYRO) * GyroY_prev + B_GYRO * GyroY;
     GyroZ = (1.0 - B_GYRO) * GyroZ_prev + B_GYRO * GyroZ;
 
-    #ifdef USE_MPU9250
-        MagX = (1.0 - B_MAG) * MagX_prev + B_MAG * MagX;
-        MagY = (1.0 - B_MAG) * MagY_prev + B_MAG * MagY;
-        MagZ = (1.0 - B_MAG) * MagZ_prev + B_MAG * MagZ;
-    #endif
+    // 9DOF magnetometer LPF removed pending real 9DOF Madgwick implementation
+    // (see imu.cpp:370 Madgwick(9DOF) stub).
 
     #ifdef USE_OPTIMIZATION
     // Biquad filters (2nd stage after PT1, steeper -12dB/octave rolloff)
@@ -264,11 +261,7 @@ void getIMUdata() {
     GyroY_prev = GyroY;
     GyroZ_prev = GyroZ;
 
-    #ifdef USE_MPU9250
-        MagX_prev = MagX;
-        MagY_prev = MagY;
-        MagZ_prev = MagZ;
-    #endif
+    // Mag*_prev writes removed alongside the dead 9DOF LPF (see above).
 }
 
 //========================================================================================================================//
@@ -363,7 +356,15 @@ void Madgwick6DOF(float gx, float gy, float gz, float ax, float ay, float az, fl
     }
 
     roll_IMU = atan2(q0 * q1 + q2 * q3, 0.5f - q1 * q1 - q2 * q2) * 57.2957795;
-    pitch_IMU = asin(-2.0f * (q1 * q3 - q0 * q2)) * 57.2957795;
+    // Clamp asin input to [-1, 1] before asinf to prevent NaN pitch_IMU from
+    // float rounding at gimbal lock — when the quaternion is normalized to the
+    // unit sphere, -2*(q1*q3 - q0*q2) is analytically in [-1, 1], but float
+    // rounding can push it slightly outside, yielding NaN that poisons the
+    // attitude estimate.
+    float s = -2.0f * (q1 * q3 - q0 * q2);
+    if (s > 1.0f) s = 1.0f;
+    else if (s < -1.0f) s = -1.0f;
+    pitch_IMU = asinf(s) * 57.2957795f;
     yaw_IMU = atan2(q1 * q2 + q0 * q3, 0.5f - q2 * q2 - q3 * q3) * 57.2957795;
 }
 

@@ -90,9 +90,9 @@ static const float    kDefaultTiltLimitDeg        = 10.0f;   // FALLEN @ ±10° 
 static const float    kDefaultTiltRecoveryDeg     = 4.0f;    // recover when |pitch|<4°
 static const uint8_t  kDefaultRecoveryConsecutive = 30;
 
-static const float    kDefaultTuneAmplitude       = 50.0f;   // gentle; was 80
-static const float    kDefaultTuneHysteresis      = 0.5f;
-static const float    kDefaultTuneMaxDurationSec  = 30.0f;
+// kDefaultTuneAmplitude / kDefaultTuneHysteresis / kDefaultTuneMaxDurationSec
+// retired (FIN-05) along with the matching BalanceAppConfig fields — AUTO_TUNE
+// is dead, the relay-feedback strategy that consumed them is no longer wired.
 
 static const float    kDefaultOutputMin           = -255.0f; // full motor range
 static const float    kDefaultOutputMax           = 255.0f;  // (slew limiter handles smoothness)
@@ -113,9 +113,8 @@ BalanceAppConfig BalanceApp::default_config() {
     c.tilt_limit_deg                = kDefaultTiltLimitDeg;
     c.tilt_recovery_deg             = kDefaultTiltRecoveryDeg;
     c.recovery_consecutive_samples  = kDefaultRecoveryConsecutive;
-    c.tune_amplitude                = kDefaultTuneAmplitude;
-    c.tune_hysteresis               = kDefaultTuneHysteresis;
-    c.tune_max_duration_sec         = kDefaultTuneMaxDurationSec;
+    // tune_amplitude / tune_hysteresis / tune_max_duration_sec — fields and
+    // assignments retired (FIN-05). AUTO_TUNE no longer reachable.
     c.output_min                    = kDefaultOutputMin;
     c.output_max                    = kDefaultOutputMax;
     c.capture_duration_ms           = kDefaultCaptureDurationMs;
@@ -327,10 +326,8 @@ void BalanceApp::tick(uint32_t now_ms) {
     switch (state_) {
         case BalanceAppState::IDLE:             step_idle_(now_ms);      break;
         case BalanceAppState::CAPTURE_MOUNTING: step_capture_(now_ms);   break;
-        // AUTO_TUNE is dead since Phase 4.10c — enum value retained for ABI.
-        // No handler exists; if state_ ever becomes AUTO_TUNE (it cannot via
-        // the public API) we no-op rather than crash.
-        case BalanceAppState::AUTO_TUNE:                                 break;
+        // AUTO_TUNE retired (FIN-05) — enum value removed entirely, numeric
+        // slot 2 left unused so historical telemetry byte values keep meaning.
         case BalanceAppState::RUN:              step_run_(now_ms);       break;
         case BalanceAppState::HELD:             step_held_(now_ms);      break;
         case BalanceAppState::FALLEN:           step_fallen_(now_ms);    break;
@@ -865,7 +862,8 @@ void BalanceApp::on_short_press(uint32_t now_ms) {
             enter_state_(BalanceAppState::BOOTSTRAP, now_ms);
             break;
         default:
-            // CAPTURE / TUNE / RUN ignore short press in the skeleton.
+            // CAPTURE / RUN ignore short press in the skeleton. (TUNE state
+            // retired FIN-05.)
             break;
     }
 }
@@ -899,7 +897,7 @@ const char* BalanceApp::state_name() const {
     switch (state_) {
         case BalanceAppState::IDLE:             return "IDLE";
         case BalanceAppState::CAPTURE_MOUNTING: return "CAP";
-        case BalanceAppState::AUTO_TUNE:        return "TUNE";
+        // AUTO_TUNE retired (FIN-05).
         case BalanceAppState::RUN:              return "RUN";
         case BalanceAppState::HELD:             return "HELD";
         case BalanceAppState::FALLEN:           return "FAL";
@@ -974,13 +972,9 @@ void BalanceApp::enter_state_(BalanceAppState s, uint32_t now_ms) {
             // top of file. Future Phase 4.6.5 will call mounting_.start_capture()
             // here once raw accel/gyro are exposed on the sensor base.
             break;
-        // AUTO_TUNE side-effect block removed (Phase 4.10c / audit P2-SM-1):
-        // the state is unreachable but the enum value is retained for ABI.
-        // No transition leads here so we never have to set it up. If a future
-        // change re-introduces an AUTO_TUNE transition this case must be
-        // restored alongside the step_tune_ handler.
-        case BalanceAppState::AUTO_TUNE:
-            break;
+        // AUTO_TUNE side-effect block removed entirely (FIN-05) — enum value
+        // gone too. If a future change re-introduces a tuning state it must
+        // restore the case alongside the step handler.
         case BalanceAppState::RUN: {
             pid_.reset();
             sat_run_start_ms_       = 0;   // fresh saturation-timeout window

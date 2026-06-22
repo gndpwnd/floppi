@@ -47,7 +47,8 @@ UnoBalanceApp::UnoBalanceApp(OrientationSensor& imu,
       cur_kp_(BALANCE_KP),
       cur_ki_(BALANCE_KI),
       cur_kd_(BALANCE_KD),
-      read_fail_count_(0) {}
+      read_fail_count_(0),
+      cal_missing_block_arm_(false) {}
 
 void UnoBalanceApp::begin() {
   // ---------------------------------------------------------------------
@@ -64,9 +65,14 @@ void UnoBalanceApp::begin() {
   // us the actual stored length so we forward exactly that to the driver.
   uint8_t  cal_buf[TUNE_CAL_MAX_BYTES];
   uint16_t cal_len = 0;
-  const bool cal_present = tune_storage::has_cal_blob();
-  if (cal_present &&
-      tune_storage::load_cal_blob(cal_buf, sizeof(cal_buf), &cal_len)) {
+  // Dedup (audit P3): the previous code called has_cal_blob() (EEPROM scan +
+  // CRC) AND THEN load_cal_blob() (same scan + same CRC). Drop the guard and
+  // use load_cal_blob()'s return as the canonical signal — it succeeds iff
+  // the blob is present AND valid. cal_present below is what the rest of
+  // begin() consumes (flight-build refuse-to-arm latch, photo-backup tag).
+  const bool cal_present =
+      tune_storage::load_cal_blob(cal_buf, sizeof(cal_buf), &cal_len);
+  if (cal_present) {
     // setCalibrationProfile is a base-class virtual; the BNO055 override
     // forwards to Adafruit setSensorOffsets(), and BNO085 stashes the blob
     // for later FRS write. Silently ignore the bool return — even if the
@@ -82,15 +88,37 @@ void UnoBalanceApp::begin() {
     Serial.println(F("BNO055 cal restored from EEPROM"));
 #endif
   }
-#if defined(ARDUINO) && !defined(UNO_GUIDED_TUNING)
+#if !defined(UNO_GUIDED_TUNING)
   // FLIGHT build only: a missing cal in flight means the IMU drifts on yaw
-  // and the operator has no in-the-field way to recalibrate. Print a loud
-  // WARN with the recovery path so it isn't a silent footgun.
-  if (!cal_present) {
-    Serial.println(F("WARN: no BNO055 cal in EEPROM"));
-    Serial.println(F("  -> flash arduino_uno_tuning and run 'c' to calibrate,"));
-    Serial.println(F("     OR hardcode BNO055_CAL_BLOB[22] in balance_constants.h."));
+  // and the operator has no in-the-field way to recalibrate. Detect the
+  // worst case — neither EEPROM cal nor a hand-pasted BNO055_CAL_BLOB seed —
+  // and latch refuse-to-arm so we don't silently fly with seed gains + an
+  // uncalibrated IMU. The latch is cleared by force_clear_cal_block() ('F').
+  //
+  // BNO055_CAL_BLOB detection: runtime scan of the array — all 22 bytes 0xFF
+  // means the operator hasn't pasted a photo-backup. Guarded by a sizeof()
+  // sanity test so a future rename/resize of the symbol compiles out cleanly
+  // rather than silently changing behavior.
+  const bool cal_missing_ = !cal_present;
+  bool seed_blob_all_ff_  = true;
+#if defined(BALANCE_CONSTANTS_H)
+  if (sizeof(BNO055_CAL_BLOB) >= 22) {
+    for (uint8_t i = 0; i < 22; ++i) {
+      if (BNO055_CAL_BLOB[i] != 0xFF) { seed_blob_all_ff_ = false; break; }
+    }
   }
+#endif
+  cal_missing_block_arm_ = cal_missing_ && seed_blob_all_ff_;
+#if defined(ARDUINO)
+  if (cal_missing_block_arm_) {
+    Serial.println(F("WARN: no BNO055 cal in EEPROM AND no hand-pasted BNO055_CAL_BLOB"));
+    Serial.println(F("  arm() will reject. Recovery:"));
+    Serial.println(F("  pio run -e arduino_uno_tuning -t upload, then 'c' to calibrate"));
+    Serial.println(F("  (saves to EEPROM). Or send 'F' to force-arm at your own risk."));
+  } else if (cal_missing_) {
+    Serial.println(F("WARN: no BNO055 cal in EEPROM (using hand-pasted BNO055_CAL_BLOB)"));
+  }
+#endif
 #endif
 
   // Boot precedence: a valid EEPROM tune block wins over the
@@ -132,16 +160,27 @@ void UnoBalanceApp::begin() {
                                      imu_tag);
 #endif
   }
-  pid_.set_tunings(cur_kp_, cur_ki_, cur_kd_);
-  pid_.set_sample_time(PID_SAMPLE_MS);
-  pid_.set_output_limits(static_cast<float>(PWM_MIN),
-                         static_cast<float>(PWM_MAX));
-  pid_.set_setpoint(0.0f);  // we balance around 0° corrected-pitch
-  pid_.reset();
+  // ISR-shared: set_tunings(), set_output_limits(), set_setpoint() and reset()
+  // all do multi-byte float stores against members the 5 ms MsTimer2 ISR reads
+  // inside pid_.compute(). begin() runs before MsTimer2 is started in main.cpp
+  // so this guard is defensive — keeps the symmetry with apply_gains() so a
+  // future re-init at runtime cannot be torn by the ISR.
+  ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
+    pid_.set_tunings(cur_kp_, cur_ki_, cur_kd_);
+    pid_.set_sample_time(PID_SAMPLE_MS);
+    pid_.set_output_limits(static_cast<float>(PWM_MIN),
+                           static_cast<float>(PWM_MAX));
+    pid_.set_setpoint(0.0f);  // we balance around 0° corrected-pitch
+    pid_.reset();
+  }
 
   last_pitch_deg_  = 0.0f;
   pitch_valid_     = false;
-  last_pwm_        = 0;
+  // last_pwm_ is volatile int16_t — a 2-byte store on AVR is not atomic vs the
+  // ISR. Same guard as abort() / arm() / step().
+  ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
+    last_pwm_ = 0;
+  }
   tipped_          = false;
   read_fail_count_ = 0;
   // armed_ retains its constructor value (true) — abort() is the only setter.
@@ -233,8 +272,13 @@ int16_t UnoBalanceApp::step() {
 void UnoBalanceApp::abort() {
   armed_ = false;
   motors_.stop();
-  pid_.reset();
-  last_pwm_ = 0;
+  // ISR-shared: pid_.reset() rewrites every persistent float (integral_,
+  // last_*_, lpf state) that the 5 ms ISR reads via compute(); last_pwm_ is
+  // a 2-byte volatile shared with step(). Wrap both under one critical section.
+  ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
+    pid_.reset();
+    last_pwm_ = 0;
+  }
 }
 
 void UnoBalanceApp::apply_gains(float kp, float ki, float kd) {
@@ -248,7 +292,14 @@ void UnoBalanceApp::apply_gains(float kp, float ki, float kd) {
   cur_kp_ = kp;
   cur_ki_ = ki;
   cur_kd_ = kd;
-  pid_.set_tunings(kp, ki, kd);
+  // ISR-shared: pid_.set_tunings() rewrites kp_/ki_/kd_ (3 floats, 12 bytes)
+  // that the 5 ms MsTimer2 ISR reads inside compute(). Without this guard a
+  // tuning push from loop() could be observed by the ISR with new Kp but old
+  // Ki/Kd for one tick — a transient mis-tune that can slam the motors. Match
+  // the same pattern as read_imu()'s pitch publish (file-top notes).
+  ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
+    pid_.set_tunings(kp, ki, kd);
+  }
 }
 
 int16_t UnoBalanceApp::last_pwm() const {
@@ -267,11 +318,25 @@ void UnoBalanceApp::get_work_gains(float& kp, float& ki, float& kd) const {
 }
 
 void UnoBalanceApp::arm() {
+  // Refuse-to-arm: flight build with no EEPROM cal AND no hand-pasted seed
+  // blob. The latch is set in begin() (flight build only) and cleared by
+  // force_clear_cal_block() — wired to the 'F' serial command in main.cpp.
+  if (cal_missing_block_arm_) {
+#if defined(ARDUINO)
+    Serial.println(F("arm() rejected: cal missing. Use 'F' to force-arm at your own risk."));
+#endif
+    return;
+  }
   // Clear any stale tip state and wind-up before the next step() runs — we do
   // NOT want to commit a bunch of pre-arm integrated error to the motors on
   // the first tick post-arm.
-  pid_.reset();
+  // ISR-shared: pid_.reset() rewrites the persistent floats compute() reads;
+  // last_pwm_ is a 2-byte volatile shared with step(). Wrap under one
+  // critical section for symmetry with abort() / begin() / step().
+  ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
+    pid_.reset();
+    last_pwm_ = 0;
+  }
   tipped_   = false;
-  last_pwm_ = 0;
   armed_    = true;
 }

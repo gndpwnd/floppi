@@ -232,6 +232,17 @@ void TuningSession::handle_command(char c) {
   }
 }
 
+bool TuningSession::auto_enter_after_cal() {
+  // Refuse to clobber an active tune — if the session is already past IDLE,
+  // the operator is mid-flow and '!' would otherwise rewind them to STAGE_P
+  // and silently throw away their in-progress gains.
+  if (stage_ != TuneStage::IDLE) {
+    return false;
+  }
+  enter_stage_(TuneStage::STAGE_P);
+  return true;
+}
+
 void TuningSession::print_status() {
   char b[12];
   Serial.print(F("stage="));

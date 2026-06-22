@@ -96,7 +96,7 @@ See [scope.md §Process doctrine](scope.md) for the full rule, the [scope.md §C
 
 **Goal**: Replace every hand-tuned constant with an automated capture or tuning routine. Deliver a working self-balancing robot reference application that anyone can build and have running after a single hands-off calibration session.
 
-**Status (2026-05-12 late evening)**: **Phase 4.1–4.7 + 4.10 LANDED in firmware**. Builds clean on `arduino_uno_balancing` (99.9% flash, 78.4% RAM, 7 PlantIdentifier tests pass). Hardware validation deferred — bot not currently plugged in.
+**Status (2026-05-12 late evening)**: **Phase 4.1–4.7 + 4.10 LANDED in firmware**. Builds clean on `arduino_uno_tuning` (99.9% flash, 78.4% RAM, 7 PlantIdentifier tests pass). Hardware validation deferred — bot not currently plugged in.
 
 - **Sub-phases done**: 4.1 (persistent storage HAL), 4.2 (cal blob versioning), 4.3 (mounting capture), 4.4 (online estimator), 4.5 (BNO055 driver), 4.5a (PIDController), 4.5b (relay-feedback tuner — DELETED 2026-05-18 PM evening), 4.6 (BNO055 + raw-gyro accessors), 4.7 (balance app), 4.7a (state machine), 4.7b (HELD detection), 4.10 (universal RLS auto-tune), **4.10c (BOOTSTRAP K_motor measurement — LANDED 2026-05-18 PM evening)**, 2.1 (CHARACTERISE measured noise-floor), 2.5 (external-motion HELD), 2.6 (gain scheduling).
 - **Designed but not coded**: 4.7c (multi-axis anomaly detector), 4.11 (multi-orientation Level 2), 2.7 (motor-null-space HELD).
@@ -160,7 +160,7 @@ See: [findings/bno055_driver_and_multi_imu_strategy.md](findings/bno055_driver_a
 - New actuator module: `src/actuators/l298n_motor_driver.{h,cpp}` — generic dual-channel PWM motor driver
 - Compile gate: `USE_BALANCING_ROBOT` in `src/config/mode.h`
 - 2-state Kalman filter for the balance loop (Lauszus-style: pitch + gyro-bias), not the heavy 16-state EKF (which stays for GPS-fusion paths)
-- New build env: `arduino_mega_balancing` with `-DUSE_BALANCING_ROBOT -DUSE_BNO055 -DUSE_COMMAND_ARBITRATION`
+- New build env: `mega_balance` with `-DUSE_BALANCING_ROBOT -DUSE_BNO055 -DUSE_COMMAND_ARBITRATION`
 
 > **Design direction for 4.7**: see [MINIMIZE_ACCELERATIONS_PHILOSOPHY.md](MINIMIZE_ACCELERATIONS_PHILOSOPHY.md) — minimize-accelerations framing, `USE_BALANCE_HELD_DETECTION` / `USE_BALANCE_FALL_DETECTION` compile switches, conservative-gain rationale.
 
@@ -173,7 +173,7 @@ See: [findings/bno055_driver_and_multi_imu_strategy.md](findings/bno055_driver_a
 - BNO055 driver compiles, swap test (BNO085 → BNO055) works on Mega
 - Auto-mounting-angle saves & restores; running on Mega without hand-tuned offset
 - AutoPIDTuner relay-feedback strategy compiles + passes unit tests with simulated plant
-- `arduino_mega_balancing` env builds clean; scenario test passes
+- `mega_balance` env builds clean; scenario test passes
 - All previous 143+ tests still pass
 - Phase 4 completion summary doc written to `docs/phases/`
 

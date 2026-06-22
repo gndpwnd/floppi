@@ -2,7 +2,7 @@
 
 **Hardware on the bench**: Arduino Uno + BNO055 (I2C 0x28) + L298N motor driver + 2× DC motors + battery pack.
 
-**Firmware status (2026-05-12)**: `arduino_uno_balancing` builds cleanly. Flash 82% / RAM 71% on Uno. Ready to flash.
+**Firmware status (2026-05-12)**: `arduino_uno_tuning` builds cleanly. Flash 82% / RAM 71% on Uno. Ready to flash.
 
 ---
 
@@ -38,7 +38,7 @@ Optional button:  one leg -> D4, other leg -> GND  (uses INPUT_PULLUP)
 
 ```bash
 cd /home/devel/floppi/auto_orientation
-pio run -e arduino_uno_balancing -t upload
+pio run -e arduino_uno_tuning -t upload
 ```
 
 If the upload picks the wrong port, add `--upload-port /dev/ttyACM0` (or wherever your Uno enumerates).
@@ -46,7 +46,7 @@ If the upload picks the wrong port, add `--upload-port /dev/ttyACM0` (or whereve
 After upload, open a serial monitor at 115200 baud:
 
 ```bash
-pio device monitor -e arduino_uno_balancing -b 115200
+pio device monitor -e arduino_uno_tuning -b 115200
 ```
 
 ---
@@ -173,7 +173,7 @@ See [docs/applications/balancing_robot/TROUBLESHOOTING.md](docs/applications/bal
 
 - Hardware: add a button on D4 + an LED on D13 for tetherless operation (see [docs/applications/balancing_robot/HARDWARE_SETUP.md](docs/applications/balancing_robot/HARDWARE_SETUP.md))
 - Tuning: experiment with `tune_amplitude` in `BalanceApp::default_config()` (in `src/applications/balancing_robot/balance_app.cpp`)
-- Move to Mega: `pio run -e arduino_mega_balancing -t upload` — more RAM headroom, easier to add features
+- Move to Mega: `pio run -e mega_balance -t upload` — more RAM headroom, easier to add features
 - Move to ESP32: Phase 6 dashboard (planned) — browser UI for cal + tune + telemetry over WiFi
 
 ---
@@ -188,4 +188,4 @@ See [docs/applications/balancing_robot/TROUBLESHOOTING.md](docs/applications/bal
 
 ---
 
-*Last updated: 2026-05-12. Quickstart created when the user pivoted from Mega+BNO085 to Uno+BNO055 hardware. Verified: `arduino_uno_balancing` builds at 82%/71% flash/RAM. Ready to flash.*
+*Last updated: 2026-05-12. Quickstart created when the user pivoted from Mega+BNO085 to Uno+BNO055 hardware. Verified: `arduino_uno_tuning` builds at 82%/71% flash/RAM. Ready to flash.*

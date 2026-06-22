@@ -1,6 +1,6 @@
 # Flight Controller Firmware - Scope
 
-> Last updated: 2026-05-26 (calibration_storage HAL ported from auto_orientation — IMU offsets now persist across reflashes; see Auto-Calibration Philosophy section)
+> Last updated: 2026-05-27 (stale-doc reconciliation — retired resolved open questions, removed stub SCOPE.md/ROADMAP.md duplicates)
 > Status: Active
 
 ---
@@ -290,10 +290,10 @@ This is a separate project. The FC firmware just exposes the WiFi API endpoints.
 ## Open Questions
 
 - [x] How to cleanly separate calibration builds from live builds in platformio.ini? → **Resolved**: Use PlatformIO `extends` directive. Each board gets a `_calibration` variant that inherits board config and adds `-D CALIBRATION_MODE`. See [features/build-targets.md](features/build-targets.md).
-- [ ] Best approach for Teensy 4.x EEPROM emulation during calibration mode — see [findings/](findings/) when research completes
+- [x] Best approach for Teensy 4.x EEPROM emulation during calibration mode → **Resolved (2026-05-26)**: `lib/CalibrationStorage/` HAL provides a portable wrapper over Teensy native EEPROM and ESP32 NVS-backed EEPROM. See Auto-Calibration Philosophy section + [archive/session_records/2026-05-26_calibration_storage_port.md](archive/session_records/2026-05-26_calibration_storage_port.md).
 - [ ] Should IMU orientation auto-detection happen in calibration mode only, or also at startup in live mode?
 - [ ] What PID auto-tuning approach is most practical for this project? (Betaflight-style relay test, ArduPilot AUTOTUNE, or simpler?) — see [findings/auto-calibration-research.md](findings/auto-calibration-research.md) for initial research
-- [ ] How tightly should fc_tool integration be coupled to the calibration workflow?
+- [x] How tightly should fc_tool integration be coupled to the calibration workflow? → **Resolved**: fc_tool is optional, not a dependency. `serial_monitor.py` + `pio device monitor` + `calibrate.sh` cover all calibration/testing needs (see Technical Decisions / Integration Points).
 
 ## ResearchHub Integration
 

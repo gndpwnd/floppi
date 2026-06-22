@@ -95,6 +95,15 @@ void PIDController::get_tunings(float& kp, float& ki, float& kd) const {
 }
 
 void PIDController::set_setpoint(float setpoint) {
+    // Reject non-finite (NaN/Inf) setpoints (audit P3 / P1-003 parity): a NaN
+    // setpoint poisons every subsequent error = setpoint_ - measurement, which
+    // propagates through P/I/D and would historically defeat the output clamp
+    // (NaN comparisons all false). clamp_() now catches the output, but the
+    // integrator still accumulates garbage every tick until reset(). Drop the
+    // bad value at the boundary instead — keep the previous setpoint.
+    if (isnan(setpoint) || isinf(setpoint)) {
+        return;
+    }
     setpoint_ = setpoint;
 }
 

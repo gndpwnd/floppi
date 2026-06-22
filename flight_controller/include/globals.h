@@ -34,7 +34,10 @@ extern float AccX_prev, AccY_prev, AccZ_prev;
 extern float GyroX, GyroY, GyroZ;
 extern float GyroX_prev, GyroY_prev, GyroZ_prev;
 extern float MagX, MagY, MagZ;
-extern float MagX_prev, MagY_prev, MagZ_prev;
+// MagX_prev/MagY_prev/MagZ_prev removed alongside the dead 9DOF LPF in
+// imu.cpp (Madgwick(9DOF) currently falls through to 6DOF — no real consumer
+// of mag-filtered data). The defining symbols in main.cpp persist but are now
+// unused TU-local globals; can be removed when main.cpp is in scope.
 
 // IMU calibration offsets
 extern float AccErrorX, AccErrorY, AccErrorZ;
@@ -101,7 +104,6 @@ enum CalibrationMode {
     CALIB_RADIO,           // Radio channel mapping
     CALIB_FAILSAFE,        // Failsafe auto-detection
     CALIB_ESC,             // ESC endpoint calibration
-    CALIB_MAG,             // Magnetometer sphere calibration (MPU9250 only)
     CALIB_SEQUENTIAL       // Sequential guided workflow ('a' command)
 };
 extern CalibrationMode calibration_mode;

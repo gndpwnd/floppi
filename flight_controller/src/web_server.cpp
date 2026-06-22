@@ -409,20 +409,52 @@ void setupWebServer() {
         snapshot = latestData;
         portEXIT_CRITICAL(&dataMux);
 
+        // Roll/pitch/yaw are physically bounded attitude angles. Pre-format
+        // via clamped integer math so GCC can statically bound the snprintf
+        // output (otherwise %.1f triggers -Wformat-truncation against the
+        // 320-byte buffer for theoretical FLT_MAX inputs). Hand-formatted to
+        // also avoid the secondary "%ld may be truncated" warning gcc would
+        // raise on snprintf-based int formatting.
+        auto fmtFloat = [](char* out, size_t out_sz, float v) {
+            if (out_sz == 0) return;
+            if (!(v > -1000.0f)) v = -999.9f;  // also catches NaN
+            if (!(v <  1000.0f)) v =  999.9f;
+            bool neg = (v < 0.0f);
+            int32_t scaled = (int32_t)((neg ? -v : v) * 10.0f);  // 0..9999
+            int32_t whole = scaled / 10;                          // 0..999
+            int32_t frac  = scaled % 10;                          // 0..9
+            char tmp[8];
+            int n = 0;
+            if (neg) tmp[n++] = '-';
+            if (whole >= 100) { tmp[n++] = '0' + (char)((whole / 100) % 10); }
+            if (whole >= 10)  { tmp[n++] = '0' + (char)((whole / 10)  % 10); }
+            tmp[n++] = '0' + (char)(whole % 10);
+            tmp[n++] = '.';
+            tmp[n++] = '0' + (char)frac;
+            tmp[n] = '\0';
+            size_t to_copy = ((size_t)n < out_sz - 1) ? (size_t)n : out_sz - 1;
+            for (size_t i = 0; i < to_copy; ++i) out[i] = tmp[i];
+            out[to_copy] = '\0';
+        };
+        char rollStr[8], pitchStr[8], yawStr[8];
+        fmtFloat(rollStr,  sizeof(rollStr),  snapshot.roll);
+        fmtFloat(pitchStr, sizeof(pitchStr), snapshot.pitch);
+        fmtFloat(yawStr,   sizeof(yawStr),   snapshot.yaw);
+
         char buf[320];
         snprintf(buf, sizeof(buf),
             "FLOPPI FC\n"
             "Hostname: %s\n"
             "MAC: %s\n"
             "Armed: %s\n"
-            "Roll: %.1f  Pitch: %.1f  Yaw: %.1f\n"
+            "Roll: %s  Pitch: %s  Yaw: %s\n"
             "Loop: %lu us\n"
             "IP: %s  RSSI: %d dBm\n"
             "Heap: %u bytes\n",
             mdns_hostname,
             snapshot.mac_address,
             snapshot.armed ? "YES" : "NO",
-            snapshot.roll, snapshot.pitch, snapshot.yaw,
+            rollStr, pitchStr, yawStr,
             (unsigned long)snapshot.loop_dt_us,
             snapshot.ip_address, snapshot.wifi_rssi,
             ESP.getFreeHeap());

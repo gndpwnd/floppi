@@ -10,6 +10,8 @@ Reference application: small, single-purpose, hardcoded-PID balancer for the Ard
 
 | File | Purpose |
 |------|---------|
+| [FIRST_SUCCESS_UNO.md](FIRST_SUCCESS_UNO.md) | **Recommended entry point** — 10-step, ~30–60 min checklist from hardware-in-hand to first balanced release; covers the two-build flow (`arduino_uno_tuning` SETUP MODE → `arduino_uno_minimal` OPERATIONAL MODE) |
+| [CHEATSHEET.md](CHEATSHEET.md) | Operator bench card — one-page command / LED / buzzer reference for live tuning sessions |
 | [README.md](README.md) | Overview: why a separate Uno program exists, build, brute-force tuning workflow, expected behaviour, limitations, source layout, related docs |
 
 ---
@@ -38,4 +40,4 @@ These slots are reserved for content added as Phase 4U progresses. Drop the file
 
 ---
 
-*Last updated: 2026-05-19 (created at Phase 4U opening, alongside README.md stub).*
+*Last updated: 2026-06-21 (wave-12 crosslink cleanup — added `FIRST_SUCCESS_UNO.md` as the recommended entry point and `CHEATSHEET.md` as the operator bench card in the Available documents table; prior: 2026-05-19 created at Phase 4U opening, alongside README.md stub).*

@@ -1,5 +1,7 @@
 # Calibration Guide — Hardware Requirements & Test Sequencing
 
+> For step-by-step procedures see [`docs/2_calibration_guide.md`](../2_calibration_guide.md); this doc describes the staged hardware-bring-up philosophy.
+
 > A step-by-step guide for setting up new hardware. Add components one at a time, test each, and build confidence before flying. Each step tells you what hardware you need, what calibration to run, and what values you get.
 >
 > **Two calibration docs — which one?** This page is the **hardware-staging / bring-up** guide: *the order in which to add and test components* (IMU → radio → ESCs → props). For the **per-command procedure reference** (what each calibration command does and how to read its output), see [`../2_calibration_guide.md`](../2_calibration_guide.md). Read this page first when assembling a new build; reach for the other when you need the detail of a single calibration step.

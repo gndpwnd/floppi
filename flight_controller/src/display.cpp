@@ -91,15 +91,70 @@ static void advanceScreen(uint8_t state, uint8_t num_screens, unsigned long now)
 
 static char buf[32];  // Reusable string buffer
 
+// Format a float as "%+N.1f"-equivalent into `out` using clamped integer math.
+// Display values (roll/pitch/yaw, motor %) are physically bounded — clamp to
+// +/-999.9 so the output is always statically bounded (max 7 chars: "-999.9\0",
+// e.g. "+12.3" or "-999.9"). Hand-formatted to avoid -Wformat-truncation that
+// %f / %d would trigger (gcc can't prove the bound through snprintf).
+// Format a motor output (0..1 float) as a 0..999 percent string into `out`,
+// clamped to [-99, 999] (always <= 4 chars + NUL). Hand-formatted for the
+// same reason as formatBoundedFloat — keeps gcc's -Wformat-truncation happy.
+static void formatBoundedPct(char* out, size_t out_sz, float v) {
+    if (out_sz == 0) return;
+    int pct = (int)(v * 100.0f);
+    if (pct < -99) pct = -99;
+    if (pct > 999) pct = 999;
+    bool neg = (pct < 0);
+    int mag = neg ? -pct : pct;  // 0..999
+    char tmp[5];
+    int n = 0;
+    if (neg) tmp[n++] = '-';
+    if (mag >= 100) { tmp[n++] = '0' + (char)((mag / 100) % 10); }
+    if (mag >= 10)  { tmp[n++] = '0' + (char)((mag / 10)  % 10); }
+    tmp[n++] = '0' + (char)(mag % 10);
+    tmp[n] = '\0';
+    size_t to_copy = ((size_t)n < out_sz - 1) ? (size_t)n : out_sz - 1;
+    for (size_t i = 0; i < to_copy; ++i) out[i] = tmp[i];
+    out[to_copy] = '\0';
+}
+
+static void formatBoundedFloat(char* out, size_t out_sz, float v) {
+    if (out_sz == 0) return;
+    if (!(v > -1000.0f)) v = -999.9f;  // also catches NaN
+    if (!(v <  1000.0f)) v =  999.9f;
+    bool neg = (v < 0.0f);
+    int32_t scaled = (int32_t)((neg ? -v : v) * 10.0f);  // 0..9999
+    int32_t whole = scaled / 10;                          // 0..999
+    int32_t frac  = scaled % 10;                          // 0..9
+    char tmp[8];
+    int n = 0;
+    tmp[n++] = neg ? '-' : '+';
+    if (whole >= 100) { tmp[n++] = '0' + (char)((whole / 100) % 10); }
+    if (whole >= 10)  { tmp[n++] = '0' + (char)((whole / 10)  % 10); }
+    tmp[n++] = '0' + (char)(whole % 10);
+    tmp[n++] = '.';
+    tmp[n++] = '0' + (char)frac;
+    tmp[n] = '\0';
+    // Copy with bounds (n is at most 7, tmp is null-terminated).
+    size_t to_copy = ((size_t)n < out_sz - 1) ? (size_t)n : out_sz - 1;
+    for (size_t i = 0; i < to_copy; ++i) out[i] = tmp[i];
+    out[to_copy] = '\0';
+}
+
 static void drawCalibrating(const DisplayData_t* data) {
     u8g2.drawStr(0, LINE_Y(1), "CALIBRATING");
 
+    // Numeric values mirror the CalibrationMode enum order in include/globals.h.
+    // Keep in sync if the enum is reordered.
     const char* mode_str = "...";
     switch (data->calibration_mode) {
-        case 1: mode_str = "IMU Offsets"; break;
-        case 2: mode_str = "6-Position"; break;
-        case 3: mode_str = "IMU + Orient"; break;
-        case 4: mode_str = "Radio Map"; break;
+        case 1: mode_str = "IMU Offsets"; break;  // CALIB_ACCEL_GYRO
+        case 2: mode_str = "6-Position"; break;   // CALIB_6POSITION
+        case 3: mode_str = "IMU + Orient"; break; // CALIB_ATTITUDE
+        case 4: mode_str = "Radio Map"; break;    // CALIB_RADIO
+        case 5: mode_str = "FAILSAFE"; break;     // CALIB_FAILSAFE
+        case 6: mode_str = "ESC"; break;          // CALIB_ESC
+        case 7: mode_str = "AUTO"; break;         // CALIB_SEQUENTIAL
     }
     u8g2.drawStr(0, LINE_Y(2), mode_str);
 
@@ -120,9 +175,13 @@ static void drawIdle(const DisplayData_t* data) {
     snprintf(buf, sizeof(buf), "Loop: %luus", (unsigned long)data->loop_dt_us);
     u8g2.drawStr(0, LINE_Y(2), buf);
 
-    snprintf(buf, sizeof(buf), "R:%+6.1f P:%+6.1f", data->roll, data->pitch);
+    char r[8], p[8], y[8];
+    formatBoundedFloat(r, sizeof(r), data->roll);
+    formatBoundedFloat(p, sizeof(p), data->pitch);
+    formatBoundedFloat(y, sizeof(y), data->yaw);
+    snprintf(buf, sizeof(buf), "R:%s P:%s", r, p);
     u8g2.drawStr(0, LINE_Y(3), buf);
-    snprintf(buf, sizeof(buf), "Y:%+6.1f", data->yaw);
+    snprintf(buf, sizeof(buf), "Y:%s", y);
     u8g2.drawStr(0, LINE_Y(4), buf);
 
     #if defined(USE_ESP32) && defined(USE_WIFI)
@@ -140,17 +199,23 @@ static void drawIdle(const DisplayData_t* data) {
 static void drawArmed(const DisplayData_t* data) {
     u8g2.drawStr(0, LINE_Y(1), "** ARMED **");
 
-    snprintf(buf, sizeof(buf), "R:%+5.1f P:%+5.1f", data->roll, data->pitch);
+    char r[8], p[8], y[8];
+    formatBoundedFloat(r, sizeof(r), data->roll);
+    formatBoundedFloat(p, sizeof(p), data->pitch);
+    formatBoundedFloat(y, sizeof(y), data->yaw);
+    snprintf(buf, sizeof(buf), "R:%s P:%s", r, p);
     u8g2.drawStr(0, LINE_Y(2), buf);
 
-    int m1p = (int)(data->m1 * 100);
-    int m2p = (int)(data->m2 * 100);
-    int m3p = (int)(data->m3 * 100);
-    int m4p = (int)(data->m4 * 100);
-    snprintf(buf, sizeof(buf), "M:%d %d %d %d", m1p, m2p, m3p, m4p);
+    // Motor outputs (0..1 floats) -> bounded percent strings for snprintf safety.
+    char m1s[5], m2s[5], m3s[5], m4s[5];
+    formatBoundedPct(m1s, sizeof(m1s), data->m1);
+    formatBoundedPct(m2s, sizeof(m2s), data->m2);
+    formatBoundedPct(m3s, sizeof(m3s), data->m3);
+    formatBoundedPct(m4s, sizeof(m4s), data->m4);
+    snprintf(buf, sizeof(buf), "M:%s %s %s %s", m1s, m2s, m3s, m4s);
     u8g2.drawStr(0, LINE_Y(3), buf);
 
-    snprintf(buf, sizeof(buf), "Y:%+6.1f", data->yaw);
+    snprintf(buf, sizeof(buf), "Y:%s", y);
     u8g2.drawStr(0, LINE_Y(4), buf);
 
     snprintf(buf, sizeof(buf), "Loop: %luus", (unsigned long)data->loop_dt_us);
@@ -181,21 +246,30 @@ static void drawIdle(const DisplayData_t* data) {
     advanceScreen(0, num_screens, millis());
 
     switch (screen_index) {
-        case 0:  // Status + attitude
+        case 0: {  // Status + attitude
             u8g2.drawStr(0, LINE_Y(1), "FLOPPI READY");
-            snprintf(buf, sizeof(buf), "R:%+5.1f P:%+5.1f", data->roll, data->pitch);
+            char r[8], p[8];
+            formatBoundedFloat(r, sizeof(r), data->roll);
+            formatBoundedFloat(p, sizeof(p), data->pitch);
+            snprintf(buf, sizeof(buf), "R:%s P:%s", r, p);
             u8g2.drawStr(0, LINE_Y(2), buf);
             snprintf(buf, sizeof(buf), "Loop: %luus", (unsigned long)data->loop_dt_us);
             u8g2.drawStr(0, LINE_Y(3), buf);
             break;
+        }
 
-        case 1:  // Yaw + more detail
+        case 1: {  // Yaw + more detail
             u8g2.drawStr(0, LINE_Y(1), "FLOPPI READY");
-            snprintf(buf, sizeof(buf), "Y:%+6.1f", data->yaw);
+            char r[8], p[8], y[8];
+            formatBoundedFloat(r, sizeof(r), data->roll);
+            formatBoundedFloat(p, sizeof(p), data->pitch);
+            formatBoundedFloat(y, sizeof(y), data->yaw);
+            snprintf(buf, sizeof(buf), "Y:%s", y);
             u8g2.drawStr(0, LINE_Y(2), buf);
-            snprintf(buf, sizeof(buf), "R:%+5.1f P:%+5.1f", data->roll, data->pitch);
+            snprintf(buf, sizeof(buf), "R:%s P:%s", r, p);
             u8g2.drawStr(0, LINE_Y(3), buf);
             break;
+        }
 
         #if defined(USE_ESP32) && defined(USE_WIFI)
         case 2:  // Network info
@@ -222,27 +296,37 @@ static void drawArmed(const DisplayData_t* data) {
     advanceScreen(1, 2, millis());
 
     switch (screen_index) {
-        case 0:  // Primary flight data
+        case 0: {  // Primary flight data
             u8g2.drawStr(0, LINE_Y(1), "** ARMED **");
-            snprintf(buf, sizeof(buf), "R:%+5.1f P:%+5.1f", data->roll, data->pitch);
+            char r[8], p[8];
+            formatBoundedFloat(r, sizeof(r), data->roll);
+            formatBoundedFloat(p, sizeof(p), data->pitch);
+            snprintf(buf, sizeof(buf), "R:%s P:%s", r, p);
             u8g2.drawStr(0, LINE_Y(2), buf);
             {
-                int m1p = (int)(data->m1 * 100);
-                int m2p = (int)(data->m2 * 100);
-                int m3p = (int)(data->m3 * 100);
-                int m4p = (int)(data->m4 * 100);
-                snprintf(buf, sizeof(buf), "M:%d %d %d %d", m1p, m2p, m3p, m4p);
+                // Motor outputs as 0..100% (clamped); pre-format each to a 4-char
+                // bounded string so gcc can prove the snprintf output bound.
+                char m1s[5], m2s[5], m3s[5], m4s[5];
+                formatBoundedPct(m1s, sizeof(m1s), data->m1);
+                formatBoundedPct(m2s, sizeof(m2s), data->m2);
+                formatBoundedPct(m3s, sizeof(m3s), data->m3);
+                formatBoundedPct(m4s, sizeof(m4s), data->m4);
+                snprintf(buf, sizeof(buf), "M:%s %s %s %s", m1s, m2s, m3s, m4s);
                 u8g2.drawStr(0, LINE_Y(3), buf);
             }
             break;
+        }
 
-        case 1:  // Secondary flight data
+        case 1: {  // Secondary flight data
             u8g2.drawStr(0, LINE_Y(1), "** ARMED **");
-            snprintf(buf, sizeof(buf), "Y:%+6.1f", data->yaw);
+            char y[8];
+            formatBoundedFloat(y, sizeof(y), data->yaw);
+            snprintf(buf, sizeof(buf), "Y:%s", y);
             u8g2.drawStr(0, LINE_Y(2), buf);
             snprintf(buf, sizeof(buf), "Loop: %luus", (unsigned long)data->loop_dt_us);
             u8g2.drawStr(0, LINE_Y(3), buf);
             break;
+        }
     }
 }
 

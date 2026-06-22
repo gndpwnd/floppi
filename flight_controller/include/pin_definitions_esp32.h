@@ -156,6 +156,19 @@
     #endif
 #endif
 
+// Guards against silent double-claim of ESP32 LEDC GPIOs when an airframe
+// actually enables servo ch6/ch7. The default mirror (SERVO_PIN_6=SERVO_PIN_4,
+// SERVO_PIN_7=SERVO_PIN_5) is harmless only when SERVO_COUNT < 6/7 (ch6/ch7
+// never commanded). If SERVO_COUNT >= 6 or >= 7 on standard ESP32, the user
+// MUST override SERVO_PIN_6/SERVO_PIN_7 in config.h. ESP32-S3 has distinct
+// pin assignments so the comparison is skipped there.
+#if !defined(USE_ESP32S3) && SERVO_COUNT >= 6 && (SERVO_PIN_6 == SERVO_PIN_4)
+    #error "SERVO_COUNT>=6 on ESP32 requires explicit SERVO_PIN_6 override in config.h — default mirror would silently double-claim LEDC GPIO"
+#endif
+#if !defined(USE_ESP32S3) && SERVO_COUNT >= 7 && (SERVO_PIN_7 == SERVO_PIN_5)
+    #error "SERVO_COUNT>=7 on ESP32 requires explicit SERVO_PIN_7 override in config.h — default mirror would silently double-claim LEDC GPIO"
+#endif
+
 //========================================================================================================================//
 //                                              RECEIVER PINS                                                             //
 //========================================================================================================================//

@@ -34,8 +34,8 @@ Minimal WPA2-Personal template:
 #define WIFI_SSID     "YourNetworkName"
 #define WIFI_PASSWORD "YourPassword"
 // Optional WPA2-Enterprise (uncomment block in features/wifi-configuration.md):
-//#define WIFI_USE_ENTERPRISE
-//#define WIFI_EAP_AUTH_METHOD WPA2_AUTH_PEAP
+//#define WIFI_AUTH_MODE_ENTERPRISE
+//#define WIFI_EAP_METHOD_PEAP
 //#define WIFI_EAP_IDENTITY    "user@org"
 //#define WIFI_EAP_USERNAME    "user@org"
 //#define WIFI_EAP_PASSWORD    "your_password"
@@ -126,7 +126,7 @@ The 15-second timeout in `setupWiFi()` is non-blocking after that point —
 |---|---|---|
 | `No credentials configured!` at boot | `WIFI_SSID` still `"YourNetworkName"` | Edit `include/wifi_credentials.h` and reflash |
 | Connect attempt hangs, eventually times out | Wrong password, or 5 GHz-only SSID | ESP32 is 2.4 GHz only — confirm SSID is on 2.4 GHz, check password char-by-char |
-| Connects to home WiFi but fails on university | Network is WPA2-Enterprise (eduroam etc.) | Uncomment `WIFI_USE_ENTERPRISE` block, fill EAP fields, see `features/wifi-configuration.md` |
+| Connects to home WiFi but fails on university | Network is WPA2-Enterprise (eduroam etc.) | Uncomment `WIFI_AUTH_MODE_ENTERPRISE` block, fill EAP fields, see `features/wifi-configuration.md` |
 | Captive-portal network (hotel/coffee shop) | ESP32 cannot complete a browser-based captive portal | Not supported — use a personal hotspot or a router without captive portal |
 | Connects but `floppi-XXXX.local` doesn't resolve | mDNS blocked on network, or Windows host without Bonjour | Use the raw IP printed in the serial log; install mDNS responder on host if needed |
 | Enterprise auth fails immediately | Wrong `WIFI_EAP_AUTH_METHOD`, or CA cert required by RADIUS server | Try `WPA2_AUTH_PEAP` first; if still fails, set `WIFI_USE_CERTS` and populate `wifi_certs.h` |
@@ -141,3 +141,50 @@ The 15-second timeout in `setupWiFi()` is non-blocking after that point —
 - `src/ota.cpp` — OTA hostname (same `floppi-XXXX` pattern, gated by `armedFly`)
 - [diagnose_decision_tree.md](diagnose_decision_tree.md) — symptom-driven
   troubleshooting once WiFi is up but something else is wrong
+
+## WiFi Credentials Setup
+
+The repo ships `include/wifi_credentials.h.example` as the authoritative
+template for new clones. The real `include/wifi_credentials.h` is also tracked
+(so the build is self-contained), which means edits with your real SSID and
+password would otherwise surface in `git status` and risk being committed. Use
+this 3-step workflow on every fresh checkout to keep secrets local:
+
+```bash
+# 1. Seed the real header from the template (run from flight_controller/):
+cp include/wifi_credentials.h.example include/wifi_credentials.h
+
+# 2. Edit include/wifi_credentials.h and fill in:
+#      - WIFI_SSID / WIFI_PASSWORD (or the EAP block for enterprise)
+#      - FLOPPI_CMD_TOKEN if you will enable USE_API_AUTH
+#      - OTA_PASSWORD     if you will enable USE_OTA
+
+# 3. Tell your local git to ignore future edits to that file:
+git update-index --skip-worktree include/wifi_credentials.h
+```
+
+`--skip-worktree` is per-clone and per-developer — it leaves the file tracked
+upstream but stops your working copy from staging changes to it. To undo
+later (e.g. to rebase a legitimate template change), run
+`git update-index --no-skip-worktree include/wifi_credentials.h`.
+
+### Before enabling `USE_API_AUTH` or `USE_OTA`
+
+The following placeholders **hard-fail the build** (via `#error` in
+`config.h` / `ota.cpp`) when the matching feature flag is enabled. If you flip
+on `USE_API_AUTH` or `USE_OTA` and see a compile error, this is why:
+
+| Placeholder | Required when | Replace with |
+|---|---|---|
+| `FLOPPI_CMD_TOKEN "CHANGE-ME-floppi-token"` | `USE_API_AUTH` enabled in `config.h` | A long random string shared with the ground station |
+| `OTA_PASSWORD   "CHANGE-ME-floppi-ota"`     | `USE_OTA` enabled in `config.h`      | A non-empty password (or set `OTA_PASSWORD_HASH` instead) |
+
+### Why this matters
+
+The flight controller's WiFi password, API token, and OTA password together
+gate physical control of the aircraft and the ability to flash arbitrary
+firmware over the LAN. A single accidental `git add -A` followed by a push to
+a public remote leaks all three at once — and unlike a server credential,
+rotating a flashed device requires physical access to reflash. The template +
+`--skip-worktree` pattern keeps the real secrets on the build host only, while
+still letting the example header evolve in version control for new clones.

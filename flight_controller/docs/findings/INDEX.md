@@ -43,6 +43,12 @@ Research notes, audits, recon reports, and design documents for the flight_contr
 | Session record: [../archive/session_records/2026-05-22_security_correctness_docs.md](../archive/session_records/2026-05-22_security_correctness_docs.md) | Session-level summary of the security/correctness/docs work — security/correctness code (USE_API_AUTH, OTA guards, WS buffer, I2C checksum, Madgwick NaN guard, GPS privacy gate), W5 GPS pin-default fix, ASCII→Mermaid + layered architecture docs, verification, and remaining hardware-gated/deferred work. Uncommitted. |
 | Session record: [../archive/session_records/2026-05-22_wifi_network_modes.md](../archive/session_records/2026-05-22_wifi_network_modes.md) | Session-level summary of the ESP32 WiFi auth-mode feature — selector + modes, decisions (IDF enum collision, Arduino-overload-only, deferrals), the "Enterprise effectively free" memory finding, QA GO + the fixed hostname-ordering bug, next steps (runtime AP validation = operator). Uncommitted. |
 
+## 2026-05-27 session
+
+| Document | Summary |
+|---|---|
+| [bench_validation_runbook_2026-05-27.md](./bench_validation_runbook_2026-05-27.md) | Safe-first bench-validation runbook ordering the 17 hardware-deferred items into a single sequence (Pre-bench checklist → Phases 1-7 + sensor/network/security/GPIO/motor-test side tracks). Cross-links the procedure docs (`0_quickstart.md` Parts 4a/4b/4c, `2_calibration_guide.md` Failsafe + ESC sections, `build_matrix.md`); explicitly NOT a procedure (index + ordering only — numbered docs win on drift). PROPS-OFF + ESC-endpoint-before-arming non-negotiables. Companion to the AO sibling runbook. |
+
 ## Standing reference research
 
 | Document | Summary |

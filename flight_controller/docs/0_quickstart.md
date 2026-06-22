@@ -18,7 +18,7 @@ Get your flight controller working in under 60 minutes.
 
 - PlatformIO installed (VS Code extension or CLI)
 - Python 3 (for calibration tools)
-- USB drivers for Teensy (Teensy Loader), or run `sudo ./setup_permissions.sh`
+- USB drivers for Teensy (Teensy Loader). On Linux only, run `sudo ../../tools/setup_permissions.sh` (from `flight_controller/`) to install Teensy/ESP32 udev rules and add yourself to the `dialout` group.
 
 ---
 
@@ -100,7 +100,7 @@ Teensy LED should blink 3 times, then 1Hz blinking.
 ./tools/calibrate.sh
 ```
 
-This provides a menu-driven interface with all 17 calibration commands, auto port detection, and ModemManager handling.
+This provides a menu-driven interface with all 18 calibration commands (42 assertions exercised by the automated test suite), auto port detection, and ModemManager handling.
 
 **Alternative** -- direct serial monitor:
 
@@ -174,6 +174,68 @@ pio run -e teensy40 -t upload
 2. CH5 switch to LOW position → "ARMED"
 3. CH5 switch to HIGH → "DISARMED"
 
+### Part 4a: Failsafe Verification (PROPS OFF, motors disarmed)
+
+**Why first:** if the receiver does not produce well-defined failsafe values when the
+TX is turned off, the flight loop can latch the last commanded throttle and a runaway
+becomes possible. The firmware exposes the `f` command (defined in
+`src/calibration_mode.cpp`) to measure the actual failsafe values your receiver
+emits, so they can be hard-coded into `config.h`.
+
+1. Confirm props are **OFF** and the aircraft is restrained on the bench.
+2. Power the TX **ON**.
+3. In the serial monitor (or via `./tools/calibrate.sh` -> option `failsafe`), send `f`.
+4. When prompted, **turn the TX OFF**. The firmware will sample the receiver and
+   print the latched `FAILSAFE_CH*` values.
+5. **Paste** the printed `#define FAILSAFE_*` block into `include/config.h` and
+   uncomment `#define CALIBRATED_FAILSAFE`.
+6. Rebuild and flash the live build:
+
+   ```bash
+   pio run -e teensy40 -t upload
+   ```
+
+7. **Bench-verify:** TX powered OFF, throttle was previously commanded high.
+   Motors **must not spin**. If they do, do not continue — re-run `f` and
+   re-check wiring.
+
+### Part 4b: ESC Endpoint Calibration (PROPS OFF, battery DISCONNECTED to start)
+
+**Preconditions** (verify visually before doing anything):
+
+- [ ] **PROPS OFF** — eyeballed, not assumed.
+- [ ] Battery **DISCONNECTED**.
+- [ ] ESCs wired to motor pins per `1_hardware_setup.md` Part 3.
+
+**Procedure** — the `e` command (defined in `src/calibration_mode.cpp`) walks the
+ESCs through endpoint calibration so throttle response is linear across all four
+motors:
+
+1. In the serial monitor (or `./tools/calibrate.sh` -> option `esc`), send `e`.
+2. Follow the on-screen tone prompts (the ESCs beep to confirm each endpoint).
+3. When the routine completes, arm the aircraft and slowly sweep the throttle
+   stick. Motors should arm cleanly and ramp **linearly** across the throttle
+   range — no dead band at the bottom, no clipping at the top.
+4. If any motor lags or refuses to arm, re-run `e` for that motor (or check ESC
+   wiring) before proceeding.
+
+### Part 4c: PID Sanity Check (REQUIRED before first flight)
+
+**Read [pid-tuning-guide.md](pid-tuning-guide.md) §4 ("Conservative starting
+values") in full before continuing.** It explains exactly which gains apply to
+which airframe class.
+
+- The stock PID defaults in `include/config.h` are tuned for a **5" quad-X**.
+  For 7" frames, tricopters, hex/octo, or fixed-wing/VTOL hybrids, the defaults
+  **will not fly safely** — rescale per the guide's §4 table first.
+- Before any free flight, perform a **tethered hover** using the `g` command
+  (per pid-tuning-guide.md §3 and §5) to confirm the loop is stable on your
+  airframe. Adjust gains live over serial while tethered, then `d`-dump and
+  paste into `config.h`.
+
+Do not proceed to Part 5 until 4a, 4b, and 4c have all been completed and
+verified.
+
 ### Test Motor Direction (No Props!)
 
 ```mermaid
@@ -201,9 +263,18 @@ graph TD
 
 ## Part 5: First Flight (5 minutes)
 
+> **Prerequisites:** Parts 4a (failsafe verified), 4b (ESC endpoints calibrated),
+> and 4c (PID sanity check + tethered hover via `g`) **must** be complete. Do
+> not skip them — they are the only protection between a misconfigured build
+> and a runaway.
+
 ### Pre-Flight Checklist
 
 - [ ] Calibrations complete
+- [ ] Failsafe verified (Part 4a — motors do not spin with TX off)
+- [ ] ESC endpoints calibrated (Part 4b — linear throttle response)
+- [ ] PID defaults reviewed against airframe class (Part 4c + [pid-tuning-guide.md](pid-tuning-guide.md) §4)
+- [ ] Tethered hover passed (Part 4c — `g` command, stable on bench)
 - [ ] Arming/disarming tested
 - [ ] Motor directions correct
 - [ ] Props installed (correct direction!)
@@ -288,7 +359,7 @@ and [phase_w5_gps_landed_2026-05-20.md](findings/phase_w5_gps_landed_2026-05-20.
 
 ## Next Steps
 
-1. [Calibration Guide](2_calibration_guide.md) -- Detailed calibration procedures (all 17 commands)
+1. [Calibration Guide](2_calibration_guide.md) -- Detailed calibration procedures (all 18 commands)
 2. [Hardware Setup](1_hardware_setup.md) -- Detailed wiring diagrams
 3. [Troubleshooting](3_troubleshooting.md) -- Problem solving
 

@@ -4,6 +4,36 @@ Complete wiring guide for Teensy 4.0/4.1 + MPU6050 + FS-iA6B flight controller.
 
 ---
 
+## 🐧 Linux Preflight (one-time)
+
+Before connecting any board on Linux, run the repo's permissions installer
+once. It is idempotent and safe to re-run.
+
+```bash
+sudo ../../tools/setup_permissions.sh   # from flight_controller/
+```
+
+This installs Teensy + ESP32-USB-serial udev rules under `/etc/udev/rules.d/`
+and adds your user to the `dialout` group (the standard serial-port group on
+Debian/Ubuntu). **Log out and back in** for the group change to take effect.
+
+Optional: if PlatformIO or `serial_monitor.py` keeps losing the Teensy port to
+ModemManager, disable it for Teensy (the udev rules above already mark Teensy
+USB IDs with `ID_MM_DEVICE_IGNORE=1`, but if your distro ignores that hint you
+can disable the service entirely):
+
+```bash
+sudo systemctl disable --now ModemManager   # only if needed
+```
+
+Membership check (must include `dialout`):
+
+```bash
+groups
+```
+
+---
+
 ## 📋 Bill of Materials
 
 ### Required Components

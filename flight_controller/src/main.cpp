@@ -75,7 +75,9 @@ float AccX_prev, AccY_prev, AccZ_prev;
 float GyroX, GyroY, GyroZ;
 float GyroX_prev, GyroY_prev, GyroZ_prev;
 float MagX, MagY, MagZ;
-float MagX_prev, MagY_prev, MagZ_prev;
+// MagX_prev/MagY_prev/MagZ_prev removed — sole consumer (9DOF mag LPF in
+// imu.cpp) was deleted; see globals.h note. Restore alongside any future
+// mag-filter implementation.
 
 // IMU calibration
 float AccErrorX = IMU_ACC_ERROR_X;

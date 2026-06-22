@@ -16,7 +16,7 @@ This document explains the organization of the `auto_orientation/` project. It h
 6. Optional **WiFi telemetry + browser dashboard + OTA** on ESP32-class builds (mirroring the sister `flight_controller/` project's conventions).
 7. A growing catalog of **reference applications** under `src/applications/` (balancing robot, multirotor bridge, gimbal, photogrammetry rig, educational kit).
 
-**Current state** (2026-05-12): Phase 3 complete (BNO085 + GPS + EKF, 143+ tests passing, 18.1% flash used on Mega). Phase 4 planning complete; implementation pending. See [docs/roadmap.md](docs/roadmap.md) for the full phase plan.
+**Current state** (2026-05-26): Phase 3 complete (BNO085 + GPS + EKF, 143+ tests passing). Phase 4 has shipped — bifurcated 2026-05-19 into Phase 4U (Uno minimal flight build + on-device guided tuning) and Phase 4M.* (Mega universal/adaptive stack: BOOTSTRAP, RLS, mounting estimator, collision detector, wheel encoders, two-stage cascade through 4M.14). See [docs/roadmap.md](docs/roadmap.md) for the full phase plan and per-phase landing reports under [docs/findings/](docs/findings/INDEX.md).
 
 ---
 
@@ -25,7 +25,8 @@ This document explains the organization of the `auto_orientation/` project. It h
 ```
 auto_orientation/
 ├── platformio.ini              # Build system configuration
-│                              # Defines 8 build environments
+│                              # Defines 7 active build environments
+│                              # (+2 scaffolded/commented: esp32_balance, teensy_balance)
 │                              # Specifies library dependencies
 │
 ├── src/                        # Source code (organized in layers)
@@ -272,23 +273,26 @@ Every doc folder has an `INDEX.md` for quick navigation. The 32 previously-loose
 
 ## Build Environments (platformio.ini)
 
-The project supports 8 different build configurations:
+The project supports 7 active build configurations (per [`platformio.ini`](platformio.ini)):
 
 | Environment | Features | Use Case |
 |-------------|----------|----------|
-| `arduino_mega` | Base: BNO085 only | Development, baseline |
-| `arduino_mega_calibration` | BNO085 + calibration mode (verbose) | Calibrating BNO085 |
-| `arduino_mega_production` | BNO085 only, minimal output | Deployment |
-| `arduino_mega_gps` | BNO085 + GPS at 9600 baud | GPS integration |
-| `arduino_mega_gps_115200` | BNO085 + GPS at 115200 baud | M9N/M10S modules |
-| `arduino_mega_snapshot` | BNO085 + GPS + calibration + snapshot recording | Full feature development |
-| `arduino_mega_snapshot_only` | BNO085 + GPS + snapshot (no calibration) | Production with snapshots |
-| `arduino_mega_full` | All: BNO085 + GPS + calibration + snapshots | Everything enabled |
+| `mega_balance` | Universal/adaptive balance stack (BOOTSTRAP, RLS, mounting est, collision, encoders, cascade) | Primary build — new code lands here |
+| `arduino_uno_minimal` | Lean Uno balance: hardcoded PID, no auto-tune | Uno flight build (after `arduino_uno_tuning`) |
+| `arduino_uno_tuning` | `arduino_uno_minimal` + on-device guided BNO055 cal (`'c'`) + P→D→I tune (`'t'`) | Uno setup/tuning bench |
+| `mega_orientation` | BNO085 + GPS telemetry (EKF stub: `USE_EKF=0`) | Orientation framework reference |
+| `mega_orientation_calibration` | `mega_orientation` + verbose `CALIBRATION_MODE` | BNO085 calibration walk-through |
+| `native_test` | Unity unit tests on host | `pio test -e native_test` |
+| `uno_balance` | LEGACY/DEAD — old universal-stack-on-Uno (~93.6% flash) | Kept for history; do not extend |
+
+Scaffolded but commented out: `esp32_balance` (future WiFi/dashboard port), `teensy_balance` (future FPU/high-rate port).
 
 **How to build**:
 ```bash
-platformio run -e arduino_mega_gps -t upload
-platformio test --environment=arduino_mega
+pio run -e mega_balance -t upload         # Mega primary
+pio run -e arduino_uno_tuning -t upload   # Uno setup/tune
+pio run -e arduino_uno_minimal -t upload  # Uno flight
+pio test -e native_test                   # Host tests
 ```
 
 ---
@@ -491,5 +495,5 @@ output/ (data serialization)
 
 ---
 
-*Last updated: 2026-05-12 (Framework re-scoping session — Phase 4 planning complete)*
-*Status: Phase 3 COMPLETE — Ready for Phase 4 (Auto-orientation framework + balancing-robot reference, then multi-MCU, then WiFi, then applications catalog)*
+*Last updated: 2026-06-21 (nav-polish — env table reflects current `platformio.ini`; Phase 4U + 4M.* shipped per 2026-05-20 session records)*
+*Status: Phase 4 SHIPPED — Phase 4U (Uno minimal + guided tuning) live; Phase 4M.* (Mega universal stack through 4M.14 two-stage cascade) live. Bench-validation, multi-MCU ports, WiFi/dashboard, applications catalog expansion remain.*

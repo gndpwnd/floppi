@@ -1,5 +1,7 @@
 # Project Setup Status & Next Steps
 
+> **STATUS BANNER**: This doc is superseded by [`../applications/balancing_robot/FIRST_SUCCESS_MEGA.md`](../applications/balancing_robot/FIRST_SUCCESS_MEGA.md) / [`../applications/balancing_robot_uno/FIRST_SUCCESS_UNO.md`](../applications/balancing_robot_uno/FIRST_SUCCESS_UNO.md). Retained for reference.
+
 **Date**: 2026-05-05  
 **Status**: Research + Implementation 60% Complete  
 **Blockers**: Network connectivity for library download

@@ -43,6 +43,10 @@
 #ifndef POSITION_LOOP_H
 #define POSITION_LOOP_H
 
+#include <stdint.h>
+
+#include "cascade_self_audit.h"
+
 // ---------------------------------------------------------------------------
 // Phase 4M.14 — the outer-loop gains are now DERIVED, not hardcoded.
 //
@@ -168,6 +172,26 @@ public:
     float k_vel() const { return k_vel_; }
     float pos_leak() const { return pos_leak_; }
 
+    /**
+     * M-4 — runtime K_VEL self-confirmation verdict.
+     *
+     * Returns the embedded CascadeSelfAudit's current verdict: UNKNOWN until
+     * POSLOOP_AUDIT_MIN_EVENTS step events have been classified, then OK,
+     * HIGH, or LOW depending on the closed-loop damping observed from
+     * position_m step responses. See cascade_self_audit.h for the design.
+     *
+     * Informational only — the control law does not branch on it; intended
+     * as a telemetry-side proxy for the deferred F-3 bench observation.
+     */
+    CascadeAuditVerdict audit_verdict() const { return audit_.verdict(); }
+
+    /**
+     * Test/inspection hook — expose the audit so unit tests can poke at the
+     * event tally without needing a separate accessor per counter. Const
+     * reference, no mutation possible.
+     */
+    const CascadeSelfAudit& audit() const { return audit_; }
+
 private:
     // Leaky integral of wheel velocity — an estimate of accumulated drift in
     // metres. update() bleeds it by pos_leak_ every tick; that exponential
@@ -191,6 +215,12 @@ private:
     float k_pos_;
     float k_vel_;
     float pos_leak_;
+
+    // M-4 — embedded runtime damping classifier. Fed one sample per update()
+    // (with position_m_ post-leak) so it observes the same trajectory the
+    // outer loop is shaping. reset() clears it alongside the integrator so
+    // each RUN session re-confirms K_VEL from scratch.
+    CascadeSelfAudit audit_;
 };
 
 #endif  // POSITION_LOOP_H

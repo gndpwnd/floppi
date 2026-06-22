@@ -53,7 +53,9 @@
 static unsigned long api_post_timer = 0;
 static bool api_enabled = false;
 static char telemetry_url[128];
-static char commands_url[128];
+// TODO: commands_url is deferred pending the GET /api/commands swarm-pull-down
+// work item. Reintroduce when the FC starts polling for commands.
+// static char commands_url[128];
 
 // Drone identifier (MAC-based)
 static char drone_id[18];
@@ -61,7 +63,8 @@ static char drone_id[18];
 void setupApiClient() {
     // Build endpoint URLs
     snprintf(telemetry_url, sizeof(telemetry_url), "%s/api/telemetry", API_SERVER_URL);
-    snprintf(commands_url, sizeof(commands_url), "%s/api/commands", API_SERVER_URL);
+    // TODO: build commands_url when GET /api/commands swarm-pull-down lands.
+    // snprintf(commands_url, sizeof(commands_url), "%s/api/commands", API_SERVER_URL);
 
     // Drone ID from MAC
     strncpy(drone_id, WiFi.macAddress().c_str(), sizeof(drone_id) - 1);
@@ -136,11 +139,21 @@ void handleApiClient(const DisplayData_t* data) {
     }
 #endif
 
-    // Buffer worst case: base payload ~260 B + baro block ~90 B + gps block
-    // (82-char max NMEA sentence) ~130 B ≈ 480 B. 512 B covers it with margin.
-    // serializeJson() returns the actual length and never overruns the buffer.
-    char buf[512];
-    size_t len = serializeJson(doc, buf, sizeof(buf));
+    // Serialize into a dynamically-grown String so the body never truncates as
+    // optional blocks (baro, gps NMEA) push past the old 512 B fixed buffer.
+    // Mirrors the pattern used in web_server.cpp's WS broadcast path. Skip the
+    // POST entirely (and log sparsely) if serializeJson returns 0 — that means
+    // the allocation failed and the body would be empty/broken.
+    String out;
+    size_t len = serializeJson(doc, out);
+    if (len == 0) {
+        static unsigned long last_serialize_err = 0;
+        if (now - last_serialize_err > 10000) {
+            last_serialize_err = now;
+            Serial.println(F("[API] telemetry serialize failed (low heap?) — POST skipped"));
+        }
+        return;
+    }
 
     // POST telemetry (blocking, OK on Core 1)
     HTTPClient http;
@@ -148,7 +161,7 @@ void handleApiClient(const DisplayData_t* data) {
     http.addHeader("Content-Type", "application/json");
     http.setTimeout(2000);  // 2s timeout — don't block forever
 
-    int code = http.POST((uint8_t*)buf, len);
+    int code = http.POST((uint8_t*)out.c_str(), len);
     if (code < 0) {
         // Connection failed — not fatal, just skip
         static unsigned long last_error_log = 0;

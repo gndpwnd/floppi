@@ -607,15 +607,16 @@
 // Servo Channel Count
 //=============================================================================
 // How many servo channels setupMotors() LEDC-attaches on ESP32 (channels
-// 1..SERVO_COUNT). Range 0-7. Default 7 keeps existing builds byte-identical.
+// 1..SERVO_COUNT). Range 0-7. Default 5 matches the physical pin set on
+// ESP32 (SERVO_PIN_6/7 default to mirrors of 4/5 — explicit overrides
+// required to use ch6/7). Quad-X uses 4 motors + 0-1 gimbal/AUX servos;
+// default 5 is the safe operational ceiling without pin overrides.
 //
-// Lowering this frees the higher servo GPIOs: an airframe with SERVO_COUNT<=5
-// never drives SERVO_PIN_6/7, so the W1b ch6/7 pin-mirror (SERVO_PIN_6/7 =
-// SERVO_PIN_4/5 in pin_definitions_esp32.h) is moot — no LEDC double-claim.
-// The mirror only matters when SERVO_COUNT>=6, which then needs explicit
-// distinct SERVO_PIN_6/7 overrides in the PIN OVERRIDES section.
+// Going above 5 on ESP32 (non-S3) requires distinct SERVO_PIN_6/SERVO_PIN_7
+// overrides in the PIN OVERRIDES section, otherwise the #error guards in
+// pin_definitions_esp32.h refuse the build (silent LEDC double-claim).
 #ifndef SERVO_COUNT
-    #define SERVO_COUNT 7
+    #define SERVO_COUNT 5
 #endif
 
 //=============================================================================

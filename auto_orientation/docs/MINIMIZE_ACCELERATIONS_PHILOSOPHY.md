@@ -41,7 +41,7 @@ The PID loop is doing this directly. When pitch is small, PID output is small, m
 
 ## Compile-time switches
 
-In `auto_orientation/platformio.ini` under `[env:arduino_uno_balancing]`:
+In `auto_orientation/platformio.ini` under `[env:arduino_uno_minimal]`:
 
 ```
 build_flags = ... -D USE_BALANCE_HELD_DETECTION

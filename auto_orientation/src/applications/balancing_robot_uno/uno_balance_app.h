@@ -97,8 +97,28 @@ class UnoBalanceApp {
    * drive the wheels again on the next valid pitch sample. Operator preference
    * is "balance forever", so this is the supported way to recover from an 'a'
    * stop without reflashing.
+   *
+   * Refuse-to-arm: in the flight build (`#ifndef UNO_GUIDED_TUNING`), if
+   * begin() detected no EEPROM cal AND no hand-pasted BNO055_CAL_BLOB seed,
+   * arm() rejects the request (prints diagnostic, returns without engaging).
+   * Use force_clear_cal_block() — wired to the 'F' serial command — to
+   * override at the operator's risk.
    */
   void arm();
+
+  /**
+   * Force-clear the cal-missing arm latch (flight build only). Lets the
+   * operator override the refuse-to-arm safety with a known-good IMU when
+   * the EEPROM/seed cal is intentionally absent. No-op when the latch is
+   * already clear.
+   */
+  void force_clear_cal_block() { cal_missing_block_arm_ = false; }
+
+  /**
+   * True iff begin() set the refuse-to-arm latch (flight build only — always
+   * false in the tuning build, where the operator can run 'c' to calibrate).
+   */
+  bool cal_missing_blocks_arm() const { return cal_missing_block_arm_; }
 
   /**
    * Inspection accessors for serial telemetry. Safe to call from loop().
@@ -151,6 +171,12 @@ class UnoBalanceApp {
   // loop() (read_imu), read from loop() telemetry — no ISR involvement, so a
   // plain uint8_t (atomic on AVR) suffices.
   uint8_t read_fail_count_;
+
+  // Refuse-to-arm latch: set by begin() in the flight build when neither an
+  // EEPROM cal blob NOR a hand-pasted BNO055_CAL_BLOB seed is available, so
+  // arm() rejects until force_clear_cal_block() ('F' serial command) is
+  // called. Always false in the tuning build (no flight latency that path).
+  bool cal_missing_block_arm_;
 };
 
 #endif  // UNO_BALANCE_APP_H

@@ -187,6 +187,38 @@ static void handle_serial() {
         calibration_session::run_guided_cal(app, imu);
         Serial.println(F("READY for 't' to start tuning"));
         break;
+      case '!':
+        // First-time-setup macro: chains 'c' (BNO055 cal) -> 't' STAGE_P
+        // entry, removing the operator's need to remember the next keystroke
+        // after cal completes. PID tuning itself STILL requires operator
+        // judgment for each gain -- '!' only saves a keypress at the seam.
+        // Same gating as 'c' since the cal half is BNO055-specific.
+        Serial.println(F("=== FIRST-TIME SETUP ==="));
+        Serial.println(F("Will run: BNO055 cal -> PID tune entry -> save -> reboot hint"));
+        Serial.println(F("PROPS OFF if connected. Press any key to abort during cal."));
+        calibration_session::run_guided_cal(app, imu);
+        // run_guided_cal prints "CAL OK" / "CAL ABORTED" / "CAL FAIL ..."
+        // but doesn't return a status -- query the chip directly to detect
+        // success (matches the function's own exit condition).
+        if (imu.isFullyCalibrated() && tuningSession.auto_enter_after_cal()) {
+          Serial.println(F("TUNE NOW: adjust Kp with +/-. Press 'n' to advance stages."));
+          Serial.println(F("Press 'w' at REVIEW to save. After save, reflash arduino_uno_minimal to fly."));
+        } else {
+          Serial.println(F("FIRST-TIME SETUP aborted -- bot not configured."));
+          Serial.println(F("Run 'c' to retry calibration, or 't' to skip cal and tune existing values."));
+        }
+        break;
+#endif
+#ifndef UNO_GUIDED_TUNING
+      case 'F':
+        // Flight-build force-arm escape hatch: clears the cal-missing latch
+        // so the next 'g' will arm even when neither EEPROM cal nor a hand-
+        // pasted BNO055_CAL_BLOB is available. Lower-case 'f' is intentionally
+        // NOT accepted — uppercase makes accidental keypress less likely on
+        // an operator's serial console.
+        app.force_clear_cal_block();
+        Serial.println(F("ARM FORCED -- cal missing, IMU drift expected"));
+        break;
 #endif
       case 'p':
       case 'P':
@@ -216,7 +248,7 @@ void setup() {
   Serial.begin(115200);
 #ifdef UNO_GUIDED_TUNING
   Serial.println(F("==== SETUP MODE -- calibrate + guided PID tune ===="));
-  Serial.println(F("Commands: c=calibrate t=tune | + - * n b r w q | a g s p"));
+  Serial.println(F("Commands: !=first-time c=calibrate t=tune | + - * n b r w q | a g s p"));
   Serial.println(F("When done: flash arduino_uno_minimal to fly."));
 #else
   Serial.println(F("==== OPERATIONAL MODE -- flying on EEPROM values ===="));

@@ -14,6 +14,7 @@ This Mega application is the **universal "plug-and-play" auto** tier of the [pla
 
 | File | Purpose | Read when |
 |------|---------|-----------|
+| [FIRST_SUCCESS_MEGA.md](FIRST_SUCCESS_MEGA.md) | **Recommended entry point** — 10-step, ~30–60 min checklist from hardware-in-hand to first balanced release on a Mega 2560 | You have the hardware on the bench and want first success |
 | [USER_GUIDE.md](USER_GUIDE.md) | Top-level setup + first-flash walkthrough | You are starting from scratch |
 | [HARDWARE_SETUP.md](HARDWARE_SETUP.md) | Bill of materials, pin map, wiring | You are wiring the bot |
 | [CALIBRATION_WORKFLOW.md](CALIBRATION_WORKFLOW.md) | Hands-off button/LED/buzzer flow | You have it wired and want to balance |
@@ -45,4 +46,4 @@ For everything else, start with [USER_GUIDE.md](USER_GUIDE.md).
 
 ---
 
-*Last updated: 2026-05-26 (added bifurcation cross-reference: Mega = universal-auto tier, Uno = manual-guided tier; IMU orthogonal to MCU).*
+*Last updated: 2026-06-21 (wave-12 crosslink cleanup — added `FIRST_SUCCESS_MEGA.md` as the recommended entry point in the Read-in-order table; prior: 2026-05-26 added bifurcation cross-reference: Mega = universal-auto tier, Uno = manual-guided tier; IMU orthogonal to MCU).*

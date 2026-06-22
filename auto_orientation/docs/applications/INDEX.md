@@ -6,12 +6,29 @@ Applications are compile-time gated through flags in [`src/config/mode.h`](../..
 
 ---
 
+## Start here — pick your tier
+
+**New operators**: open [`CHOOSE_YOUR_TIER.md`](CHOOSE_YOUR_TIER.md) first. It is the routing doc — given the hardware you have on the bench, it points you at the right `FIRST_SUCCESS_*.md` (Mega or Uno) and the right build env. Each `FIRST_SUCCESS_*.md` is a 10-step, ~30–60 min checklist from hardware-in-hand to first balanced release.
+
+- [`balancing_robot/FIRST_SUCCESS_MEGA.md`](balancing_robot/FIRST_SUCCESS_MEGA.md) — Mega 2560 + BNO055 + L298N (+ wheel encoders) bring-up.
+- [`balancing_robot_uno/FIRST_SUCCESS_UNO.md`](balancing_robot_uno/FIRST_SUCCESS_UNO.md) — Arduino Uno + BNO055 + L298N two-build flow (`arduino_uno_tuning` SETUP MODE → `arduino_uno_minimal` OPERATIONAL MODE).
+- [`balancing_robot_uno/CHEATSHEET.md`](balancing_robot_uno/CHEATSHEET.md) — Uno-minimal operator bench card (one-page command/LED/buzzer reference for live tuning).
+
+---
+
+## Bench
+
+- [`../findings/bench_validation_runbook_2026-05-27.md`](../findings/bench_validation_runbook_2026-05-27.md) — When you have hardware — consolidated 24-item runbook for a single bench session (covers both Mega and Uno tiers).
+
+---
+
 ## Available applications
 
 | Application | Compile flag | Build env | Status |
 |-------------|--------------|-----------|--------|
-| [Self-balancing robot (Mega universal)](balancing_robot/INDEX.md) | `USE_BALANCING_ROBOT` | `arduino_mega_balancing` | Phase 4 reference — universal/adaptive stack (BOOTSTRAP, RLS, mounting estimator, collision detector, planned encoders + position containment) |
-| [Self-balancing robot (Uno minimal)](balancing_robot_uno/INDEX.md) | `USE_BALANCING_ROBOT_UNO` | `arduino_uno_minimal` (planned) | **2026-05-19 pivot — stub** — small hardcoded PID balancer; gains generated offline via `tools/sim/brute_tune.py` |
+| [Self-balancing robot (Mega universal)](balancing_robot/INDEX.md) | `USE_BALANCING_ROBOT` | `mega_balance` | Phase 4 reference — universal/adaptive stack (BOOTSTRAP, RLS, mounting estimator, collision detector, planned encoders + position containment) |
+| [Self-balancing robot (Uno minimal — flight build)](balancing_robot_uno/INDEX.md) | `USE_BALANCING_ROBOT_UNO` | `arduino_uno_minimal` | Shipped — small hardcoded PID balancer; gains generated offline via `tools/sim/brute_tune.py` |
+| [Self-balancing robot (Uno guided tuning bench)](balancing_robot_uno/INDEX.md) | `USE_BALANCING_ROBOT_UNO` + `UNO_GUIDED_TUNING` | `arduino_uno_tuning` | Shipped — flight build PLUS interactive on-device BNO055 cal (`'c'`) + guided P→D→I tune (`'t'`) over serial, persisted to EEPROM |
 
 **Platform bifurcation (2026-05-19)**: The universal/adaptive vision now targets Mega-class hardware only. The Uno gets a smaller, single-purpose program. See [../scope.md §Platform bifurcation](../scope.md) and [../roadmap.md §Phase 4U](../roadmap.md) for the pivot framing.
 
@@ -40,4 +57,4 @@ Design rationale, algorithm choices, and cross-cutting research stay in [finding
 
 ---
 
-*Last updated: 2026-05-19 (platform-bifurcation pivot — added balancing_robot_uno).*
+*Last updated: 2026-06-21 (wave-12 crosslink cleanup — added Bench section linking `findings/bench_validation_runbook_2026-05-27.md`; surfaced `balancing_robot_uno/CHEATSHEET.md` under Start-here; prior: crosslink audit — surfaced `CHOOSE_YOUR_TIER.md` + per-tier `FIRST_SUCCESS_*.md` as the operator entry points; nav-polish pass — list current envs `mega_balance` / `arduino_uno_minimal` / `arduino_uno_tuning`; remove stub markers — both Uno envs have shipped).*

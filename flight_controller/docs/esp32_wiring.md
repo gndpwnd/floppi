@@ -113,11 +113,11 @@ flowchart LR
 |-------|------------|-------|
 | Servo 1 | 32 | |
 | Servo 2 | 33 | |
-| Servo 3 | 4 | **[VERIFY]** overlaps with iBUS/DSM/Serial-cmd RX (GPIO 4). Override SERVO_PIN_3 if using one of those receivers. |
-| Servo 4 | 16 | **[VERIFY]** overlaps with SBUS_RX (GPIO 16). Override SERVO_PIN_4 if using SBUS receiver. |
-| Servo 5 | 17 | **[VERIFY]** overlaps with SBUS_TX (GPIO 17). Override SERVO_PIN_5 if using SBUS receiver. |
-| Servo 6 | 5 | |
-| Servo 7 | 18 | |
+| Servo 3 | 13 | Reassigned from GPIO 4 (2026-05-20) to avoid iBUS/DSM/Serial-cmd RX conflict. |
+| Servo 4 | 5 | Reassigned from GPIO 16 (2026-05-20) to avoid SBUS_RX conflict. |
+| Servo 5 | 18 | Reassigned from GPIO 17 (2026-05-20) to avoid SBUS_TX conflict. |
+| Servo 6 | mirrors SERVO_PIN_4 (5) | No free GPIO remains; 1-5 servo airframes never command ch6. |
+| Servo 7 | mirrors SERVO_PIN_5 (18) | No free GPIO remains; 1-5 servo airframes never command ch7. |
 
 ### Alternative Receiver Protocols
 

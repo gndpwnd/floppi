@@ -65,7 +65,7 @@ Compiles on AVR (Arduino Mega 2560) when `USE_BNO055` is defined; the build env 
 ## Integration points
 
 - **Called by**: any app instantiating the sensor abstraction (balancing robot uses it as the canonical IMU). Calibration profile flows out to the HAL via `persistent_storage` + tagged-blob layer (D2).
-- **Gating**: `-D USE_BNO055` in the build env (e.g., `arduino_mega_bno055`, `arduino_mega_balancing`).
+- **Gating**: `-D USE_BNO055` in the build env (e.g., `arduino_mega_bno055`, `mega_balance`).
 - **Body frame**: chip-native (+X forward, +Y left, +Z up). Unifying with BNO085's frame is tracked as Phase 4.6.5 — for now consumers that mix sensors must remap themselves.
 - **Cross-link**: design rationale in [`findings/bno055_driver_and_multi_imu_strategy.md`](../findings/bno055_driver_and_multi_imu_strategy.md).
 

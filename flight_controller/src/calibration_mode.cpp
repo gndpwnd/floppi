@@ -353,13 +353,6 @@ void runCalibrationIfRequested() {
                 calibrateESC();
                 break;
 
-            #ifdef USE_MPU9250
-            case CALIB_MAG:
-                Serial.println(F("Running Magnetometer Calibration"));
-                calibrateMagnetometer();
-                break;
-            #endif
-
             case CALIB_SEQUENTIAL:
                 calibrateSequential();
                 // Sequential workflow may include IMU cal as one of its

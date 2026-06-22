@@ -33,7 +33,7 @@
 // ============================================================================
 // Balance Robot Application (Phase 4.7)
 // ============================================================================
-// Single-binary path used by arduino_uno_balancing / arduino_mega_balancing.
+// Single-binary path used by arduino_uno_minimal / arduino_uno_tuning / mega_balance.
 // Everything below the #else (legacy BNO085 + GPS + EKF) is excluded for
 // these builds.
 //
@@ -317,6 +317,101 @@ static void save_bno_cal_(BNO055& bno) {
     uint16_t len = 22;
     bno.getCalibrationProfile(buf, &len);
     saveToEEPROM(buf, len);
+}
+
+// ---------------------------------------------------------------------------
+// Photo-backup printer — Mega bench-state edition (FIN-05).
+//
+// Operator workflow: send 'B' over serial → firmware reads every Mega-tier
+// EEPROM slot and prints a human-readable, paste-target text block. Photograph
+// the scrollback, then on a fresh reflash the operator (or a host script) can
+// re-burn the same bytes byte-for-byte to recover days of bench tuning without
+// having to re-run CAPTURE / CHARACTERISE / encoder-cal / PWM-discovery.
+//
+// Slot inventory (matches the EE_*_ADDR/_LEN constants above):
+//   0x200   8 B  mount offset      — float pitch_deg + magic/ver/CRC
+//   0x210   8 B  actuator stiction — uint8 stiction PWM + magic/ver/CRC
+//   0x220  16 B  encoder cal       — cpm_L, cpm_R, radius_m + CRC (Mega only)
+//   0x230   8 B  PWM-discovery     — min/max PWM (LE) + CRC      (Mega only)
+//
+// Format: one block per slot, each printed as a literal `uint8_t SLOT_*[N] = {
+// 0xAB, ... };` C99 array initializer plus a comment naming the slot, its raw
+// payload meaning, and the stored CRC-8-CCITT v0x02. Slots that are empty /
+// have a stale marker / fail CRC are flagged "NOT_VALID" instead of printed —
+// the operator photographs only what's actually live on the chip.
+//
+// Frame: `==== PHOTO-BACKUP (Mega bench state) ====` ... `==== END PHOTO-BACKUP ====`
+// matches the Uno tune_storage::print_photo_backup framing so a single host
+// parser can scrape either platform.
+static void print_photo_backup_slot_(const __FlashStringHelper* label,
+                                     const __FlashStringHelper* purpose,
+                                     uint16_t addr, uint16_t len) {
+    // Bound the on-stack buffer at 32 B — the largest slot we print is 24 B.
+    // Asserted at compile-time via the inline check; print "OVERSIZE" rather
+    // than blow the stack on a configuration change that bumps a slot.
+    if (len > 32) {
+        Serial.print(F("// ")); Serial.print(label);
+        Serial.println(F(" OVERSIZE — skipped"));
+        return;
+    }
+    uint8_t buf[32];
+    if (!ps::read(addr, buf, len)) {
+        Serial.print(F("// ")); Serial.print(label);
+        Serial.println(F(" READ_FAIL"));
+        return;
+    }
+    // Slot validity: magic + version + CRC over the first (len-1) bytes (project
+    // standard, see calibration_storage.cpp::calculateCRC8 + the save_*_()
+    // helpers above). Print structure for valid slots ONLY — pasting a stale /
+    // partial record back would corrupt the live EEPROM.
+    const bool crc_ok = (calculateCRC8(buf, len - 1) == buf[len - 1]);
+    Serial.print(F("// ")); Serial.print(label);
+    Serial.print(F(" @ 0x")); Serial.print(addr, HEX);
+    Serial.print(F(" len=")); Serial.print(len);
+    Serial.print(F(" magic=0x")); Serial.print(buf[0], HEX);
+    Serial.print(F(" ver=0x"));   Serial.print(buf[1], HEX);
+    Serial.print(F(" crc=0x"));   Serial.print(buf[len - 1], HEX);
+    Serial.println(crc_ok ? F(" [OK]") : F(" [CRC_FAIL]"));
+    if (!crc_ok) {
+        Serial.print(F("// ")); Serial.println(F("NOT_VALID — skipped"));
+        return;
+    }
+    Serial.print(F("// purpose: ")); Serial.println(purpose);
+    Serial.print(F("static const uint8_t SLOT_"));
+    Serial.print(label);
+    Serial.print(F("["));
+    Serial.print(len);
+    Serial.println(F("] = {"));
+    Serial.print(F("  "));
+    for (uint16_t i = 0; i < len; i++) {
+        Serial.print(F("0x"));
+        if (buf[i] < 16) Serial.print(F("0"));
+        Serial.print(buf[i], HEX);
+        if (i + 1 < len) Serial.print(F(", "));
+    }
+    Serial.println();
+    Serial.println(F("};"));
+}
+
+static void print_photo_backup_mega_() {
+    Serial.println(F("==== PHOTO-BACKUP (Mega bench state) ===="));
+    Serial.println(F("// Mega bench state. Photograph this block."));
+    Serial.println(F("// CRC-8-CCITT (poly 0x07) v0x02 — invalid slots are skipped."));
+    print_photo_backup_slot_(F("MOUNT"),
+                             F("mount offset (float pitch_deg LE @ buf[2..5])"),
+                             EE_MOUNT_ADDR, EE_MOUNT_LEN);
+    print_photo_backup_slot_(F("ACTUATOR"),
+                             F("stiction PWM (uint8 @ buf[2])"),
+                             EE_ACT_ADDR, EE_ACT_LEN);
+#ifdef USE_WHEEL_ENCODERS
+    print_photo_backup_slot_(F("ENCODER_CAL"),
+                             F("cpm_L f32 @ [2..5], cpm_R f32 @ [6..9], radius_m f32 @ [10..13]"),
+                             EE_ENC_ADDR, EE_ENC_LEN);
+    print_photo_backup_slot_(F("PWM_DISCOVERY"),
+                             F("min_pwm u16 LE @ [2..3], max_pwm u16 LE @ [4..5]"),
+                             EE_PWMDISC_ADDR, EE_PWMDISC_LEN);
+#endif
+    Serial.println(F("==== END PHOTO-BACKUP ===="));
 }
 
 // Blocking pre-flight: poll BNO055 calibration accuracies; save when fully
@@ -693,7 +788,15 @@ void loop() {
             Serial.print(app.get_pos_nudge_deg(), 3);     Serial.print(',');
             Serial.print(app.get_k_pos(), 3);             Serial.print(',');
             Serial.print(app.get_k_vel(), 3);             Serial.print(',');
-            Serial.println(app.get_pos_leak(), 4);
+            Serial.print(app.get_pos_leak(), 4);          Serial.print(',');
+            // M-4 wiring — trailing K_VEL self-audit verdict (informational).
+            // Gated by USE_WHEEL_ENCODERS to match get_audit_verdict()'s gating.
+            switch (app.get_audit_verdict()) {
+                case CascadeAuditVerdict::KVEL_OK:   Serial.println(F("K_VEL_OK"));   break;
+                case CascadeAuditVerdict::KVEL_HIGH: Serial.println(F("K_VEL_HIGH")); break;
+                case CascadeAuditVerdict::KVEL_LOW:  Serial.println(F("K_VEL_LOW"));  break;
+                default:                             Serial.println(F("K_VEL_UNKNOWN")); break;
+            }
 #else
             // No encoders → outer loop is absent; emit zeros to hold the arity.
             Serial.println(F("0.0000,0.0000,0.000,0.000,0.000,0.0000"));
@@ -703,6 +806,15 @@ void loop() {
             // bind it to a non-button console. Skips CAPTURE_MOUNTING, uses
             // whatever mount offset is currently loaded.
             app.enter_bootstrap(now);
+        } else if (c == 'B') {
+            // FIN-05 photo-backup — emit Mega-tier paste block covering every
+            // calibration / characterisation slot the bot has earned (mount,
+            // actuator stiction, encoder cal, PWM-discovery). Photograph the
+            // scrollback; on a fresh reflash, re-burning the same bytes
+            // restores days of bench tuning. Uppercase 'B' (lowercase 'b' is
+            // BOOTSTRAP) so the two commands can never be confused at the
+            // console. Safe to run in any state — pure EEPROM read.
+            print_photo_backup_mega_();
         } else if (c == 'k') {
             app.enter_characterise_actuator(now);
         }

@@ -57,7 +57,7 @@ After the 2026-05-12 bench session and five parallel research agents, the conclu
 - `tests/test_plant_identifier.cpp` — 7 native unit tests: construction, RLS convergence on synthetic α data, freeze gate, σ-projection, gain-target math, reset() prior, MIN_PHI excitation gate. All pass.
 - `tests/test_balance_app.cpp` — updated fixture to inject `PlantIdentifier`. Pre-existing test_capture_to_auto_tune failure is unrelated to this work.
 
-**Flash impact (arduino_uno_balancing):** 31574 B → 32216 B (97.9% → 99.9% of 32256 B). 28 B headroom remaining. Trimming the boot/cal/status log strings was necessary.
+**Flash impact (arduino_uno_tuning):** 31574 B → 32216 B (97.9% → 99.9% of 32256 B). 28 B headroom remaining. Trimming the boot/cal/status log strings was necessary.
 
 **Follow-up (NOT landed):** Stage 4.10c — bootstrap stage machine (`BootstrapStage` enum + `try_advance_bootstrap_()` with the 5-stage rule set from `bootstrap_protocol_unstable_plant.md` §3) is still on paper. The current implementation uses a single time-based 5 s bootstrap freeze; the full stage machine would gate transitions on the convergence rules (Stage 2: I-term magnitude + derivative; Stage 3: RLS P[n] threshold + θ stability; Stage 4: pitch-RMS pre/post comparison). Defer until hardware validation drives the requirement.
 
@@ -70,7 +70,7 @@ Two phases, sequential:
 - **Phase A (items 1-4)** — structural fixes. One coding agent. ~4 hours of focused work.
 - **Phase B (item 5)** — universal auto-tune. Separate coding agent, after Phase A lands. ~2 days.
 
-User does not currently have the bot plugged in, so we cannot bench-validate. The acceptance criterion for both phases is **`pio run -e arduino_uno_balancing` succeeds** and **native test suite changes are consistent**. Hardware validation happens later.
+User does not currently have the bot plugged in, so we cannot bench-validate. The acceptance criterion for both phases is **`pio run -e arduino_uno_tuning` succeeds** and **native test suite changes are consistent**. Hardware validation happens later.
 
 ## What this does NOT change
 

@@ -38,11 +38,12 @@ Complete problem-solving guide for common flight controller issues.
    # Windows: Download and run Teensy Loader
    # Mac: Install via Homebrew
    brew install teensy-cli
-   
-   # Linux: Add udev rules
-   sudo cp 99-teensy.rules /etc/udev/rules.d/
-   sudo udevadm control --reload-rules
+
+   # Linux: run the repo's permissions installer (idempotent)
+   sudo ../../tools/setup_permissions.sh   # from flight_controller/
    ```
+   The installer drops Teensy + ESP32 udev rules and adds your user to the
+   `dialout` group. See `1_hardware_setup.md` -> "Linux Preflight".
 
 3. **Press reset button on Teensy:**
    - Small button on board
@@ -190,10 +191,12 @@ Complete problem-solving guide for common flight controller issues.
    ```
 
 3. **Check Serial port:**
-   ```cpp
-   // In radioComm.cpp:
-   #define SBUS_SERIAL_PORT Serial5  // Should be Serial5 for Pin 21
-   ```
+   The receiver code lives in `lib/RadioComm/` and reads its UART pin from the
+   platform pin map (`include/pin_definitions.h` for Teensy,
+   `include/pin_definitions_esp32.h` for ESP32). On Teensy 4.0/4.1 the SBUS
+   line goes to **Pin 21 (RX5)**; on ESP32 it's the GPIO defined in the ESP32
+   pin map. Verify the wire matches that pin rather than editing a serial-port
+   `#define`.
 
 4. **Test with different receiver** (if available)
 
@@ -835,7 +838,7 @@ When asking for help, include:
 ### Resources
 
 **GitHub Issues:**
-- [GitHub repo](https://github.com/your-repo)
+- [GitHub repo](https://github.com/gndpwnd/floppi)
 - Check existing issues first
 - Use issue templates
 

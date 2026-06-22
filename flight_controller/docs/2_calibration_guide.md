@@ -249,6 +249,170 @@ Type 'y' when ready:
 
 ---
 
+## Part: Failsafe Detection
+
+**Use this to capture the PWM values your receiver outputs when the transmitter is OFF.** The firmware falls back to these values when RC link is lost — they must be safe (motors off, switches in a disarmed state).
+
+> Related: [`0_quickstart.md`](0_quickstart.md) **Part 4a: Failsafe Bench Test** for the abbreviated bench-verify step. This section is the full procedure; 4a is the checklist.
+
+### Preconditions
+
+- TX bound to RX (complete the FlySky bind from [`0_quickstart.md`](0_quickstart.md) Part 1 first)
+- RX powered (FC USB power is sufficient — no battery needed)
+- **PROPS OFF** (no motors will spin during this routine, but keep the airframe inert)
+- Calibration build flashed and serial monitor connected (see Part 1)
+
+### Run Failsafe Auto-Detection
+
+Type `f` in serial monitor. The firmware command handler lives in `src/calibration_mode.cpp` (case `'f'` → `CALIB_FAILSAFE` → `calibrateFailsafe()` in `lib/Calibration/calibration_hardware.cpp`).
+
+The routine walks through these steps:
+
+1. **(a)** Type `f` and press Enter. You'll see:
+   ```
+   >>> Failsafe Auto-Detection requested via serial
+
+   +-----------------------------------------------------------+
+   |     FAILSAFE AUTO-DETECTION                               |
+   +-----------------------------------------------------------+
+
+   STEP 1: First, let's read NORMAL values with transmitter ON.
+   ```
+
+2. **(b)** Confirm with `y`. The firmware averages 50 samples (~1 second) of each channel with TX on, then prints:
+   ```
+   Normal values (TX on):
+     CH1: 1500
+     CH2: 1500
+     CH3: 1000
+     CH4: 1500
+     CH5: 1000
+     CH6: 1500
+   ```
+   Verify these match your stick positions (centered sticks ~1500us, throttle low ~1000us).
+
+3. **(c)** When prompted (`STEP 2: Now TURN OFF your transmitter.`), **power off the TX completely** and confirm with `y`. The firmware waits 3 seconds for the receiver to enter failsafe mode.
+
+4. **(d)** The firmware averages 50 more samples and prints failsafe values with deltas:
+   ```
+   Failsafe values (TX off):
+     CH1: 1500  (unchanged)
+     CH2: 1500  (unchanged)
+     CH3: 1000  (unchanged)
+     CH4: 1500  (unchanged)
+     CH5: 2000  (changed by 1000us)
+     CH6: 1500  (unchanged)
+   ```
+
+5. **(e)** Copy the printed `#define FAILSAFE_*` block into `include/config.h`:
+   ```
+   #define FAILSAFE_THROTTLE 1000
+   #define FAILSAFE_ROLL 1500
+   #define FAILSAFE_PITCH 1500
+   #define FAILSAFE_YAW 1500
+   #define FAILSAFE_AUX1 2000
+   #define FAILSAFE_AUX2 1500
+   ```
+   Replace the existing Failsafe Values section. Uncomment `#define CALIBRATED_FAILSAFE` in the calibration markers block.
+
+6. **(f)** Rebuild and flash:
+   ```bash
+   pio run -e teensy40_calibration -t upload
+   ```
+   (Re-flash the calibration build to bench-verify, then later the live build per [Part 5](#part-5-flash-live-build).)
+
+7. **(g)** **Bench-verify**: with PROPS still OFF, arm the FC, set throttle to ~30%, then power off the transmitter. The motors must drop to a safe state within a few seconds (throttle to FAILSAFE_THROTTLE, AUX1 forcing disarm). If motors keep spinning at the previous throttle, the failsafe values are wrong — re-run calibration.
+
+### Verification
+
+| Channel | Expected on TX-off | Why |
+|---------|--------------------|-----|
+| FAILSAFE_THROTTLE | ~1000us (or below arm threshold) | Motors must idle/stop |
+| FAILSAFE_AUX1 (arm switch) | Position that DISARMS | FC must disarm on signal loss |
+| Other channels | Centered (~1500us) is safe | Avoid roll/pitch/yaw kick on loss |
+
+### Common Failure Modes
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| TX-off values match TX-on values (no change) | Radio-side failsafe not configured on the TX | **UNSAFE — fix on TX before continuing.** On FlySky, set failsafe per-channel in TX menu (System → RX Setup → Failsafe), then re-run `f`. |
+| `FAILSAFE_THROTTLE` matches normal throttle | No radio-side failsafe on throttle channel | **UNSAFE.** Set throttle failsafe explicitly to ~1000us on the TX, then re-run `f`. |
+| Channels read full-range jitter when TX off | Receiver not entering failsafe (lost bind, or wrong protocol) | Re-bind RX, verify SBUS/DSM/etc. matches `config.h`, retry. |
+| Some normal values out of 800-2200us range | Receiver not connected, or TX not bound | Firmware will warn and ask to continue — fix wiring/bind first. |
+
+---
+
+## Part: ESC Endpoint Calibration
+
+**Use this to teach your ESCs the FC's PWM range (1000-2000us).** Most ESCs ship pre-calibrated for a standard range, but if motors arm unevenly or won't reach full throttle, run this once per ESC set.
+
+> Related: [`0_quickstart.md`](0_quickstart.md) **Part 4b: ESC Endpoint Bench Test** for the abbreviated bench-verify step. This section is the full procedure; 4b is the checklist.
+
+### Preconditions
+
+- **PROPS OFF — visually verify each motor. This is non-negotiable.** Motors WILL spin at full throttle during this routine.
+- Battery **DISCONNECTED** at the start (you will connect it when prompted)
+- ESCs wired to the motor pins defined in `config.h` (`MOTOR_PIN_1..4`), common ground with the FC
+- FC has 5V power (USB is fine — the FC does NOT need the flight battery to send PWM)
+- Calibration build flashed and serial monitor connected (see Part 1)
+
+### Run ESC Endpoint Calibration
+
+Type `e` in serial monitor. The firmware command handler lives in `src/calibration_mode.cpp` (case `'e'` → `CALIB_ESC` → `calibrateESC()` in `lib/Calibration/calibration_hardware.cpp`).
+
+The routine walks through these steps:
+
+1. **(a)** Type `e` and press Enter. You'll see:
+   ```
+   >>> ESC Calibration requested via serial
+
+   +-----------------------------------------------------------+
+   |     ESC ENDPOINT CALIBRATION                               |
+   +-----------------------------------------------------------+
+
+   WARNING: REMOVE ALL PROPELLERS BEFORE CONTINUING!
+   Motors WILL spin during this procedure.
+   ```
+   The firmware asks `Are propellers removed? Type 'y' to confirm.` — **physically look at each motor again** before typing `y`.
+
+2. **(b)** Follow the on-screen tone prompts. The FC walks the ESCs through the standard endpoint sequence:
+   - FC sends **MAX throttle (2000us)** to all motors.
+   - Firmware prints: `Now connect battery power to ESCs.` — connect the flight battery now.
+   - ESCs emit **ascending beeps** confirming max endpoint captured.
+   - Confirm with `y`. FC then sends **MIN throttle (1000us)**.
+   - ESCs emit **descending beeps** confirming min endpoint captured.
+   - Firmware prints `ESC calibration complete!`
+
+3. **(c)** **Verify motors arm cleanly**: disconnect and reconnect battery (or re-arm), set throttle low + arm switch to armed. All motors should sit silent at idle (no rogue spin). Raise throttle just past the arm point — every motor should start spinning at the same throttle value with no stutter.
+
+4. **(d)** **Bench-test linear response** across throttle 0-100% with PROPS OFF:
+   - Slowly walk throttle from 0% to 100% over ~10 seconds.
+   - All four motors should spool up and down together at matching RPM.
+   - There should be no "dead zone" near the bottom and no "saturation step" near the top.
+
+### Verification
+
+| Check | Pass | Fail → Action |
+|-------|------|---------------|
+| Motors arm at the same throttle | Yes | Re-run `e`, ensure all ESCs got both endpoint signals |
+| Idle RPM matches across motors | Yes | Re-run `e`; if persistent, suspect a damaged ESC |
+| Full throttle spools all motors evenly | Yes | Re-run `e` |
+| No config.h changes after this routine | Correct | ESC endpoints are stored in the ESCs themselves, not in firmware |
+
+Uncomment `#define CALIBRATED_ESC` in `include/config.h` to mark this stage complete for the sequential workflow (`a`).
+
+### Common Failure Modes
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| Only some motors beep | Loose signal wire, or ESC not powered | Power down, check wiring, retry. |
+| ESCs never beep at all | Battery not connected at the prompted step, or wrong ESC protocol | Most ESCs require standard PWM (1000-2000us). DSHOT-only ESCs cannot be calibrated this way. |
+| Motors spin at min throttle after calibration | Endpoint set too low | Re-run `e` — ensure the MAX step happened (ascending beeps heard) before continuing. |
+| Motors won't reach full speed | MAX endpoint captured too low | Re-run `e`; ensure FC is sending 2000us (`pio device monitor` should not show errors). |
+| Any motor moves with props removed and starts catching on the frame | You forgot to remove props | **STOP. Disconnect battery immediately.** Remove props, then restart calibration. |
+
+---
+
 ## Part 5: Flash Live Build
 
 After all calibrations are complete:

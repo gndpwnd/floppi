@@ -236,4 +236,14 @@ Canonical session record: [../archive/session_records/2026-05-26_uno_setup_mode.
 
 ---
 
-*Last updated: 2026-05-26 (Uno setup-mode landing — no new findings docs; session record + README §4 are canonical; the 2026-05-20 guided-tuning design doc carries a superseded banner). Prior: 2026-05-22 (security_audit, autocal_autotune_verification, mega_scope_violation_triage). Prior: 2026-05-21 (Workstream G findings). Prior: 2026-05-20 (post-sync hygiene pass).*
+## 2026-05-27 session — bench-validation runbook, LED status grammar, ESP32 port portability
+
+Three findings landed alongside the wave-11 bench-validation push: a reproducible Uno bench protocol (operator-facing), the canonical LED-blink grammar so on-bot status is interpretable without a serial console, and a portability audit of the ESP32 path against the Uno/Mega reference.
+
+- [bench_validation_runbook_2026-05-27.md](bench_validation_runbook_2026-05-27.md) — Step-by-step bench-validation protocol for the Uno SETUP→OPERATIONAL flow: pre-flight checks, calibration capture, P→D→I walk, success/failure criteria, what to log. The reproducible "did we ship a balancer?" gate.
+- [led_status_grammar_2026-05-27.md](led_status_grammar_2026-05-27.md) — Canonical LED blink grammar (cadences + colors → state) so the operator can read bot status off the LED without a serial tether. Companion to `tools/validate_photo_backup.py` (post-bench photo-log validator).
+- [esp32_port_portability_2026-05-27.md](esp32_port_portability_2026-05-27.md) — Portability audit of the ESP32 path against the Uno/Mega reference: HAL gaps, build-flag drift, calibration-storage parity, network surface assumptions; what must converge before ESP32 is a first-class target.
+
+---
+
+*Last updated: 2026-06-21 (crosslink audit — added the three 2026-05-27 wave-11 findings: `bench_validation_runbook`, `led_status_grammar`, `esp32_port_portability`). Prior: 2026-05-26 (Uno setup-mode landing — no new findings docs; session record + README §4 are canonical; the 2026-05-20 guided-tuning design doc carries a superseded banner). Prior: 2026-05-22 (security_audit, autocal_autotune_verification, mega_scope_violation_triage). Prior: 2026-05-21 (Workstream G findings). Prior: 2026-05-20 (post-sync hygiene pass).*

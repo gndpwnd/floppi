@@ -11,6 +11,33 @@ Open-source flight controller firmware for DIY drones. Based on [dRehmFlight](ht
 
 ---
 
+## What This Firmware Does **NOT** Do
+
+This is a stabilization-only flight controller. It deliberately omits a number
+of features common in larger stacks (Betaflight, INAV, ArduPilot). Read this
+list before assuming a feature exists — silent absence is the most dangerous
+kind of bug:
+
+- **No altitude hold.** Barometer is telemetry-only; throttle is fully manual.
+- **No GPS navigation.** GPS is raw NMEA passthrough only — the firmware does
+  not parse it. No waypoints, no position fix consumed in the flight loop.
+- **No return-to-home (RTH).**
+- **No position hold / loiter.**
+- **No DSHOT.** Motor protocols are PWM and OneShot125 only.
+- **No battery voltage / current monitoring.** Pilot must manage cell voltage
+  with an external alarm or timer.
+- **No SD card / black-box logging.** Telemetry is live-only over serial or
+  WiFi.
+- **No autotune.** PID tuning is a manual `g`-command workflow (see
+  [docs/pid-tuning-guide.md](docs/pid-tuning-guide.md)).
+- **Defaults are tuned for a 5" quad-X.** Other airframes (7" quad,
+  tricopter, hex/octo, fixed-wing/VTOL hybrid) **require PID rescaling**
+  before first flight — see pid-tuning-guide.md §4.
+
+Full scope and explicit non-goals: [docs/scope.md](docs/scope.md).
+
+---
+
 ## Supported Hardware
 
 | Platform | Status | Notes |
@@ -74,6 +101,16 @@ pio run -e teensy40_calibration -t upload
 pio run -e teensy40 -t upload
 ```
 
+### Required pre-flight steps (PROPS OFF)
+
+Before powering motors for the first time, you must complete:
+
+1. **Failsafe detection** (`f` command) — measures TX-off channel values so the firmware can stop motors on radio loss. See [docs/0_quickstart.md](docs/0_quickstart.md) Part 4a and [docs/2_calibration_guide.md](docs/2_calibration_guide.md) "Part: Failsafe Detection".
+2. **ESC endpoint calibration** (`e` command) — teaches each ESC the min/max throttle range. See [docs/0_quickstart.md](docs/0_quickstart.md) Part 4b and [docs/2_calibration_guide.md](docs/2_calibration_guide.md) "Part: ESC Endpoint Calibration".
+3. **PID sanity check** (`g` command) — tethered hover verification, especially if your airframe is not a 5" quad-X. See [docs/0_quickstart.md](docs/0_quickstart.md) Part 4c.
+
+For the full hardware-bring-up sequence (all 17 hardware-gated items in safe-first order), use [docs/findings/bench_validation_runbook_2026-05-27.md](docs/findings/bench_validation_runbook_2026-05-27.md).
+
 ---
 
 ## The Two-Build Workflow
@@ -96,7 +133,7 @@ flowchart TD
 
 - The **live build** is small and fast (no debug code, no calibration overhead)
 - The **calibration build** includes guided routines, serial command interface, and debug output
-- Calibration values are "baked in" to config.h for reliability — no SD cards, no runtime config files
+- IMU offsets persist across reflashes via the `CalibrationStorage` HAL (calibration builds). Scale factors and other tuning values are still compile-time `#define`s today; the calibration UI emits the values for you to paste once.
 
 ---
 
@@ -248,7 +285,7 @@ Edit with your WiFi network name and password. The ESP32 connects to your existi
 #define WIFI_PASSWORD   "YourPassword"
 ```
 
-For university/eduroam networks, uncomment the WPA2-Enterprise section.
+For university/eduroam networks, set `WIFI_AUTH_MODE_ENTERPRISE` in `config.h` AND populate the EAP fields in `wifi_credentials.h` (see [docs/esp32_wifi_onboarding.md](docs/esp32_wifi_onboarding.md)).
 
 **That's it.** Everything else is handled by build flags in `platformio.ini`.
 
@@ -295,15 +332,17 @@ flight_controller/
 | Document | Description |
 |----------|-------------|
 | [docs/architecture/INDEX.md](docs/architecture/INDEX.md) | Layered architecture diagrams (system overview → subsystems → component detail) |
-| [docs/0_quickstart.md](docs/0_quickstart.md) | 60-minute setup guide |
+| [docs/0_quickstart.md](docs/0_quickstart.md) | 60-minute setup guide (Parts 4a/4b/4c cover failsafe, ESC endpoints, and PID sanity — all required pre-flight) |
 | [docs/1_hardware_setup.md](docs/1_hardware_setup.md) | Complete wiring guide with diagrams and BOM |
-| [docs/2_calibration_guide.md](docs/2_calibration_guide.md) | Detailed calibration procedures |
+| [docs/2_calibration_guide.md](docs/2_calibration_guide.md) | Detailed calibration procedures (incl. Failsafe Detection + ESC Endpoint Calibration walkthroughs) |
 | [docs/3_troubleshooting.md](docs/3_troubleshooting.md) | Problem-solving reference |
 | [docs/diagnose_decision_tree.md](docs/diagnose_decision_tree.md) | Decision-tree symptom flow |
 | [docs/pid-tuning-guide.md](docs/pid-tuning-guide.md) | `g`-command PID tuning workflow |
+| [docs/build_matrix.md](docs/build_matrix.md) | Per-env build status — flash / RAM / warnings, verified vs unverified this session |
+| [docs/findings/bench_validation_runbook_2026-05-27.md](docs/findings/bench_validation_runbook_2026-05-27.md) | Safe-first bench sequence for the 17 hardware-deferred items (read before first power-on) |
 | [docs/teensy_wiring.md](docs/teensy_wiring.md) | Teensy wiring diagrams |
 | [docs/esp32_wiring.md](docs/esp32_wiring.md) | ESP32 wiring diagrams |
-| [docs/esp32_wifi_onboarding.md](docs/esp32_wifi_onboarding.md) | First-time ESP32 WiFi credentials setup |
+| [docs/esp32_wifi_onboarding.md](docs/esp32_wifi_onboarding.md) | First-time ESP32 WiFi credentials setup (uses `include/wifi_credentials.h.example` template) |
 | [docs/scope.md](docs/scope.md) | Project scope and boundaries |
 | [docs/roadmap.md](docs/roadmap.md) | Feature roadmap |
 

@@ -239,11 +239,11 @@ build_test "test_pid_nan_safety" \
 
 build_test "test_balance_app_encoder" \
     "-DUNIT_TEST -DNATIVE_TEST -DUSE_WHEEL_ENCODERS" \
-    "${SRC_BAL_FULL} src/sensors/wheel_encoder.cpp src/control/position_loop.cpp"
+    "${SRC_BAL_FULL} src/sensors/wheel_encoder.cpp src/control/position_loop.cpp src/control/cascade_self_audit.cpp"
 
 build_test "test_balance_app_pwm_discovery" \
     "-DUNIT_TEST -DNATIVE_TEST -DUSE_WHEEL_ENCODERS" \
-    "${SRC_BAL_FULL} src/sensors/wheel_encoder.cpp src/control/position_loop.cpp" \
+    "${SRC_BAL_FULL} src/sensors/wheel_encoder.cpp src/control/position_loop.cpp src/control/cascade_self_audit.cpp" \
     "-fpermissive"
 
 # Workstream G (item G4) — BalanceApp telemetry-accessor tests. Same native
@@ -252,7 +252,7 @@ build_test "test_balance_app_pwm_discovery" \
 # backend. Links position_loop.cpp for the PositionLoop pass-throughs.
 build_test "test_balance_telemetry" \
     "-DUNIT_TEST -DNATIVE_TEST -DUSE_WHEEL_ENCODERS" \
-    "${SRC_BAL_FULL} src/sensors/wheel_encoder.cpp src/control/position_loop.cpp"
+    "${SRC_BAL_FULL} src/sensors/wheel_encoder.cpp src/control/position_loop.cpp src/control/cascade_self_audit.cpp"
 
 # HELD state-machine test — the canonical reason this rewrite exists.
 # REQUIRES -DUSE_BALANCE_HELD_DETECTION (also guarded by #error inside
@@ -286,13 +286,20 @@ build_test "test_l298n_motor" \
 # ----------------------------------------------------------------------------
 build_test "test_position_loop" \
     "-Iinclude -Isrc" \
-    "src/control/position_loop.cpp" \
+    "src/control/position_loop.cpp src/control/cascade_self_audit.cpp" \
     "-fpermissive"
 
 build_test "test_position_gain_derivation" \
     "-Iinclude -Isrc" \
-    "src/control/position_loop.cpp" \
+    "src/control/position_loop.cpp src/control/cascade_self_audit.cpp" \
     "-fpermissive"
+
+# M-4 (roadmap) — CascadeSelfAudit: runtime K_VEL self-confirmation that
+# closes the deferred F-3 bench observation by measuring closed-loop damping
+# from position_m step responses. Pure module: link only cascade_self_audit.cpp.
+build_test "test_cascade_self_audit" \
+    "-Iinclude -Isrc" \
+    "src/control/cascade_self_audit.cpp"
 
 # ----------------------------------------------------------------------------
 # Unity-framework tests (compile only if unity is available on the host).

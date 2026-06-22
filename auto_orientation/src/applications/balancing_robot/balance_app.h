@@ -89,7 +89,10 @@
 enum class BalanceAppState : uint8_t {
     IDLE              = 0,
     CAPTURE_MOUNTING  = 1,
-    AUTO_TUNE         = 2,
+    // value 2 was AUTO_TUNE — retired FIN-05 (2026-06-21). Numeric slot left
+    // unused so on-the-wire state telemetry (drain_state_log byte / `s` name)
+    // keeps the same numbering for IDs >2. Reusing slot 2 would invalidate any
+    // logged-state-byte history captured before this excision.
     RUN               = 3,
     HELD              = 4,   // bot picked up — motors off, ready to resume
     FALLEN            = 5,   // sticky tipover — operator must restart
@@ -425,10 +428,10 @@ struct BalanceAppConfig {
     float    tilt_recovery_deg;         // unused (FALLEN is sticky); kept for API stability
     uint8_t  recovery_consecutive_samples;  // default 30 (~150 ms at 200 Hz)
 
-    // Auto-tune
-    float    tune_amplitude;            // relay amp in PWM units, default 150
-    float    tune_hysteresis;           // default 0.5°
-    float    tune_max_duration_sec;     // default 30
+    // tune_amplitude / tune_hysteresis / tune_max_duration_sec fields retired
+    // (FIN-05) — AUTO_TUNE state is gone; the relay-feedback strategy that
+    // consumed them is no longer reachable from any code path. BOOTSTRAP +
+    // RUN-time RLS adaptation replaces this whole subsystem.
 
     // Output clamps (PWM range)
     float    output_min;                // default -255
@@ -540,7 +543,7 @@ public:
         switch (static_cast<BalanceAppState>(pending)) {
             case BalanceAppState::IDLE:             out.println(F("IDLE")); break;
             case BalanceAppState::CAPTURE_MOUNTING: out.println(F("CAP")); break;
-            case BalanceAppState::AUTO_TUNE:        out.println(F("TUNE")); break;
+            // AUTO_TUNE case retired (FIN-05) — enum value gone; falls into default.
             case BalanceAppState::RUN:              out.println(F("RUN")); break;
             case BalanceAppState::HELD:             out.println(F("HELD")); break;
             case BalanceAppState::FALLEN:           out.println(F("FALLEN")); break;
@@ -558,7 +561,6 @@ public:
      * Short press semantics by state:
      *   IDLE              -> kick off CAPTURE_MOUNTING
      *   CAPTURE_MOUNTING  -> no-op (let it finish or time-out)
-     *   AUTO_TUNE         -> no-op
      *   RUN               -> no-op (we don't re-tune mid-flight without
      *                       explicit operator intent — see on_long_press)
      *   HELD              -> force-resume to RUN (skip dwell)
@@ -571,9 +573,9 @@ public:
      *   - Anywhere: request abort via BalanceSafety (the state machine
      *     converts that into a transition to IDLE on the next step()).
      *   - Additionally, if we're already in IDLE: skip mounting capture
-     *     and jump straight into AUTO_TUNE using whatever offset is
-     *     currently loaded (caller is expected to have deserialized a
-     *     saved AutoOrientRecord before this point).
+     *     and jump straight into BOOTSTRAP using whatever offset is
+     *     currently loaded (was AUTO_TUNE pre-Phase 4.10c; AUTO_TUNE state
+     *     itself was retired entirely in FIN-05).
      */
     void on_long_press(uint32_t now_ms);
 
@@ -687,6 +689,11 @@ public:
     float get_k_pos() const        { return position_loop_.k_pos(); }
     float get_k_vel() const        { return position_loop_.k_vel(); }
     float get_pos_leak() const     { return position_loop_.pos_leak(); }
+    // M-4 — runtime K_VEL self-confirmation verdict (UNKNOWN/OK/HIGH/LOW).
+    // See cascade_self_audit.h for the design. Informational telemetry only.
+    CascadeAuditVerdict get_audit_verdict() const {
+        return position_loop_.audit_verdict();
+    }
 #endif
 
     // HELD-entry reason codes (audit P1-SM-3). Diagnostic byte stamped by each

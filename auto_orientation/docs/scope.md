@@ -466,7 +466,7 @@ See [findings/application_catalog.md](findings/application_catalog.md) for the f
 - BNO055 driver compiles and matches `OrientationSensor` API
 - Auto-mounting-angle capture saves a quaternion to EEPROM and restores on boot
 - Generic `AutoPIDTuner` with relay-feedback strategy compiles on Mega
-- `src/applications/balancing_robot/` skeleton builds under `arduino_mega_balancing` env
+- `src/applications/balancing_robot/` skeleton builds under `mega_balance` env
 - All existing 143+ tests still pass
 - Scenario test using replayed `.ino` trajectory passes
 

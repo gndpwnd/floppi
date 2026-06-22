@@ -5,6 +5,8 @@
 
 #include "position_loop.h"
 
+#include <math.h>  // isnan, isinf — defensive NaN/Inf guard in update()
+
 namespace {
 
 inline float clampf(float v, float lo, float hi) {
@@ -32,6 +34,11 @@ void PositionLoop::reset() {
     // once at BOOTSTRAP finalise, while reset() runs on every RUN entry.
     position_m_     = 0.0f;
     last_nudge_deg_ = 0.0f;
+    // M-4 — also reset the damping audit so every fresh RUN re-confirms
+    // K_VEL from scratch (verdict starts at UNKNOWN, becomes OK/HIGH/LOW
+    // after POSLOOP_AUDIT_MIN_EVENTS step events). Lives in the same
+    // lifecycle bucket as the integrator: per-run, not per-bootstrap.
+    audit_.reset();
 }
 
 void PositionLoop::set_gains(float k_pos, float k_vel) {
@@ -51,7 +58,12 @@ void PositionLoop::set_pos_leak(float pos_leak) {
 float PositionLoop::update(float wheel_vel, float dt) {
     // Guard: a zero / negative dt (clock not advanced, or caller mis-ordered)
     // would corrupt the integrator and the slew limit. Hold the last value.
-    if (dt <= 0.0f) {
+    // Also reject non-finite (NaN/Inf) wheel_vel or dt (audit P3 / P1-003
+    // parity): a NaN encoder reading would poison position_m_ permanently
+    // (NaN propagates through *= and +=) and break the slew/clamp comparisons
+    // (all NaN comparisons are false). Hold the cached nudge, no integrator
+    // advance, no fault — same neutral pattern as PID::compute() on NaN input.
+    if (!isfinite(wheel_vel) || !isfinite(dt) || dt <= 0.0f) {
         return last_nudge_deg_;
     }
 
@@ -86,5 +98,14 @@ float PositionLoop::update(float wheel_vel, float dt) {
     }
 
     last_nudge_deg_ = nudge;
+
+    // M-4 — feed the (post-leak) position to the runtime damping audit so it
+    // observes the same trajectory the outer loop is shaping. The now_ms
+    // argument is currently unused inside the classifier (window counted in
+    // ticks); pass 0 to keep update()'s signature unchanged for all callers.
+    // Done AFTER the integrator update so we record what the bot will actually
+    // see this tick.
+    audit_.push_sample(position_m_, 0);
+
     return nudge;
 }

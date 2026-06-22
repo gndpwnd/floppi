@@ -56,6 +56,19 @@ class TuningSession {
   /** Print the one-line stage + working-gains status. */
   void print_status();
 
+  /**
+   * Transition IDLE -> STAGE_P without requiring the operator to type 't'.
+   * Used by the '!' first-time-setup macro in main.cpp to chain BNO055
+   * calibration directly into guided PID tuning entry. The macro removes
+   * the keystroke friction only — the PID stages themselves still require
+   * operator judgment via +/-/n.
+   *
+   * @return true on success (was IDLE, now in STAGE_P); false if the
+   *         session was already in a non-IDLE stage (caller should not
+   *         clobber an active tune).
+   */
+  bool auto_enter_after_cal();
+
  private:
   // Apply the current stage's gain mask and push live to the balance app.
   void apply_masked_();

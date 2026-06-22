@@ -39,7 +39,7 @@
 | Jumper wires | ~20 | M-M and M-F. |
 | Battery holder for 18650 | 1 | Optional but tidier than soldering tabs. |
 
-The IMU choice (BNO055 vs BNO085) is yours. Both are supported via the framework's runtime polymorphism (see [findings/bno055_driver_and_multi_imu_strategy.md](../../findings/bno055_driver_and_multi_imu_strategy.md)). BNO055 is the Phase 4 default because the build env `arduino_mega_balancing` flips `-DUSE_BNO055`.
+The IMU choice (BNO055 vs BNO085) is yours. Both are supported via the framework's runtime polymorphism (see [findings/bno055_driver_and_multi_imu_strategy.md](../../findings/bno055_driver_and_multi_imu_strategy.md)). BNO055 is the Phase 4 default because the build env `mega_balance` flips `-DUSE_BNO055`.
 
 ---
 
@@ -107,27 +107,24 @@ The framework's I2C driver expects address `0x28`. If you must run at `0x29` (AD
         ┌─────────────────────────────────────────────┐
         │           Arduino Mega 2560                 │
         │                                             │
-        │ 3.3V ──┐                                    │
-        │ GND ───┼──┐                                 │
-        │        │  │                                 │
-        │ Pin 20 (SDA) ────┐                          │
-        │ Pin 21 (SCL) ────┼──┐                       │
-        │        │  │     │  │                       │
-        │ Pin 4 ─┼──┼──┐  │  │                       │
-        │ Pin 13 (built-in LED)                      │
-        │ Pin 11 ┼──┼──┼──┼──┼──┐                    │
-        │        │  │  │  │  │  │                    │
-        │ Pin 5 (PWM) ──┐    │  │                    │
-        │ Pin 6 ────────┼──┐ │  │                    │
-        │ Pin 7 ────────┼──┼─┼┐ │                    │
-        │ Pin 8 ────────┼──┼─┼┼─┼┐                   │
-        │ Pin 9 ────────┼──┼─┼┼─┼┼┐                  │
-        │ Pin 10 (PWM) ─┼──┼─┼┼─┼┼┼┐                 │
-        │ VIN ◄── 5V from MT3608 boost                │
-        └────────│──┘  │ │  │ │││││──────────────────┘
-                 │     │ │  │ │││││
-                 │     │ │  │ │││││
-        ┌────────┴─────┼─┼──┼─┼┼┼┼┼─┐
+        │ 3.3V ────────────────────────► IMU VCC      │
+        │ GND  ────────────────────────► common GND   │
+        │ Pin 20 (SDA) ────────────────► IMU SDA      │
+        │ Pin 21 (SCL) ────────────────► IMU SCL      │
+        │ Pin 4 ───────────────────────► Button (→GND)│
+        │ Pin 11 ──────────────────────► Buzzer (+)   │
+        │ Pin 13 (built-in LED)                       │
+        │                                             │
+        │ Pin 5  (PWM) ────────────────► L298N ENA    │
+        │ Pin 6 ───────────────────────► L298N IN1    │
+        │ Pin 7 ───────────────────────► L298N IN2    │
+        │ Pin 9 ───────────────────────► L298N IN3    │ (pin 9 = IN3)
+        │ Pin 8 ───────────────────────► L298N IN4    │ (pin 8 = IN4)
+        │ Pin 10 (PWM) ────────────────► L298N ENB    │
+        │ VIN  ◄── 5V from MT3608 boost               │
+        └─────────────────────────────────────────────┘
+
+        ┌────────────────────────────┐
         │  BNO055 / BNO085           │
         │   VCC ← 3.3V               │
         │   GND ← GND                │
@@ -136,19 +133,19 @@ The framework's I2C driver expects address `0x28`. If you must run at `0x29` (AD
         │   ADR ← GND (→ 0x28)       │
         └────────────────────────────┘
 
-                       ┌────────────────────────────┐
-                       │  L298N H-Bridge            │
-                       │  ENA ← Pin 5  (PWM)        │
-                       │  IN1 ← Pin 6               │
-                       │  IN2 ← Pin 7               │
-                       │  IN3 ← Pin 9               │
-                       │  IN4 ← Pin 8               │
-                       │  ENB ← Pin 10 (PWM)        │
-                       │  12V ← Boost +5V           │
-                       │  GND ← GND                 │
-                       │  OUT1/2 → Motor A          │
-                       │  OUT3/4 → Motor B          │
-                       └────────────────────────────┘
+        ┌──────────────────────────────────────────┐
+        │  L298N H-Bridge                          │
+        │   ENA ← Pin 5  (PWM)                     │
+        │   IN1 ← Pin 6                            │
+        │   IN2 ← Pin 7                            │
+        │   IN3 ← Pin 9    ← note: pin 9, not 8    │
+        │   IN4 ← Pin 8    ← note: pin 8, not 9    │
+        │   ENB ← Pin 10 (PWM)                     │
+        │   12V ← Boost +5V                        │
+        │   GND ← GND                              │
+        │   OUT1/2 → Motor A                       │
+        │   OUT3/4 → Motor B                       │
+        └──────────────────────────────────────────┘
 
    Button:                       Buzzer (optional):
    Pin 4 ───┐                    Pin 11 ──── (+) buzzer (-) ── GND
@@ -162,6 +159,8 @@ The framework's I2C driver expects address `0x28`. If you must run at `0x29` (AD
        │
        └── MT3608 boost (set to 5.0 V) ───► Mega VIN + L298N 12V pin + 5V rail
 ```
+
+> **L298N IN3/IN4 mapping**: pin 9 → IN3, pin 8 → IN4 (intentional, matches the [Pin map §Arduino Mega 2560](#pin-map) and [§L298N pin map](#l298n-pin-map) tables). Swapping these is the most common wiring mistake — the bot will appear to bootstrap but drive the wrong motor wheel.
 
 ---
 
@@ -209,7 +208,14 @@ Motor A leads → L298N OUT1, OUT2
 Motor B leads → L298N OUT3, OUT4
 ```
 
-Polarity doesn't matter yet — the framework's mounting calibration step will discover which direction is "forward". If you find one motor fights the other after calibration, swap one motor's leads at the L298N.
+**Motor polarity must be correct before BOOTSTRAP.** The Mega `mega_balance` build's BOOTSTRAP routine fires PWM pulses and measures the wheel-velocity response; if polarity is reversed the response is zero (or the wrong sign) and BOOTSTRAP aborts. Verify by:
+
+1. Flash `mega_balance` and open serial at 115200 baud.
+2. Send `a` to abort to IDLE.
+3. Send `b` to fire BOOTSTRAP.
+4. If the run reports `failure_reason=k_motor_zero` (see [USER_GUIDE.md §5.1](USER_GUIDE.md#51-bootstrap-failure_reason-codes)), swap one motor's leads at the L298N OUT terminals (Motor A: swap OUT1↔OUT2; Motor B: swap OUT3↔OUT4) and re-run `b`.
+
+Mount-capture (`c`) is a **separate concern** — it measures the pitch offset between the IMU's mounted orientation and true upright. It does not discover motor polarity, and it cannot rescue a reversed-polarity bot.
 
 ### 5. Wire the button
 

@@ -51,7 +51,7 @@ Pass criterion: `pio test -e native_test` runs all balance-stack tests with 100%
 
 Before powering motors back on:
 
-1. ✅ BNO055 crystal flag — fixed (`-D BNO055_NO_EXT_CRYSTAL` in default `arduino_uno_balancing` build)
+1. ✅ BNO055 crystal flag — fixed (`-D BNO055_NO_EXT_CRYSTAL` in default `arduino_uno_minimal` build)
 2. ✅ Mount offset re-captured at 0.95° (against working sensor)
 3. ⏳ Sim shows the algorithm stabilises an idealised plant
 4. ⏳ Sim shows the algorithm survives realistic IMU + motor noise
