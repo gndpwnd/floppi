@@ -11,5 +11,43 @@
   "project_root": ".",
   "auto_git_cleanup": true,
   "max_perspectives_per_question": 3,
-  "client_script_path": "researchhub_client.py"
+  "client_script_path": "researchhub_client.py",
+  "topics": [
+    {
+      "name": "Aerodynamic Frame Design",
+      "subtopics": [
+        "Drag reduction for multirotor frames",
+        "Propeller-frame interaction effects",
+        "Ducted vs open propeller configurations",
+        "Airflow optimization around frame"
+      ]
+    },
+    {
+      "name": "Vibration Isolation",
+      "subtopics": [
+        "Motor vibration damping methods",
+        "Soft-mount and hard-mount strategies",
+        "Resonance frequency analysis",
+        "Vibration impact on IMU sensors"
+      ]
+    },
+    {
+      "name": "3D-Printable Structural Analysis",
+      "subtopics": [
+        "FDM material selection (PLA, PETG, Nylon, CF)",
+        "Layer orientation and strength optimization",
+        "FEA for 3D-printed drone frames",
+        "Weight-to-strength ratio optimization"
+      ]
+    },
+    {
+      "name": "Sensor Placement",
+      "subtopics": [
+        "Optimal IMU mounting location",
+        "GPS antenna placement considerations",
+        "Camera and lidar integration mounts",
+        "EMI shielding for sensitive electronics"
+      ]
+    }
+  ]
 }

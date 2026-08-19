@@ -1,3 +1,0 @@
-# ResearchHub managed folder — generated research output tracked in git
-# This file overrides parent .gitignore rules that may exclude markdown
-!*.md

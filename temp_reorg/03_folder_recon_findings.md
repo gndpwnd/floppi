@@ -377,6 +377,11 @@ Per user's Q-E answer, the target is **centralize into `research/literature/`** 
 
 ---
 
+> **⚠ SUPERSEDED 2026-08-18 (routing conclusions only).** The 2026-08-18 operator rulings make
+> SwarmLoc and GravityProbe *mined*, not migrated, drop the DARPA repo, and unsettle
+> `drone_frame_modeling`. The recon below (what is on disk, and why) still stands; its **routing
+> conclusions do not**. Current routing: `11_routing_v2_2026-08-18.md`. Rulings: `10_decision_queue.md`.
+
 ## 14. Summary — cross-inspection routing table
 
 | Source area | Primary target | Split target(s) | Confidence |
@@ -459,6 +464,6 @@ Per user's Q-E answer, the target is **centralize into `research/literature/`** 
 
 ## 17. What now
 
-- Every `HIGH` row is safe to execute against once the new GitLab repos exist. Consumer of this doc: the next planning doc (per master plan §7) — `05_gitlab_operations_checklist.md` should turn the routing table into ordered CRUD steps.
-- Every `MED`/`LOW` row wants a 5-30 min per-item deeper read before that step lands. Suggest a `04_per_file_decisions.md` doc to burn those down.
+- Every `HIGH` row is safe to execute against once the new GitLab repos exist. Consumer of this doc: the next planning doc (per master plan §7) — `09_gitlab_operations_checklist.md` should turn the routing table into ordered CRUD steps.
+- Every `MED`/`LOW` row wants a 5-30 min per-item deeper read before that step lands. Suggest a `04_per_file_decisions.md` *(never created — those per-file decisions were resolved directly in `11_routing_v2_2026-08-18.md` §2)* doc to burn those down.
 - **REPLAN TRIGGER items in §16 (particularly #3 `GravityProbe/` — a possible third source repo)** should surface to the user before Phase 1 execution.

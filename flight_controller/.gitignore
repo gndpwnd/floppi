@@ -7,3 +7,7 @@
 # Keep validation metadata
 !.researchhub/.db-backups/metadata.json
 !.researchhub/.db-backups/validation-log.txt
+# researchhub repo_untrack fence (2026-07-11)
+docs/findings/sources/
+generated/
+sources/

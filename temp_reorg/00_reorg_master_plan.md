@@ -55,6 +55,11 @@ The **A / research** category now covers two patterns: (1) a topic-specific pure
 
 ---
 
+> **⚠ SUPERSEDED 2026-08-18 (routing conclusions only).** The 2026-08-18 operator rulings make
+> SwarmLoc and GravityProbe *mined*, not migrated, drop the DARPA repo, and unsettle
+> `drone_frame_modeling`. The recon below (what is on disk, and why) still stands; its **routing
+> conclusions do not**. Current routing: `11_routing_v2_2026-08-18.md`. Rulings: `10_decision_queue.md`.
+
 ## 3. Source → target mapping (proposed; open items called out)
 
 **Migration philosophy (locked this round):** content migrates cleanly into the new repos. This section is a **one-time migration reference only** — there is no ongoing source-provenance tracking per mini-project (the multi-source SOURCE_MAP pattern was considered and dropped). Old source repos stay on the user's local disk indefinitely.
@@ -189,7 +194,7 @@ Open design work — what does the `research` repo actually contain?
 - `automated_tools/` — hookup point for the centralized automated-research pipeline
 - `INDEX.md` at root?
 - Per-topic subfolders (`orientation/`, `positioning/`, `swarm/`) or flat?
-Full internal design → `04_research_repo_scope.md` (next round).
+Full internal design → `05_research_repo_scope.md` (next round).
 
 #### Q-M. `swarm_api` scope — drone-specific or general?
 Is the swarm API strictly for the drone project, or does it aim to be a general multi-agent HTTP/WS coordination layer usable outside drones? Impacts naming + README framing.

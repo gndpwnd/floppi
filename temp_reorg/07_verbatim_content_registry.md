@@ -21,6 +21,18 @@
 
 ---
 
+
+### 2. Operator charter notes, 2026-08-18
+
+- **Preserved at:** `temp_reorg/13_operator_charter_notes_2026-08-18.md`
+- **Source:** `/home/devel/lowprofiledronegurus/tmp.md` (754 bytes, non-git directory, **no other copy on disk**)
+- **Why verbatim:** it is the operator's own words and the origin of rulings **R1** (SwarmLoc/GravityProbe
+  mined not migrated), **R4** (engineer360 keeps what hits its scope; `drone_frame_modeling` may dissolve),
+  **R6** (legacy repos are read-only) and **R7** (`sensor_interactions` is the successor). Those rulings
+  reshaped the whole ledger; paraphrase is not good enough and the single copy was at risk.
+- **Captured:** 2026-08-18, flagged by the `lowprofiledronegurus` session.
+- **Rule:** never edit the body. Corrections go in `10_decision_queue.md`.
+
 ## Additional files to add here as they're identified
 
 Reserved for future entries. Candidate additions:

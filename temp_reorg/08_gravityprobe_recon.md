@@ -1,5 +1,16 @@
 # 08 — GravityProbe folder recon + contents-based routing recommendations
 
+> **REDACTION NOTE (2026-08-19).** This document previously reproduced a real WiFi SSID and
+> password in cleartext at three points (§3.7, §4.4, §6). Both literals have been replaced with
+> `<REDACTED-SSID>` / `<REDACTED-PASSWORD>`. **The finding is unchanged and still actionable** — the
+> credential remains in `~/GravityProbe/teensy_esp8266/teensy_esp8266.ino` lines 5-6 (commit
+> `ceb4acd`, reachable from `origin/data-analysis`, i.e. live on GitHub). Redacted here so the
+> planning corpus does not become a second copy; rotation is the operator's call and is currently
+> **parked** by their ruling that WiFi security is not the priority. Caught by the adversarial
+> verifier on the GravityProbe mining extract.
+
+
+
 **Status:** 2026-07-09 recon pass. Read-only inspection of `~/GravityProbe/` (data-analysis branch), the confirmed third source repo for the reorg into the flat `lowprofiledronegurus` GitLab group.
 **Scope:** Every top-level folder + every top-level doc + representative file reads for each subfolder. Every recommendation is grounded in an observed filename, README fragment, or file body.
 **Not in scope:** copying, moving, git operations, GitLab CRUD, provenance tracking (user has dropped SOURCE_MAP per-mini).
@@ -189,7 +200,7 @@ Target taxonomy (unchanged from 03):
 
 **Path:** `/home/devel/GravityProbe/teensy_esp8266/teensy_esp8266.ino` (1.0 KB)
 
-**Contents:** ESP8266 (not the Teensy itself despite folder name) `ESP8266WebServer` on port 80. Hard-coded SSID `"Brown_Bear"` + password `"5n!cKer*"` (home wifi — see §4.4). Serves `"Hello, World!"` at `/`.
+**Contents:** ESP8266 (not the Teensy itself despite folder name) `ESP8266WebServer` on port 80. Hard-coded SSID `"<REDACTED-SSID>"` + password `"<REDACTED-PASSWORD>"` (home wifi — see §4.4). Serves `"Hello, World!"` at `/`.
 
 **Primary purpose:** ESP8266 home-WiFi web-server hello-world bring-up. Simpler than §3.2. Note: this is the ESP8266 side of the Teensy-plus-ESP8266 combo where the ESP8266 acts as a WiFi coprocessor for the Teensy 4.0 (which lacks built-in WiFi).
 
@@ -302,7 +313,7 @@ Referenced by §3.1 and §3.3 as `#include "wifi_credentials.h"`. Not present in
 
 ### 4.4 Hardcoded credentials in-tree (§3.7)
 
-`teensy_esp8266.ino` contains `const char* ssid = "Brown_Bear"; const char* password = "5n!cKer*";` — a live home WiFi credential is in git history. When migrating, replace inline with the `wifi_credentials.h` pattern. This is a low-severity leak (private WLAN, no PII), but it's worth noting and NOT reproducing in the new repo. See §6.
+`teensy_esp8266.ino` contains `const char* ssid = "<REDACTED-SSID>"; const char* password = "<REDACTED-PASSWORD>";` — a live home WiFi credential is in git history. When migrating, replace inline with the `wifi_credentials.h` pattern. This is a low-severity leak (private WLAN, no PII), but it's worth noting and NOT reproducing in the new repo. See §6.
 
 ### 4.5 Likely duplicate content vs floppi (§3.10, §3.11, §3.5)
 
@@ -385,7 +396,7 @@ Every top-level entry → one recommended target repo + confidence:
 
 ## 6. Surprises / replan triggers
 
-1. **CREDENTIAL LEAK (§4.4).** `teensy_esp8266/teensy_esp8266.ino` embeds `"Brown_Bear"` + `"5n!cKer*"` in git history. Not a reorg-blocking issue, but the migration checklist agent (C) should include a "sanitize credentials" step for this specific file. Recommend the credential be rotated by the user separately; migration should not carry the raw values into the new repo. **This is the only material surprise.**
+1. **CREDENTIAL LEAK (§4.4).** `teensy_esp8266/teensy_esp8266.ino` embeds `"<REDACTED-SSID>"` + `"<REDACTED-PASSWORD>"` in git history. Not a reorg-blocking issue, but the migration checklist agent (C) should include a "sanitize credentials" step for this specific file. Recommend the credential be rotated by the user separately; migration should not carry the raw values into the new repo. **This is the only material surprise.**
 
 2. **Folder-name mismatches (§4.1, §4.2).** Three of twelve folder names lie about what's inside: `_wpa3_eap` is actually WPA2, and both `teensy_esp8266*` folders contain no Teensy code. Not a replan trigger — rename during migration.
 

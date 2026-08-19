@@ -11,5 +11,43 @@
   "project_root": ".",
   "auto_git_cleanup": true,
   "max_perspectives_per_question": 3,
-  "client_script_path": "researchhub_client.py"
+  "client_script_path": "researchhub_client.py",
+  "topics": [
+    {
+      "name": "Attitude Estimation",
+      "subtopics": [
+        "Quaternion-based attitude representation",
+        "Complementary and Mahony filters",
+        "Extended Kalman Filter for orientation",
+        "Gyroscope bias estimation"
+      ]
+    },
+    {
+      "name": "Flight Control Algorithms",
+      "subtopics": [
+        "PID tuning for multirotor control",
+        "LQR state-space control design",
+        "Model Predictive Control for UAVs",
+        "Rate and angle mode controllers"
+      ]
+    },
+    {
+      "name": "IMU Sensor Fusion",
+      "subtopics": [
+        "Accelerometer and gyroscope fusion",
+        "Magnetometer integration and calibration",
+        "Barometer altitude estimation",
+        "Multi-sensor redundancy"
+      ]
+    },
+    {
+      "name": "Acrobatic Trajectory Planning",
+      "subtopics": [
+        "Aggressive maneuver planning",
+        "Minimum-snap trajectory generation",
+        "Flip and roll trajectory optimization",
+        "Safety envelope and recovery"
+      ]
+    }
+  ]
 }

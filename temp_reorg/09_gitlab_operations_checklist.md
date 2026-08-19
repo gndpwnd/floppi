@@ -17,6 +17,19 @@
 
 ---
 
+> **⚠ SUPERSEDED IN PART — 2026-08-19.** The phases, the CRUD discipline and the STOP-marker concept still
+> govern. **The repo counts and the create-list are stale:** the ledger went 13 → **9 active + 1 deferred**.
+> `darpa_lift_2026`, `communication_hardware` and `networking_pocs` are **dropped — do not create them**.
+> Only **`swarm_communication_protocol`**, **`swarm_api`** and **`research`** remain to create.
+> Several STOP markers are now ruled (see `10_decision_queue.md`): #1 GravityProbe routing and #3
+> `GPS_module` are moot under R1/R6 (mined, not migrated); #4 and #5 per-file splits are settled in
+> `11_routing_v2` §2; #7 pointer wording is superseded by the `PROVENANCE.md` spec in
+> `18_provenance_template.md` (N-10: no history transfer).
+> **Add before executing:** the hazard gates in `11_routing_v2` §5 — the 20 extension-less ELF binaries,
+> and floppi's `post-commit`/`post-merge` hooks firing ResearchHub on a memory-constrained host.
+> Current authorities: `11_routing_v2_2026-08-18.md` (routing) · `10_decision_queue.md` (rulings) ·
+> `INDEX.md` (what is live).
+
 ## 0. How to use this checklist
 
 - Work top-to-bottom. Phases are ordered by dependency — do not skip forward without reason.

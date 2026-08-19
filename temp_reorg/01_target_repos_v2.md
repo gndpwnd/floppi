@@ -1,5 +1,14 @@
 # Target repos v2 — per-repo purpose, scope, source mapping
 
+> **⚠ SUPERSEDED IN PART — 2026-08-19.** The **repo LIST below is stale.** The ledger went 13 → **9
+> active + 1 deferred**: `darpa_lift_2026`, `communication_hardware` and `networking_pocs` are
+> **DROPPED** (rulings R1/R2 — SwarmLoc and GravityProbe are mined, not migrated, and the DARPA
+> challenge is dropped), and `drone_frame_modeling` is **re-scoped** to CAD/mesh/BOM/print-config only
+> (N-9). The per-repo **purpose, category, README-seed and folder-sketch detail below is still
+> useful** — that is why this doc is kept. Current repo list + routing:
+> `11_routing_v2_2026-08-18.md`. Rulings: `10_decision_queue.md`. Index: `INDEX.md`.
+
+
 **Status:** 2026-07-09 draft. Supersedes the target-repo table in `00_reorg_master_plan.md` §2 with Q-A/Q-B/Q-E/Q-F decisions applied. Names marked LOW confidence are placeholders pending user sign-off.
 
 ## 0. Purpose
@@ -136,7 +145,7 @@ This doc defines the 12-13 repos under the flat GitLab group `lowprofiledronegur
   - **UWB ranging** — hardware POC in `communication_hardware`, multilateration theory + findings in `position_denial_research`.
   - **Camera extrinsic calibration** — calibration POC in `sensor_interactions/camera/`, theory tie-in in `auto_orientation_research`.
 - **POC → dedicated-repo graduation.** When a POC in a `B` repo matures into shippable code, it moves to the relevant `C` repo (typically `flight_controller/lib/` or `swarm_api/`). Original POC folder stays in place with a `STATUS.md` noting "graduated to <repo>@<sha>" so history is preserved. Do not delete graduated POC folders.
-- **Cross-linking convention.** Use **absolute GitLab URLs** for links across repos (survives clones, permalinks). Use **relative paths** only within the same repo. Formalize in the shared README template (`04_readme_template.md` when drafted).
+- **Cross-linking convention.** Use **absolute GitLab URLs** for links across repos (survives clones, permalinks). Use **relative paths** only within the same repo. Formalize in the shared README template (`06_readme_template.md` when drafted).
 - **Literature dual-homing.** Datasheets used by exactly one POC live in that POC repo's `references/`. Broader survey papers stay in `research`. If in doubt, keep in `research` — distribution is cheaper than reunion.
 - **Vendored code.** `dRehmFlight-master` stays inside `flight_controller/vendored/`. No standalone repo. Apply the same rule to any future upstream vendored code (keep near consumer, do not multiply repos).
 - **`auto_orientation_research` vehicle-agnostic framing.** Because orientation research applies to rovers/land vehicles too, README + doc voice must avoid drone-only assumptions. Add a "Applicable platforms" callout.
